@@ -12,6 +12,7 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.__version__ import __version__
+from backend.api.routes import chat as chat_routes
 from backend.api.routes import config as config_routes
 from backend.api.routes import health as health_routes
 from backend.api.routes import ollama as ollama_routes
@@ -60,6 +61,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     app.include_router(health_routes.router, prefix="/api")
     app.include_router(config_routes.router, prefix="/api")
     app.include_router(ollama_routes.router, prefix="/api")
+    app.include_router(chat_routes.router, prefix="/api")
 
     static_dir = bundled_web_dist()
     if static_dir:

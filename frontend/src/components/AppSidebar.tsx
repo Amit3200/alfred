@@ -1,5 +1,6 @@
 import {
   ApiOutlined,
+  CommentOutlined,
   HeartOutlined,
   HomeOutlined,
   KeyOutlined,
@@ -25,7 +26,7 @@ export function AppSidebar({ width }: AppSidebarProps) {
   const { view, settingsPage, navigate, version } = useApp();
 
   const selectedKeys = useMemo(
-    () => (view === "home" ? ["home"] : [settingsPage]),
+    () => (view === "home" ? ["home"] : view === "chat" ? ["chat"] : [settingsPage]),
     [view, settingsPage],
   );
 
@@ -45,6 +46,10 @@ export function AppSidebar({ width }: AppSidebarProps) {
   const onSelect = ({ key }: { key: string }) => {
     if (key === "home") {
       navigate("home");
+      return;
+    }
+    if (key === "chat") {
+      navigate("chat");
       return;
     }
     if (SETTINGS_KEYS.has(key)) {
@@ -74,6 +79,7 @@ export function AppSidebar({ width }: AppSidebarProps) {
           onClick={onSelect}
           items={[
             { key: "home", icon: <HomeOutlined />, label: "Home" },
+            { key: "chat", icon: <CommentOutlined />, label: "Chat" },
             {
               key: "settings",
               icon: <SettingOutlined />,

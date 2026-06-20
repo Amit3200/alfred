@@ -6,12 +6,15 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
+from backend.models.response import ResponsePayload
+
 Role = Literal["user", "assistant"]
 
 
 class ConversationTurn(BaseModel):
     role: Role
     content: str
+    payload: ResponsePayload | None = None
 
 
 class ConversationSession(BaseModel):
@@ -33,6 +36,11 @@ def session_key_for_task(source: str, scope_id: str, thread_id: str) -> str:
 
 def task_session_key(task: Any) -> str | None:
     """Build session key from a Task, or None if not session-backed."""
+    if task.source == "ui":
+        chat_id = task.metadata.get("chat_id") or task.channel_id or task.thread_ts
+        if chat_id:
+            return session_key_for_task("ui", str(chat_id), str(chat_id))
+        return None
     if not task.channel_id or not task.thread_ts:
         return None
     return session_key_for_task(task.source, task.channel_id, task.thread_ts)

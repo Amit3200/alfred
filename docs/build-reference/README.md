@@ -26,5 +26,13 @@ When code and docs diverge, update `building_phase_v0.md` first, then revise `v0
 
 ## Local-only files (gitignored)
 
-- `*.html` in this folder — HTML exports for browser review
-- `building_phase_*` except **`building_phase_v0.md`** — scratch phase notes / personal exports
+Personal work while building Alfred — safe to delete anytime; not shared via git:
+
+| Pattern / path | Use |
+|----------------|-----|
+| `scratch/` | Ideation plans, phase notes, experiments (e.g. `scratch/v0_ideation_phase1.md`, `scratch/building_phase_git.md`) |
+| `*_ideation_*.md` | One-off ideation docs anywhere in this folder |
+| `building_phase_*` except **`building_phase_v0.md`** | Scratch phase trackers |
+| `*.html` | HTML exports for browser review |
+
+**Tracked source of truth:** `idea.md`, `v0.md`, `building_phase_v0.md`. When a scratch plan ships, fold outcomes into `building_phase_v0.md` and delete the scratch file.

@@ -68,8 +68,9 @@ def test_task_processor_calls_llm():
         raw_text="why bug?",
         cleaned_intent="why bug?",
     )
-    reply = processor.process(task)
-    assert reply == "The bug is in auth.py line 42."
+    response = processor.process(task)
+    assert response.payload.kind == "text"
+    assert response.payload.data["text"] == "The bug is in auth.py line 42."
     mock_provider.chat.assert_called_once()
 
 

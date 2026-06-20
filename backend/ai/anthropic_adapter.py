@@ -39,11 +39,7 @@ class AnthropicProvider(LLMProvider):
         client = self._get_client()
         model_name = model or self.config.model
         system = "\n".join(m.content for m in messages if m.role == "system")
-        api_messages = [
-            {"role": m.role, "content": m.content}
-            for m in messages
-            if m.role in ("user", "assistant")
-        ]
+        api_messages = _anthropic_messages(messages)
         kwargs: dict[str, Any] = {
             "model": model_name,
             "max_tokens": 4096,
@@ -81,3 +77,42 @@ class AnthropicProvider(LLMProvider):
             provider="anthropic",
             raw=response.model_dump() if hasattr(response, "model_dump") else {},
         )
+
+
+def _anthropic_messages(messages: list[Message]) -> list[dict]:
+    """Convert normalized messages to Anthropic API format (including tool turns)."""
+    api_messages: list[dict] = []
+    for message in messages:
+        if message.role == "system":
+            continue
+        if message.role == "tool":
+            api_messages.append(
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "tool_result",
+                            "tool_use_id": message.tool_call_id or message.name or "tool",
+                            "content": message.content,
+                        }
+                    ],
+                }
+            )
+            continue
+        if message.role == "assistant" and message.tool_calls:
+            content_blocks: list[dict] = []
+            if message.content:
+                content_blocks.append({"type": "text", "text": message.content})
+            for tool_call in message.tool_calls:
+                content_blocks.append(
+                    {
+                        "type": "tool_use",
+                        "id": tool_call.id,
+                        "name": tool_call.name,
+                        "input": tool_call.arguments,
+                    }
+                )
+            api_messages.append({"role": "assistant", "content": content_blocks})
+            continue
+        api_messages.append({"role": message.role, "content": message.content})
+    return api_messages

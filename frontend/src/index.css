@@ -180,6 +180,14 @@ body,
   width: 100%;
   padding: 32px 36px 56px;
   min-height: 100vh;
+  box-sizing: border-box;
+}
+
+.alfred-main-inner:has(.alfred-chat-layout) {
+  padding: 16px 20px;
+  height: 100vh;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .alfred-settings-page {
@@ -786,4 +794,394 @@ body,
 .alfred-toast-card-close:hover {
   color: var(--alfred-text);
   background: var(--alfred-hover);
+}
+
+/* ── Chat ── */
+.alfred-chat-layout {
+  display: flex;
+  height: 100%;
+  min-height: 0;
+  background: var(--alfred-surface);
+  border-radius: var(--alfred-radius-lg);
+  border: 1px solid var(--alfred-border-subtle);
+  overflow: hidden;
+}
+
+.alfred-chat-sessions {
+  width: 260px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  border-right: 1px solid var(--alfred-border-subtle);
+  background: var(--alfred-surface-muted);
+}
+
+.alfred-chat-sessions-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 12px;
+  border-bottom: 1px solid var(--alfred-border-subtle);
+}
+
+.alfred-chat-session-list {
+  list-style: none;
+  margin: 0;
+  padding: 8px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.alfred-chat-session-list li {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-bottom: 4px;
+}
+
+.alfred-chat-session-item {
+  flex: 1;
+  text-align: left;
+  border: 1px solid transparent;
+  background: transparent;
+  border-radius: var(--alfred-radius);
+  padding: 10px 12px;
+  cursor: pointer;
+  min-width: 0;
+}
+
+.alfred-chat-session-item:hover,
+.alfred-chat-session-item.active {
+  background: var(--alfred-surface);
+  border-color: var(--alfred-border-subtle);
+}
+
+.alfred-chat-session-item.active {
+  box-shadow: 0 0 0 1px var(--alfred-accent-soft);
+}
+
+.alfred-chat-session-title {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--alfred-text-strong);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.alfred-chat-session-meta {
+  display: block;
+  font-size: 11px;
+  color: var(--alfred-text-faint);
+  margin-top: 2px;
+}
+
+.alfred-chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.alfred-chat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--alfred-border-subtle);
+}
+
+.alfred-chat-thread {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.alfred-chat-bubble {
+  max-width: min(720px, 90%);
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid var(--alfred-border-subtle);
+}
+
+.alfred-chat-bubble-user {
+  align-self: flex-end;
+  background: var(--alfred-accent-soft);
+  border-color: transparent;
+}
+
+.alfred-chat-bubble-assistant {
+  align-self: flex-start;
+  background: var(--alfred-surface-subtle);
+}
+
+.alfred-chat-bubble-label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--alfred-text-faint);
+  margin-bottom: 6px;
+}
+
+.alfred-chat-bubble-body {
+  font-size: 14px;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--alfred-text);
+}
+
+.alfred-chat-bubble-assistant .alfred-chat-bubble-body {
+  white-space: normal;
+}
+
+.alfred-chat-markdown {
+  font-size: inherit;
+  line-height: inherit;
+  color: inherit;
+}
+
+.alfred-chat-markdown > :first-child {
+  margin-top: 0;
+}
+
+.alfred-chat-markdown > :last-child {
+  margin-bottom: 0;
+}
+
+.alfred-chat-markdown p,
+.alfred-chat-markdown ul,
+.alfred-chat-markdown ol,
+.alfred-chat-markdown pre,
+.alfred-chat-markdown blockquote {
+  margin: 0.5em 0;
+}
+
+.alfred-chat-markdown h3 {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  margin: 1.1em 0 0.4em;
+  color: var(--alfred-text-muted, var(--alfred-text-faint));
+}
+
+.alfred-chat-markdown h3:first-child {
+  margin-top: 0.25em;
+}
+
+.alfred-chat-markdown ul,
+.alfred-chat-markdown ol {
+  padding-left: 0;
+  list-style: none;
+  margin: 0 0 0.5em;
+}
+
+.alfred-chat-markdown li {
+  position: relative;
+  padding: 0.45em 0 0.45em 1.1em;
+  border-bottom: 1px solid var(--alfred-border-subtle);
+}
+
+.alfred-chat-markdown li::before {
+  content: "•";
+  position: absolute;
+  left: 0;
+  color: var(--alfred-text-faint);
+}
+
+.alfred-chat-markdown li:last-child {
+  border-bottom: none;
+  padding-bottom: 0;
+}
+
+.alfred-chat-markdown li + li {
+  margin-top: 0;
+}
+
+.alfred-chat-markdown strong {
+  font-weight: 600;
+  color: var(--alfred-text);
+}
+
+.alfred-chat-markdown code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.9em;
+  padding: 0.12em 0.35em;
+  border-radius: 4px;
+  background: var(--alfred-surface-muted);
+  border: 1px solid var(--alfred-border-subtle);
+}
+
+.alfred-chat-markdown pre {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--alfred-surface-muted);
+  border: 1px solid var(--alfred-border-subtle);
+  overflow-x: auto;
+}
+
+.alfred-chat-markdown pre code {
+  padding: 0;
+  border: none;
+  background: transparent;
+}
+
+.alfred-chat-markdown a {
+  color: var(--alfred-accent);
+  text-decoration: none;
+}
+
+.alfred-chat-markdown a:hover {
+  text-decoration: underline;
+}
+
+/* ── Structured chat payloads ── */
+.alfred-pr-list-header {
+  font-weight: 600;
+  font-size: 15px;
+  margin-bottom: 12px;
+}
+
+.alfred-pr-repo + .alfred-pr-repo {
+  margin-top: 14px;
+}
+
+.alfred-pr-repo-name {
+  margin: 0 0 6px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--alfred-text-faint);
+}
+
+.alfred-pr-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.alfred-pr-items li {
+  padding: 8px 0;
+  border-bottom: 1px solid var(--alfred-border-subtle);
+}
+
+.alfred-pr-items li:last-child {
+  border-bottom: none;
+}
+
+.alfred-pr-link {
+  color: var(--alfred-accent);
+  text-decoration: none;
+  font-size: 14px;
+}
+
+.alfred-pr-link:hover {
+  text-decoration: underline;
+}
+
+.alfred-pr-draft {
+  margin-left: 8px;
+  font-size: 11px;
+  color: var(--alfred-text-faint);
+  text-transform: uppercase;
+}
+
+.alfred-pr-detail-repo {
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--alfred-text-faint);
+  margin-bottom: 6px;
+}
+
+.alfred-pr-detail-title {
+  display: block;
+  font-weight: 600;
+  font-size: 15px;
+  color: var(--alfred-accent);
+  text-decoration: none;
+  margin-bottom: 6px;
+}
+
+.alfred-pr-detail-meta,
+.alfred-pr-detail-branches {
+  font-size: 13px;
+  color: var(--alfred-text-faint);
+  margin-bottom: 8px;
+}
+
+.alfred-pr-detail-body {
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--alfred-text);
+  white-space: pre-wrap;
+}
+
+.alfred-repo-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.alfred-repo-list li {
+  padding: 6px 0;
+}
+
+.alfred-chat-error {
+  color: #e57373;
+}
+
+.alfred-chat-empty-result {
+  color: var(--alfred-text-faint);
+  margin: 0;
+}
+
+.alfred-chat-composer {
+  display: flex;
+  gap: 10px;
+  align-items: flex-end;
+  padding: 16px 20px;
+  border-top: 1px solid var(--alfred-border-subtle);
+  background: var(--alfred-surface-muted);
+}
+
+.alfred-chat-composer textarea {
+  flex: 1;
+  resize: none;
+}
+
+.alfred-chat-welcome,
+.alfred-chat-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  height: 100%;
+  padding: 32px;
+  text-align: center;
+}
+
+.alfred-chat-welcome-inline {
+  margin: auto;
+  text-align: center;
+}
+
+.alfred-chat-center {
+  display: flex;
+  justify-content: center;
+  padding: 24px;
+}
+
+.alfred-chat-sessions-empty {
+  padding: 16px;
+  text-align: center;
 }

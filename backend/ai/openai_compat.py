@@ -6,6 +6,7 @@ import json
 from typing import Any
 
 from backend.ai.base import LLMProvider, LLMResponse, Message, ToolCall, ToolSchema
+from backend.ai.openai_messages import message_to_openai_api
 from backend.models.config import AIProviderConfig
 
 
@@ -57,7 +58,7 @@ class OpenAICompatProvider(LLMProvider):
     ) -> LLMResponse:
         client = self._get_client()
         model_name = model or self.config.model
-        payload_messages = [{"role": m.role, "content": m.content} for m in messages]
+        payload_messages = [message_to_openai_api(m) for m in messages]
         kwargs: dict[str, Any] = {
             "model": model_name,
             "messages": payload_messages,

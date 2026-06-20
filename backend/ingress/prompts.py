@@ -13,11 +13,18 @@ SLACK_FORMAT_RULES = """\
 
 - Answer the *latest* user message first. Do not recap unrelated history unless asked.
 - Use natural Slack prose. Optional *section headers* when the answer is long.
-- Use bullet lists for short lists (steps, single-line items).
+- Use bullet lists for short lists — *one line per item*, no repeated boilerplate phrasing.
 - For multi-column data, use a fenced code block table (see domain playbooks when attached).
 - NEVER output internal labels such as: Lead line, Body, Context Recap, Next Steps, Note.
 - Slack bold uses single asterisks: *like this* — never **double asterisks**
 - Inline code: `like this`. No markdown pipe tables outside code blocks. No # headings.
+
+## Lists and links
+
+- Do not repeat the same sentence template for every bullet (bad: "There is an open PR titled…" × N).
+- Put links *inline* on the same line as the item using Slack format: `<https://…|#123 Title>`
+- Group related items under a `repo-or-topic` header when listing many PRs, alerts, or files.
+- Keep a short summary line first (e.g. "*4 open PRs*"), then the list.
 
 ## Grounding
 

@@ -1,4 +1,4 @@
-"""Load domain playbooks from Markdown files in the data directory."""
+"""Load domain playbooks and bundled skills from Markdown files."""
 
 from __future__ import annotations
 
@@ -6,14 +6,17 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Literal
 
 import yaml
 
-from backend.paths import playbooks_dir
+from backend.paths import bundled_skills_dir, playbooks_dir
 
 logger = logging.getLogger(__name__)
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
+
+SkillMode = Literal["conversational", "investigation", "workflow"]
 
 
 @dataclass
@@ -23,13 +26,23 @@ class Playbook:
     body: str
     triggers: list[str] = field(default_factory=list)
     channels: list[str] = field(default_factory=list)
+    mode: SkillMode = "conversational"
+    allowed_tools: list[str] = field(default_factory=list)
+    requires_thread_context: bool = False
+    bundled: bool = False
 
 
 class PlaybookStore:
-    """Read `*.md` playbooks from `.alfred/playbooks/` and match by trigger keywords."""
+    """Read playbooks from `.alfred/playbooks/` and bundled `skills/`."""
 
-    def __init__(self, data_dir: Path | None = None) -> None:
+    def __init__(
+        self,
+        data_dir: Path | None = None,
+        *,
+        disabled_skills: list[str] | None = None,
+    ) -> None:
         self.directory = playbooks_dir(data_dir)
+        self.disabled_skills = {name.strip().lower() for name in (disabled_skills or [])}
         self._playbooks: list[Playbook] | None = None
 
     def reload(self) -> None:
@@ -52,6 +65,13 @@ class PlaybookStore:
                 matched.append(playbook)
         return matched
 
+    def pick_investigation(self, intent: str, *, channel_id: str = "") -> Playbook | None:
+        """Return the first investigation skill with tools that matches the intent."""
+        for playbook in self.match(intent, channel_id=channel_id):
+            if playbook.mode == "investigation" and playbook.allowed_tools:
+                return playbook
+        return None
+
     def format_for_prompt(self, playbooks: list[Playbook]) -> str:
         if not playbooks:
             return ""
@@ -62,28 +82,46 @@ class PlaybookStore:
             "",
         ]
         for playbook in playbooks:
-            sections.append(f"### Playbook: {playbook.name}")
+            label = "Skill" if playbook.mode == "investigation" else "Playbook"
+            sections.append(f"### {label}: {playbook.name}")
             sections.append(playbook.body.strip())
             sections.append("")
         return "\n".join(sections).strip()
 
     def _load_all(self) -> list[Playbook]:
-        if not self.directory.is_dir():
-            return []
-
         playbooks: list[Playbook] = []
-        for path in sorted(self.directory.glob("*.md")):
+        seen_names: set[str] = set()
+
+        for path in sorted(self.directory.glob("*.md")) if self.directory.is_dir() else []:
             if path.name.lower() == "readme.md":
                 continue
             try:
-                playbooks.append(_parse_playbook(path))
+                playbook = _parse_playbook(path, bundled=False)
+                playbooks.append(playbook)
+                seen_names.add(playbook.name.lower())
             except Exception:
                 logger.exception("Failed to load playbook %s", path)
-        logger.info("Loaded %d playbook(s) from %s", len(playbooks), self.directory)
+
+        skills_root = bundled_skills_dir()
+        if skills_root.is_dir():
+            for path in sorted(skills_root.glob("*.md")):
+                if path.name.lower() == "readme.md":
+                    continue
+                try:
+                    playbook = _parse_playbook(path, bundled=True)
+                    if playbook.name.lower() in self.disabled_skills:
+                        continue
+                    if playbook.name.lower() in seen_names:
+                        continue
+                    playbooks.append(playbook)
+                except Exception:
+                    logger.exception("Failed to load skill %s", path)
+
+        logger.info("Loaded %d playbook/skill file(s)", len(playbooks))
         return playbooks
 
 
-def _parse_playbook(path: Path) -> Playbook:
+def _parse_playbook(path: Path, *, bundled: bool) -> Playbook:
     raw = path.read_text(encoding="utf-8")
     meta: dict = {}
     body = raw.strip()
@@ -94,9 +132,28 @@ def _parse_playbook(path: Path) -> Playbook:
         body = raw[match.end() :].strip()
 
     name = str(meta.get("name") or path.stem)
-    triggers = _normalize_str_list(meta.get("triggers"))
-    channels = _normalize_str_list(meta.get("channels"))
-    return Playbook(name=name, path=path, body=body, triggers=triggers, channels=channels)
+    triggers = _normalize_str_list(meta.get("triggers") or meta.get("trigger_keywords"))
+    channels = _normalize_str_list(meta.get("channels") or meta.get("allowed_channels"))
+    mode = str(meta.get("mode") or "conversational")
+    if mode not in ("conversational", "investigation", "workflow"):
+        mode = "conversational"
+    allowed_tools = _normalize_str_list(meta.get("allowed_tools"))
+    requires_thread_context = bool(meta.get("requires_thread_context", False))
+
+    if channels == ["*"]:
+        channels = []
+
+    return Playbook(
+        name=name,
+        path=path,
+        body=body,
+        triggers=triggers,
+        channels=channels,
+        mode=mode,  # type: ignore[arg-type]
+        allowed_tools=allowed_tools,
+        requires_thread_context=requires_thread_context,
+        bundled=bundled,
+    )
 
 
 def _normalize_str_list(value: object) -> list[str]:

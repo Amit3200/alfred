@@ -220,10 +220,12 @@ __marimo__/
 # Alfred local data
 .alfred/
 
-# Alfred build-reference — local HTML exports and scratch phase notes
+# Alfred build-reference — local HTML exports and personal work notes
 docs/build-reference/**/*.html
 docs/build-reference/building_phase_*
 !docs/build-reference/building_phase_v0.md
+docs/build-reference/scratch/
+docs/build-reference/*_ideation_*.md
 
 # Node / admin UI
 frontend/node_modules/

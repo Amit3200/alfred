@@ -24,6 +24,8 @@ def _apply_slack_formatting(text: str) -> str:
     text = _normalize_table_titles(text)
     text = _convert_markdown_tables(text)
     text = _strip_remaining_pipe_lines(text)
+    text = _linkify_github_pr_urls(text)
+    text = _collapse_extra_blank_lines(text)
     return text
 
 
@@ -159,3 +161,27 @@ def format_code_table(headers: list[str], rows: list[list[str]]) -> str:
     body = [fmt(headers), fmt(["-" * width for width in widths])]
     body.extend(fmt(row) for row in rows)
     return "```\n" + "\n".join(body) + "\n```"
+
+
+_GITHUB_PR_URL_RE = re.compile(
+    r"^(\s*(?:[-*•]\s*)?)(https://github\.com/[^/\s]+/[^/\s]+/pull/(\d+)(?:\s|$))",
+    re.MULTILINE,
+)
+
+
+def _linkify_github_pr_urls(text: str) -> str:
+    """Turn bare GitHub PR URLs into Slack mrkdwn links when not already linked."""
+
+    def repl(match: re.Match[str]) -> str:
+        prefix = match.group(1)
+        url = match.group(2).strip()
+        number = match.group(3)
+        if "<" in prefix and "|" in text[match.start() : match.end() + 5]:
+            return match.group(0)
+        return f"{prefix.rstrip()}<{url}|#{number}>"
+
+    return _GITHUB_PR_URL_RE.sub(repl, text)
+
+
+def _collapse_extra_blank_lines(text: str) -> str:
+    return re.sub(r"\n{3,}", "\n\n", text).strip()

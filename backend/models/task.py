@@ -8,7 +8,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, Field
 
 
-TaskSource = Literal["slack", "cli", "git", "web"]
+TaskSource = Literal["slack", "cli", "git", "web", "ui"]
 
 
 class Task(BaseModel):

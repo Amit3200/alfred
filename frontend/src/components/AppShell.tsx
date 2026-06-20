@@ -1,5 +1,6 @@
 import { Layout } from "antd";
 import { AppSidebar } from "./AppSidebar";
+import { ChatPage } from "./ChatPage";
 import { HomePage } from "./HomePage";
 import { AISettingsPanel } from "./panels/AISettingsPanel";
 import { HealthPanel } from "./panels/HealthPanel";
@@ -34,7 +35,7 @@ export function AppShell() {
       <AppSidebar width={SIDER_WIDTH} />
       <Layout className="alfred-main" style={{ marginLeft: SIDER_WIDTH }}>
         <Content className="alfred-main-inner">
-          {view === "home" ? <HomePage /> : <SettingsContent />}
+          {view === "home" ? <HomePage /> : view === "chat" ? <ChatPage /> : <SettingsContent />}
         </Content>
       </Layout>
     </Layout>

@@ -54,6 +54,16 @@ def bundled_playbooks_dir() -> Path:
     return Path(__file__).resolve().parent.parent / "docs" / "playbooks"
 
 
+def bundled_skills_dir() -> Path:
+    return Path(__file__).resolve().parent.parent / "skills"
+
+
+def exports_dir(data_dir: Path | None = None) -> Path:
+    path = get_data_dir(data_dir) / "exports"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def bundled_web_dist() -> Path | None:
     """Return path to bundled admin UI static assets, if present."""
     package_root = Path(__file__).resolve().parent

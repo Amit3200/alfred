@@ -179,4 +179,65 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ model: model || null }),
     }),
+
+  listChatSessions: () =>
+    request<{ sessions: ChatSessionSummary[] }>("/api/chat/sessions", {}, true),
+  createChatSession: (title?: string) =>
+    request<ChatSessionSummary>(
+      "/api/chat/sessions",
+      { method: "POST", body: JSON.stringify({ title: title || "New chat" }) },
+      true,
+    ),
+  getChatSession: (id: string) => request<ChatSessionDetail>(`/api/chat/sessions/${id}`, {}, true),
+  deleteChatSession: (id: string) =>
+    request<{ ok: boolean }>(`/api/chat/sessions/${id}`, { method: "DELETE" }, true),
+  sendChatMessage: (id: string, content: string) =>
+    request<ChatMessageResponse>(
+      `/api/chat/sessions/${id}/messages`,
+      { method: "POST", body: JSON.stringify({ content }) },
+      true,
+    ),
+  exportChatSession: (id: string, filename?: string) =>
+    request<ChatExportResult>(
+      `/api/chat/sessions/${id}/export`,
+      { method: "POST", body: JSON.stringify({ filename: filename || null }) },
+      true,
+    ),
+  chatExportDownloadUrl: (filename: string) => `/api/chat/exports/${encodeURIComponent(filename)}`,
+};
+
+export type ChatSessionSummary = {
+  id: string;
+  title: string;
+  message_count: number;
+  updated_at?: string;
+  created_at?: string;
+};
+
+export type ResponsePayload = {
+  kind: "text" | "pr_list" | "pr_detail" | "repo_list" | "error";
+  data: Record<string, unknown>;
+};
+
+export type ChatMessage = {
+  role: "user" | "assistant";
+  content: string;
+  payload?: ResponsePayload | null;
+};
+
+export type ChatSessionDetail = ChatSessionSummary & {
+  messages: ChatMessage[];
+};
+
+export type ChatMessageResponse = {
+  reply: string;
+  payload?: ResponsePayload;
+  chat: ChatSessionDetail;
+  export?: { filename: string; path: string };
+};
+
+export type ChatExportResult = {
+  filename: string;
+  path: string;
+  download_url: string;
 };

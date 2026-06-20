@@ -10,6 +10,7 @@ from pathlib import Path
 from sqlalchemy import DateTime, String, Text, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
 
+from backend.models.response import ResponsePayload
 from backend.models.session import ConversationSession, ConversationTurn
 from backend.paths import db_path
 
@@ -52,6 +53,7 @@ class SessionStore:
 
     def save(self, session: ConversationSession) -> None:
         session.turns = session.turns[-MAX_TURNS:]
+        session.metadata["updated_at"] = datetime.now(timezone.utc).isoformat()
         payload = session.model_dump(mode="json")
         now = datetime.now(timezone.utc)
         with self._factory() as db:
@@ -82,6 +84,7 @@ class SessionStore:
         user_content: str,
         assistant_content: str,
         context_snapshot: str | None = None,
+        assistant_payload: ResponsePayload | None = None,
     ) -> ConversationSession:
         session = self.load(key) or ConversationSession(
             key=key,
@@ -90,8 +93,37 @@ class SessionStore:
             thread_id=thread_id,
         )
         session.turns.append(ConversationTurn(role="user", content=user_content))
-        session.turns.append(ConversationTurn(role="assistant", content=assistant_content))
+        session.turns.append(
+            ConversationTurn(
+                role="assistant",
+                content=assistant_content,
+                payload=assistant_payload,
+            )
+        )
         if context_snapshot:
             session.context_snapshot = context_snapshot
         self.save(session)
         return session
+
+    def delete(self, key: str) -> bool:
+        with self._factory() as db:
+            row = db.get(SessionRow, key)
+            if row is None:
+                return False
+            db.delete(row)
+            db.commit()
+            return True
+
+    def list_by_source(self, source: str) -> list[ConversationSession]:
+        with self._factory() as db:
+            stmt = (
+                select(SessionRow)
+                .where(SessionRow.source == source)
+                .order_by(SessionRow.updated_at.desc())
+            )
+            rows = db.scalars(stmt).all()
+            sessions: list[ConversationSession] = []
+            for row in rows:
+                data = json.loads(row.payload)
+                sessions.append(ConversationSession.model_validate(data))
+            return sessions

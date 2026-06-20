@@ -93,6 +93,7 @@ def status(data_dir: Path | None) -> None:
 def exec_cmd(message: str, data_dir: Path | None) -> None:
     """Run a message through Alfred locally (same path as Slack, without posting)."""
     from backend.ingress.processor import TaskProcessor
+    from backend.ingress.render import render_for_channel
     from backend.models.task import Task
 
     manager = ConfigManager(data_dir)
@@ -108,11 +109,11 @@ def exec_cmd(message: str, data_dir: Path | None) -> None:
     )
     processor = TaskProcessor(config, data_dir=manager.data_dir)
     try:
-        reply = processor.process(task)
+        response = processor.process(task)
     except Exception as exc:
         click.echo(f"Error: {exc}", err=True)
         raise SystemExit(1) from exc
-    click.echo(reply)
+    click.echo(render_for_channel(response, "cli"))
 
 
 @main.command()

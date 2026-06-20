@@ -8,6 +8,7 @@ from typing import Any, Callable
 
 from backend.config_manager import ConfigManager
 from backend.ingress.processor import TaskProcessor
+from backend.ingress.render import render_for_channel
 from backend.ingress.slack_context import fetch_slack_context
 from backend.ingress.sanitize import sanitize_slack_mention
 from backend.models.config import AlfredConfig
@@ -91,7 +92,8 @@ def _process_mention(
     on_task_complete: Callable[[], None] | None,
 ) -> None:
     try:
-        reply = processor.process(task)
+        response = processor.process(task)
+        reply = render_for_channel(response, "slack")
         indicator.finish(reply)
     except Exception as exc:
         logger.exception("Failed to process Slack mention %s", task.id)

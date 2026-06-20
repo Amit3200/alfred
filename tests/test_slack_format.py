@@ -9,3 +9,9 @@ def test_double_bold_to_slack():
 
 def test_markdown_heading_to_slack_bold():
     assert format_for_slack("### Summary\n\nHello") == "*Summary*\n\nHello"
+
+
+def test_linkify_bare_github_pr_url():
+    text = "• https://github.com/org/repo/pull/42"
+    result = format_for_slack(text)
+    assert "<https://github.com/org/repo/pull/42|#42>" in result
