@@ -1,0 +1,86 @@
+"""FastAPI application factory."""
+
+from __future__ import annotations
+
+import logging
+from contextlib import asynccontextmanager
+from pathlib import Path
+
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from fastapi.staticfiles import StaticFiles
+
+from backend.__version__ import __version__
+from backend.api.routes import config as config_routes
+from backend.api.routes import health as health_routes
+from backend.api.routes import ollama as ollama_routes
+from backend.config_manager import ConfigManager
+from backend.logging_config import setup_logging
+from backend.paths import bundled_web_dist
+from backend.slack.listener import SlackSocketRunner
+
+logger = logging.getLogger(__name__)
+
+
+@asynccontextmanager
+async def _lifespan(app: FastAPI):
+    manager: ConfigManager = app.state.config_manager
+    slack_runner = SlackSocketRunner(manager)
+    app.state.slack_runner = slack_runner
+    ok, message = slack_runner.start()
+    if ok:
+        logger.info("Slack ingress: %s", message)
+    else:
+        logger.info("Slack ingress not started: %s", message)
+    yield
+    slack_runner.stop()
+
+
+def create_app(data_dir: Path | None = None) -> FastAPI:
+    manager = ConfigManager(data_dir)
+    log_file = setup_logging(manager.data_dir)
+    logger.info("Alfred log file: %s", log_file)
+    app = FastAPI(
+        title="Alfred",
+        description="Distributable DevOps agent",
+        version=__version__,
+        lifespan=_lifespan,
+    )
+    app.state.config_manager = manager
+
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_credentials=True,
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    app.include_router(health_routes.router, prefix="/api")
+    app.include_router(config_routes.router, prefix="/api")
+    app.include_router(ollama_routes.router, prefix="/api")
+
+    static_dir = bundled_web_dist()
+    if static_dir:
+        assets_dir = static_dir / "assets"
+        if assets_dir.exists():
+            app.mount("/assets", StaticFiles(directory=assets_dir), name="assets")
+
+        @app.get("/")
+        async def admin_index() -> FileResponse:
+            return FileResponse(static_dir / "index.html")
+
+        @app.get("/{full_path:path}")
+        async def admin_spa(full_path: str) -> FileResponse:
+            candidate = static_dir / full_path
+            if candidate.is_file():
+                return FileResponse(candidate)
+            return FileResponse(static_dir / "index.html")
+
+    return app
+
+
+def build_app() -> FastAPI:
+    """Uvicorn factory entrypoint (uses ALFRED_DATA_DIR when set)."""
+    return create_app()

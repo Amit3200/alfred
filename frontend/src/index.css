@@ -1,0 +1,789 @@
+* {
+  box-sizing: border-box;
+}
+
+:root {
+  --alfred-radius: 8px;
+  --alfred-radius-lg: 14px;
+  --alfred-bg: #f0ebe3;
+  --alfred-surface: #fffcf7;
+  --alfred-surface-muted: #f5f0e8;
+  --alfred-surface-subtle: #faf6ef;
+  --alfred-border: #ddd5c8;
+  --alfred-border-subtle: #ebe4d9;
+  --alfred-text: #1c1917;
+  --alfred-text-strong: #0c0a09;
+  --alfred-text-muted: #6b6560;
+  --alfred-text-faint: #a39e96;
+  --alfred-accent: #9a6b2f;
+  --alfred-accent-bright: #c9a04a;
+  --alfred-accent-soft: rgba(154, 107, 47, 0.1);
+  --alfred-accent-glow: rgba(201, 160, 74, 0.25);
+  --alfred-hover: #f5f0e8;
+  --alfred-header-gradient: linear-gradient(180deg, #fffcf7 0%, #f5f0e8 100%);
+  --alfred-mark-bg: #1a1816;
+  --alfred-mark-collar-fill: #e8e4dc;
+  --alfred-mark-tray-stroke: #c4bdb4;
+  --alfred-font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+[data-theme="dark"] {
+  --alfred-bg: #121110;
+  --alfred-surface: #1a1816;
+  --alfred-surface-muted: #161412;
+  --alfred-surface-subtle: #201e1b;
+  --alfred-border: #2e2a26;
+  --alfred-border-subtle: #252220;
+  --alfred-text: #e7e2db;
+  --alfred-text-strong: #faf8f5;
+  --alfred-text-muted: #a39e96;
+  --alfred-text-faint: #6b6560;
+  --alfred-accent: #d4a853;
+  --alfred-accent-bright: #e8c876;
+  --alfred-accent-soft: rgba(212, 168, 83, 0.12);
+  --alfred-accent-glow: rgba(212, 168, 83, 0.18);
+  --alfred-hover: #252220;
+  --alfred-header-gradient: linear-gradient(180deg, #1a1816 0%, #161412 100%);
+  --alfred-mark-bg: #252220;
+  --alfred-mark-collar-fill: #2a2724;
+  --alfred-mark-tray-stroke: #3d3834;
+}
+
+html,
+body,
+#root {
+  margin: 0;
+  height: 100%;
+  font-family: var(--alfred-font);
+  background: var(--alfred-bg);
+  color: var(--alfred-text);
+}
+
+.alfred-app {
+  min-height: 100%;
+}
+
+.ant-layout {
+  background: var(--alfred-bg) !important;
+}
+
+/* ── Logo ── */
+.alfred-logo {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  min-width: 0;
+}
+
+.alfred-logo-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.alfred-logo-title {
+  font-family: var(--alfred-font);
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: -0.025em;
+  color: var(--alfred-text-strong);
+  line-height: 1.2;
+}
+
+.alfred-logo-subtitle {
+  font-size: 11px;
+  font-weight: 500;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--alfred-text-faint);
+  margin-top: 2px;
+}
+
+.alfred-logo-icon {
+  border-radius: 0;
+  flex-shrink: 0;
+}
+
+.alfred-mark-bg {
+  fill: var(--alfred-mark-bg);
+}
+
+.alfred-mark-collar {
+  fill: var(--alfred-mark-collar-fill);
+}
+
+.alfred-mark-tie {
+  fill: var(--alfred-accent-bright);
+}
+
+.alfred-mark-knot {
+  fill: var(--alfred-accent);
+}
+
+.alfred-mark-tray {
+  stroke: var(--alfred-mark-tray-stroke);
+}
+
+/* ── Shell ── */
+.alfred-shell {
+  min-height: 100vh;
+}
+
+.alfred-shell-sider {
+  position: fixed !important;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  height: 100vh !important;
+  max-height: 100vh;
+  overflow: hidden;
+  z-index: 200;
+  background: var(--alfred-surface-muted) !important;
+  border-right: 1px solid var(--alfred-border) !important;
+}
+
+.alfred-shell-sider .ant-layout-sider-children {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  overflow: hidden;
+}
+
+.alfred-sider-header {
+  padding: 18px 16px;
+  border-bottom: 1px solid var(--alfred-border);
+  background: var(--alfred-header-gradient);
+}
+
+.alfred-sider-nav {
+  flex: 1;
+  overflow: auto;
+  padding: 10px;
+}
+
+.alfred-sider-footer {
+  padding: 14px 16px;
+  border-top: 1px solid var(--alfred-border);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.alfred-main {
+  background: var(--alfred-bg) !important;
+  min-height: 100vh;
+  flex: 1;
+}
+
+.alfred-main-inner {
+  width: 100%;
+  padding: 32px 36px 56px;
+  min-height: 100vh;
+}
+
+.alfred-settings-page {
+  width: 100%;
+  max-width: none;
+}
+
+.alfred-provider-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+/* Sidebar menu — always use CSS tokens, not ant dark/light flip */
+.alfred-shell-sider .ant-menu-light,
+.alfred-shell-sider .ant-menu {
+  background: transparent !important;
+  border-inline-end: none !important;
+}
+
+.alfred-shell-sider .ant-menu-item-selected {
+  background: var(--alfred-accent-soft) !important;
+  color: var(--alfred-accent) !important;
+}
+
+.alfred-shell-sider .ant-menu-item-selected .ant-menu-item-icon,
+.alfred-shell-sider .ant-menu-item-selected .anticon {
+  color: var(--alfred-accent) !important;
+}
+
+.alfred-shell-sider .ant-menu-submenu-selected > .ant-menu-submenu-title {
+  color: var(--alfred-text-strong) !important;
+}
+
+[data-theme="dark"] .alfred-shell-sider .ant-menu-light,
+[data-theme="dark"] .alfred-shell-sider .ant-menu {
+  color: var(--alfred-text) !important;
+}
+
+[data-theme="dark"] .alfred-shell-sider .ant-menu-item,
+[data-theme="dark"] .alfred-shell-sider .ant-menu-submenu-title {
+  color: var(--alfred-text-muted) !important;
+}
+
+[data-theme="dark"] .alfred-shell-sider .ant-menu-item-selected {
+  color: var(--alfred-accent) !important;
+}
+
+/* ── Typography ── */
+.alfred-page-title {
+  margin: 0 0 8px !important;
+  font-family: var(--alfred-font) !important;
+  font-size: 24px !important;
+  font-weight: 600 !important;
+  letter-spacing: -0.025em !important;
+  color: var(--alfred-text-strong) !important;
+}
+
+.alfred-page-desc {
+  color: var(--alfred-text-muted);
+  font-size: 15px;
+  line-height: 1.55;
+  margin-bottom: 28px;
+  max-width: 640px;
+}
+
+/* ── Home hero ── */
+.alfred-home-grid {
+  display: grid;
+  grid-template-columns: 1fr 280px;
+  gap: 24px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 900px) {
+  .alfred-home-grid {
+    grid-template-columns: 1fr;
+  }
+  .alfred-home-visual {
+    display: none;
+  }
+}
+
+.alfred-home-hero {
+  background: var(--alfred-surface);
+  border: 1px solid var(--alfred-border);
+  border-radius: var(--alfred-radius-lg);
+  padding: 36px 40px;
+  position: relative;
+  overflow: hidden;
+}
+
+.alfred-home-hero::before {
+  content: "";
+  position: absolute;
+  top: -80px;
+  right: -80px;
+  width: 240px;
+  height: 240px;
+  background: radial-gradient(circle, var(--alfred-accent-glow) 0%, transparent 70%);
+  pointer-events: none;
+}
+
+.alfred-home-hero h1 {
+  margin: 0 0 12px;
+  font-family: var(--alfred-font);
+  font-size: clamp(26px, 2.8vw, 34px);
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  line-height: 1.25;
+  color: var(--alfred-text-strong);
+  max-width: 580px;
+}
+
+.alfred-home-hero-lead {
+  font-size: 15px;
+  line-height: 1.6;
+  color: var(--alfred-text-muted);
+  max-width: 520px;
+  margin: 0 0 28px;
+}
+
+.alfred-home-visual {
+  background: var(--alfred-surface);
+  border: 1px solid var(--alfred-border);
+  border-radius: var(--alfred-radius-lg);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px;
+  gap: 16px;
+}
+
+.alfred-home-visual-mark {
+  filter: drop-shadow(0 8px 24px var(--alfred-accent-glow));
+}
+
+.alfred-home-visual-caption {
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--alfred-text-faint);
+  text-align: center;
+}
+
+.alfred-quick-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+/* ── Content grid ── */
+.alfred-content-grid {
+  display: grid;
+  grid-template-columns: repeat(12, 1fr);
+  gap: 16px;
+}
+
+.alfred-span-12 { grid-column: span 12; }
+.alfred-span-8 { grid-column: span 8; }
+.alfred-span-6 { grid-column: span 6; }
+.alfred-span-4 { grid-column: span 4; }
+
+@media (max-width: 1100px) {
+  .alfred-span-8, .alfred-span-6, .alfred-span-4 {
+    grid-column: span 12;
+  }
+}
+
+.alfred-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+  grid-column: span 12;
+}
+
+@media (max-width: 768px) {
+  .alfred-stat-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+/* ── Panels ── */
+.alfred-panel {
+  background: var(--alfred-surface);
+  border: 1px solid var(--alfred-border);
+  border-radius: var(--alfred-radius-lg);
+  padding: 24px;
+  height: 100%;
+}
+
+.alfred-stat-card {
+  background: var(--alfred-surface);
+  border: 1px solid var(--alfred-border);
+  border-radius: var(--alfred-radius);
+  padding: 18px 20px;
+}
+
+.alfred-stat-label {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--alfred-text-faint);
+  margin-bottom: 8px;
+}
+
+.alfred-stat-value {
+  font-family: var(--alfred-font);
+  font-size: 20px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--alfred-text-strong);
+}
+
+.alfred-section-title {
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--alfred-text-faint);
+  margin-bottom: 14px;
+}
+
+.alfred-field-label {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--alfred-text-faint);
+  margin-bottom: 6px;
+}
+
+.alfred-provider-card {
+  background: var(--alfred-surface-subtle);
+  border: 1px solid var(--alfred-border);
+  border-radius: var(--alfred-radius);
+  padding: 18px;
+  margin-bottom: 14px;
+}
+
+.alfred-settings-action {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 14px 0;
+  border-bottom: 1px solid var(--alfred-border-subtle);
+}
+
+.alfred-settings-action:last-child {
+  border-bottom: none;
+}
+
+.alfred-status-ok {
+  color: #3d7a54;
+}
+.alfred-status-fail {
+  color: #b54a4a;
+}
+[data-theme="dark"] .alfred-status-ok {
+  color: #6ecf96;
+}
+[data-theme="dark"] .alfred-status-fail {
+  color: #f08080;
+}
+
+.alfred-health-table .ant-table {
+  background: transparent !important;
+}
+
+.alfred-health-table .ant-table-thead > tr > th {
+  background: var(--alfred-surface-raised) !important;
+  color: var(--alfred-text-muted) !important;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  border-bottom: 1px solid var(--alfred-border-subtle) !important;
+}
+
+.alfred-health-table .ant-table-tbody > tr > td {
+  border-bottom: 1px solid var(--alfred-border-subtle) !important;
+  vertical-align: top;
+}
+
+.alfred-health-service {
+  font-weight: 600;
+  color: var(--alfred-text-strong);
+}
+
+.alfred-health-message {
+  color: var(--alfred-text-muted);
+  font-size: 14px;
+}
+
+.alfred-health-tag {
+  margin: 0;
+  min-width: 56px;
+  text-align: center;
+  text-transform: lowercase;
+}
+
+.alfred-ollama-step-dot {
+  display: inline-block;
+  width: 14px;
+  height: 14px;
+  margin-top: 2px;
+  border-radius: 50%;
+  border: 2px solid var(--alfred-border);
+  flex-shrink: 0;
+}
+
+.alfred-sider-nav .ant-menu-item,
+.alfred-sider-nav .ant-menu-submenu-title {
+  border-radius: var(--alfred-radius) !important;
+  margin-inline: 0 !important;
+  width: 100% !important;
+  font-weight: 500 !important;
+}
+
+.alfred-sider-nav .ant-menu-sub .ant-menu-item {
+  padding-left: 36px !important;
+}
+
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-thumb {
+  background: var(--alfred-border);
+  border-radius: 3px;
+}
+
+/* ── Addable integration sections ── */
+.alfred-active-sections {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-bottom: 16px;
+}
+
+.alfred-integration-block {
+  background: var(--alfred-surface);
+  border: 1px solid var(--alfred-border);
+  border-radius: var(--alfred-radius-lg);
+  overflow: hidden;
+}
+
+.alfred-integration-block-header {
+  padding: 14px 16px;
+  border-bottom: 1px solid var(--alfred-border-subtle);
+  background: var(--alfred-surface-subtle);
+}
+
+.alfred-integration-block-body {
+  padding: 16px 18px;
+}
+
+.alfred-add-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.alfred-add-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: var(--alfred-surface);
+  border: 1px dashed var(--alfred-border);
+  border-radius: var(--alfred-radius);
+  padding: 4px 6px 4px 4px;
+  transition: border-color 0.15s, background 0.15s;
+}
+
+.alfred-add-chip:hover {
+  border-color: var(--alfred-accent);
+  background: var(--alfred-accent-soft);
+}
+
+.alfred-add-chip-main {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  background: transparent;
+  color: var(--alfred-text);
+  font-family: var(--alfred-font);
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 10px;
+  cursor: pointer;
+  border-radius: 6px;
+}
+
+.alfred-add-chip-badge {
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--alfred-accent);
+  background: var(--alfred-accent-soft);
+  padding: 2px 6px;
+  border-radius: 4px;
+}
+
+.alfred-status-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  color: var(--alfred-accent-bright);
+  background: var(--alfred-accent-soft);
+  border: 1px solid var(--alfred-accent-glow);
+  padding: 2px 10px;
+  border-radius: 999px;
+  line-height: 1.5;
+  white-space: nowrap;
+}
+
+.alfred-field-label .alfred-status-chip-sm {
+  font-size: 10px;
+  padding: 1px 8px;
+  text-transform: none;
+  letter-spacing: 0.02em;
+}
+
+.alfred-status-chip-warn {
+  color: #c45c5c !important;
+  border-color: rgba(196, 92, 92, 0.35) !important;
+  background: rgba(196, 92, 92, 0.12) !important;
+}
+
+[data-theme="dark"] .alfred-status-chip-warn {
+  color: #f08080 !important;
+  border-color: rgba(240, 128, 128, 0.35) !important;
+  background: rgba(240, 128, 128, 0.1) !important;
+}
+
+.alfred-info-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  background: transparent;
+  color: var(--alfred-text-faint);
+  cursor: pointer;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.alfred-info-btn:hover {
+  color: var(--alfred-accent);
+  background: var(--alfred-accent-soft);
+}
+
+.alfred-remove-btn {
+  color: var(--alfred-text-muted) !important;
+}
+
+.alfred-remove-btn:hover {
+  color: var(--alfred-text) !important;
+  background: var(--alfred-hover) !important;
+}
+
+.alfred-help-popover p {
+  margin: 0 0 10px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--alfred-text-muted);
+}
+
+.alfred-help-popover ol {
+  margin: 0 0 10px;
+  padding-left: 18px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--alfred-text);
+}
+
+.alfred-help-popover li {
+  margin-bottom: 6px;
+}
+
+.alfred-help-popover a {
+  font-size: 12px;
+  color: var(--alfred-accent);
+  text-decoration: none;
+}
+
+.alfred-help-popover a:hover {
+  text-decoration: underline;
+}
+
+.alfred-help-popover-overlay .ant-popover-inner {
+  max-width: 360px;
+}
+
+/* Custom toast stack — top-right, no antd notification layering */
+.alfred-toast-stack {
+  position: fixed;
+  top: 20px;
+  right: 20px;
+  z-index: 1100;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(360px, calc(100vw - 40px));
+  pointer-events: none;
+}
+
+.alfred-toast-card {
+  pointer-events: auto;
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--alfred-radius-lg);
+  border: 1px solid var(--alfred-border);
+  background: var(--alfred-surface);
+  box-shadow: 0 12px 32px rgba(0, 0, 0, 0.35);
+  animation: alfred-toast-in 0.22s ease-out;
+}
+
+@keyframes alfred-toast-in {
+  from {
+    opacity: 0;
+    transform: translateX(12px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+.alfred-toast-card-icon {
+  flex-shrink: 0;
+  font-size: 18px;
+  margin-top: 1px;
+}
+
+.alfred-toast-card-success .alfred-toast-card-icon {
+  color: #3d7a54;
+}
+
+.alfred-toast-card-error .alfred-toast-card-icon {
+  color: #c45c5c;
+}
+
+[data-theme="dark"] .alfred-toast-card-success .alfred-toast-card-icon {
+  color: #6ecf96;
+}
+
+[data-theme="dark"] .alfred-toast-card-error .alfred-toast-card-icon {
+  color: #f08080;
+}
+
+.alfred-toast-card-body {
+  flex: 1;
+  min-width: 0;
+}
+
+.alfred-toast-card-title {
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--alfred-text-strong);
+  margin-bottom: 2px;
+}
+
+.alfred-toast-card-desc {
+  font-size: 13px;
+  line-height: 1.45;
+  color: var(--alfred-text-muted);
+}
+
+.alfred-toast-card-close {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: -2px -4px 0 0;
+  padding: 0;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--alfred-text-faint);
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.alfred-toast-card-close:hover {
+  color: var(--alfred-text);
+  background: var(--alfred-hover);
+}

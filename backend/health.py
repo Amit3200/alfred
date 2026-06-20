@@ -1,0 +1,123 @@
+"""Connection health checks for configured integrations."""
+
+from __future__ import annotations
+
+import requests
+
+from backend.ai.registry import LLMRouter
+from backend.models.config import AlfredConfig
+
+
+def check_slack(config: AlfredConfig) -> dict:
+    if not config.slack.enabled:
+        return {"ok": False, "skipped": True, "message": "Slack disabled"}
+    token = (config.slack.bot_token or "").strip()
+    if not token:
+        return {"ok": False, "message": "Slack bot token not configured"}
+    if not token.startswith("xoxb-"):
+        return {
+            "ok": False,
+            "message": "Bot token must start with xoxb-. Copy it from Slack → Your app → OAuth & Permissions → Bot User OAuth Token.",
+        }
+    try:
+        resp = requests.get(
+            "https://slack.com/api/auth.test",
+            headers={"Authorization": f"Bearer {token}"},
+            timeout=10,
+        )
+        data = resp.json()
+        if not data.get("ok"):
+            error = data.get("error", "unknown")
+            hints = {
+                "invalid_auth": "Token rejected by Slack — generate a new Bot User OAuth Token (xoxb-) and re-save it in Secrets.",
+                "token_revoked": "This token was revoked. Install/reinstall the app to your workspace and paste the new xoxb- token.",
+            }
+            return {
+                "ok": False,
+                "message": hints.get(error, error),
+            }
+        from backend.slack.listener import slack_listener_ready
+
+        ingress_ready, ingress_message = slack_listener_ready(config)
+        return {
+            "ok": True,
+            "message": f"Connected as {data.get('user')} in {data.get('team')}",
+            "team": data.get("team"),
+            "ingress_ready": ingress_ready,
+            "ingress_message": ingress_message,
+        }
+    except requests.RequestException as exc:
+        return {"ok": False, "message": str(exc)}
+
+
+def check_git(config: AlfredConfig) -> dict:
+    if not config.git.enabled:
+        return {"ok": False, "skipped": True, "message": "Git disabled"}
+    if not config.git.token:
+        return {"ok": False, "message": "Git token not configured"}
+    try:
+        if config.git.provider == "github":
+            url = "https://api.github.com/user"
+            headers = {
+                "Authorization": f"Bearer {config.git.token}",
+                "Accept": "application/vnd.github+json",
+            }
+        else:
+            url = "https://gitlab.com/api/v4/user"
+            headers = {"PRIVATE-TOKEN": config.git.token}
+        resp = requests.get(url, headers=headers, timeout=10)
+        if resp.status_code == 200:
+            user = resp.json()
+            login = user.get("login") or user.get("username") or user.get("name")
+            return {"ok": True, "message": f"Authenticated as {login}"}
+        return {"ok": False, "message": f"HTTP {resp.status_code}"}
+    except requests.RequestException as exc:
+        return {"ok": False, "message": str(exc)}
+
+
+def check_aws(config: AlfredConfig) -> dict:
+    if not config.aws.enabled:
+        return {"ok": False, "skipped": True, "message": "AWS disabled"}
+    try:
+        import boto3
+    except ImportError:
+        return {"ok": False, "message": "boto3 not installed (optional)"}
+    try:
+        if config.aws.access_key_id and config.aws.secret_access_key:
+            sts = boto3.client(
+                "sts",
+                region_name=config.aws.region,
+                aws_access_key_id=config.aws.access_key_id,
+                aws_secret_access_key=config.aws.secret_access_key,
+            )
+        else:
+            session = boto3.Session(profile_name=config.aws.profile)
+            sts = session.client("sts")
+        identity = sts.get_caller_identity()
+        return {
+            "ok": True,
+            "message": f"Account {identity.get('Account')}",
+            "arn": identity.get("Arn"),
+        }
+    except Exception as exc:
+        return {"ok": False, "message": str(exc)}
+
+
+def check_ai(config: AlfredConfig, provider: str | None = None) -> dict:
+    router = LLMRouter.from_config(config)
+    name = provider or config.ai.default_provider
+    try:
+        result = router.ping(name)
+        message = result.get("message") or result.get("reply", "")
+        return {"ok": result["ok"], "message": message, **result}
+    except Exception as exc:
+        return {"ok": False, "message": str(exc), "provider": name}
+
+
+def run_all_checks(config: AlfredConfig) -> dict:
+    return {
+        "slack": check_slack(config),
+        "git": check_git(config),
+        "aws": check_aws(config),
+        "ai": check_ai(config),
+    }

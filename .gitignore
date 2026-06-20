@@ -216,3 +216,18 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Alfred local data
+.alfred/
+
+# Alfred build-reference — local HTML exports and scratch phase notes
+docs/build-reference/**/*.html
+docs/build-reference/building_phase_*
+!docs/build-reference/building_phase_v0.md
+
+# Node / admin UI
+frontend/node_modules/
+frontend/dist/
+
+# Local venv
+.venv/
