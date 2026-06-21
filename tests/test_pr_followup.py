@@ -65,7 +65,7 @@ def test_processor_followup_reuses_session_pr_via_skill():
     processor.router = MagicMock()
     mock_provider = MagicMock()
     processor.router.get.return_value = mock_provider
-    cfg = config.ai.providers[config.ai.routing.investigation]
+    cfg = config.ai.providers[config.ai.routing.investigation.provider]
     cfg.enabled = True
 
     session_key = "ui:abc:abc"
@@ -116,7 +116,7 @@ def test_processor_retry_routes_to_review_skill():
     processor.router = MagicMock()
     mock_provider = MagicMock()
     processor.router.get.return_value = mock_provider
-    cfg = config.ai.providers[config.ai.routing.investigation]
+    cfg = config.ai.providers[config.ai.routing.investigation.provider]
     cfg.enabled = True
 
     session_key = "slack:C0BBJUVLQFR:1782050346.000539"
@@ -178,7 +178,7 @@ def test_investigation_prefers_llm_text_over_last_tool_result():
     processor.router = MagicMock()
     mock_provider = MagicMock()
     processor.router.get.return_value = mock_provider
-    cfg = config.ai.providers[config.ai.routing.investigation]
+    cfg = config.ai.providers[config.ai.routing.investigation.provider]
     cfg.enabled = True
 
     review_text = "## 1. Executive Summary\n* **PR Objective:** Fix webhook email"

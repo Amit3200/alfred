@@ -53,9 +53,19 @@ class LLMRouter:
         return self._providers[name]
 
     def for_task(self, task_type: str) -> LLMProvider:
-        routing = self.ai_config.routing
-        provider_name = getattr(routing, task_type, None) or self.ai_config.default_provider
-        return self.get(provider_name)
+        from backend.ai.routing import resolve_llm_route
+
+        _, provider, _ = resolve_llm_route(
+            self.ai_config,
+            task_type,
+            router=self,
+        )
+        return provider
+
+    def resolve_task(self, task_type: str) -> tuple[str, LLMProvider, str]:
+        from backend.ai.routing import resolve_llm_route
+
+        return resolve_llm_route(self.ai_config, task_type, router=self)
 
     def list_providers(self) -> list[dict]:
         result = []

@@ -219,16 +219,29 @@ def _edge_endpoints(edge: Any) -> tuple[str | None, str | None]:
     )
 
 
+def _routing_provider_name(ai: AIConfig, field: str) -> str:
+    route = getattr(ai.routing, field, None)
+    if route and route.provider:
+        return route.provider
+    return ai.default_provider
+
+
 def _provider_candidates(ai: AIConfig) -> list[str]:
     """Cloud providers with keys first; Ollama only when no cloud key is available."""
     names: list[str] = []
-    for name in (ai.routing.investigation, ai.default_provider):
+    for name in (
+        _routing_provider_name(ai, "investigation"),
+        ai.default_provider,
+    ):
         if name and name != "ollama" and name not in names:
             names.append(name)
     for name in ("kimi", "anthropic", "openai", "gemini"):
         if name not in names:
             names.append(name)
-    for name in (ai.routing.investigation, ai.default_provider):
+    for name in (
+        _routing_provider_name(ai, "investigation"),
+        ai.default_provider,
+    ):
         if name == "ollama" and name not in names:
             names.append(name)
     if "ollama" not in names:

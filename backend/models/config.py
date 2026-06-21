@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Any, Literal
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, BeforeValidator, Field
 
 
 class ServerConfig(BaseModel):
@@ -147,10 +147,45 @@ class AIProviderConfig(BaseModel):
     model: str = ""
 
 
+class LLMRouteConfig(BaseModel):
+    provider: str = Field(
+        default="",
+        description="Provider name; empty uses default_provider or investigation fallback.",
+    )
+    model: str = Field(
+        default="",
+        description="Model override; empty uses the provider's default model from ai.providers.",
+    )
+
+
+def _coerce_llm_route(value: Any) -> Any:
+    """Accept legacy ``provider: kimi`` strings or ``{provider, model}`` objects."""
+    if value is None:
+        return {"provider": "", "model": ""}
+    if isinstance(value, str):
+        return {"provider": value, "model": ""}
+    if isinstance(value, LLMRouteConfig):
+        return value
+    if isinstance(value, dict):
+        return value
+    return {"provider": str(value), "model": ""}
+
+
+CoercedLLMRoute = Annotated[LLMRouteConfig, BeforeValidator(_coerce_llm_route)]
+
+
 class AIRoutingConfig(BaseModel):
-    skill_matching: str = "ollama"
-    investigation: str = "anthropic"
-    workflow_execution: str = "anthropic"
+    skill_matching: CoercedLLMRoute = Field(
+        default_factory=lambda: LLMRouteConfig(provider="ollama")
+    )
+    investigation: CoercedLLMRoute = Field(
+        default_factory=lambda: LLMRouteConfig(provider="anthropic")
+    )
+    workflow_execution: CoercedLLMRoute = Field(
+        default_factory=lambda: LLMRouteConfig(provider="anthropic")
+    )
+    basic_chat: CoercedLLMRoute = Field(default_factory=LLMRouteConfig)
+    pr_review: CoercedLLMRoute = Field(default_factory=LLMRouteConfig)
 
 
 class AIConfig(BaseModel):

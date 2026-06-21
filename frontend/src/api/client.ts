@@ -1,3 +1,8 @@
+export type LLMRouteConfig = {
+  provider: string;
+  model: string;
+};
+
 export type AIProviderConfig = {
   enabled: boolean;
   api_key: string;
@@ -62,9 +67,11 @@ export type AlfredConfig = {
   ai: {
     default_provider: string;
     routing: {
-      skill_matching: string;
-      investigation: string;
-      workflow_execution: string;
+      skill_matching: LLMRouteConfig;
+      investigation: LLMRouteConfig;
+      workflow_execution: LLMRouteConfig;
+      basic_chat: LLMRouteConfig;
+      pr_review: LLMRouteConfig;
     };
     providers: Record<string, AIProviderConfig>;
   };

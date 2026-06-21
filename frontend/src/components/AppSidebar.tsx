@@ -13,6 +13,7 @@ import {
 import { Layout, Menu, Typography } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { Logo } from "./Logo";
+import { ALFRED_CREDIT } from "../branding";
 import { ThemeToggle } from "../theme/ThemeToggle";
 import { useApp } from "../context/AppContext";
 import type { SettingsPage } from "../types";
@@ -102,9 +103,19 @@ export function AppSidebar({ width }: AppSidebarProps) {
       </div>
 
       <div className="alfred-sider-footer">
-        <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-          v{version || "0.1.0"}
-        </Typography.Text>
+        <div className="alfred-sider-footer-meta">
+          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+            v{version || "0.1.0"}
+          </Typography.Text>
+          <a
+            className="alfred-sider-credit"
+            href={ALFRED_CREDIT.href}
+            target="_blank"
+            rel="noopener noreferrer"
+          >
+            {ALFRED_CREDIT.label}
+          </a>
+        </div>
         <ThemeToggle />
       </div>
     </Sider>

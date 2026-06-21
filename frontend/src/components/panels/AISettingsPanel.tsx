@@ -1,8 +1,15 @@
-import { Button, Col, Input, Row, Select, Typography } from "antd";
+import { AutoComplete, Button, Col, Input, Row, Select, Typography } from "antd";
 import { useMemo } from "react";
+import {
+  LLMRouteKey,
+  ROUTE_DESCRIPTIONS,
+  ROUTE_LABELS,
+  modelOptionsForProvider,
+} from "../../content/aiModels";
 import { AI_PROVIDER_HELP, renderHelpContent } from "../../content/helpText";
 import { useApp } from "../../context/AppContext";
 import { useSectionVisibility } from "../../hooks/useSectionVisibility";
+import type { LLMRouteConfig } from "../../api/client";
 import { PROVIDER_LABELS } from "../../types";
 import {
   ActiveSections,
@@ -12,6 +19,20 @@ import {
 import { OllamaGetStarted } from "../OllamaGetStarted";
 
 const ALL_PROVIDERS = ["ollama", "openai", "anthropic", "gemini", "kimi"] as const;
+
+const ROUTE_KEYS: LLMRouteKey[] = [
+  "skill_matching",
+  "investigation",
+  "basic_chat",
+  "pr_review",
+  "workflow_execution",
+];
+
+function normalizeRoute(route: LLMRouteConfig | string | undefined): LLMRouteConfig {
+  if (!route) return { provider: "", model: "" };
+  if (typeof route === "string") return { provider: route, model: "" };
+  return route;
+}
 
 export function AISettingsPanel() {
   const { config, updateConfig, saveConfig, testProvider } = useApp();
@@ -39,14 +60,27 @@ export function AISettingsPanel() {
 
   const configured = config._secrets_configured;
 
+  const updateRoute = (key: LLMRouteKey, patch: Partial<LLMRouteConfig>) => {
+    const current = normalizeRoute(config.ai.routing[key]);
+    updateConfig({
+      ai: {
+        ...config.ai,
+        routing: {
+          ...config.ai.routing,
+          [key]: { ...current, ...patch },
+        },
+      },
+    });
+  };
+
   return (
     <div className="alfred-settings-page">
       <Typography.Title level={3} className="alfred-page-title">
         AI providers
       </Typography.Title>
       <Typography.Paragraph className="alfred-page-desc">
-        Add providers you want to use. Set routing defaults below — skill matching can use a cheap
-        local model, investigation a capable cloud model.
+        Add providers you want to use. Set routing below — pick a provider and optional model per
+        purpose. Leave model empty to use each provider&apos;s default.
       </Typography.Paragraph>
 
       {sections.isVisible("ollama") && (
@@ -67,35 +101,64 @@ export function AISettingsPanel() {
               onChange={(v) => updateConfig({ ai: { ...config.ai, default_provider: v } })}
             />
           </Col>
-          <Col xs={24} md={8}>
-            <label className="alfred-field-label">Skill matching</label>
-            <Select
-              style={{ width: "100%" }}
-              value={config.ai.routing.skill_matching}
-              options={allOptions}
-              getPopupContainer={(n) => n.parentElement ?? document.body}
-              onChange={(v) =>
-                updateConfig({
-                  ai: { ...config.ai, routing: { ...config.ai.routing, skill_matching: v } },
-                })
-              }
-            />
-          </Col>
-          <Col xs={24} md={8}>
-            <label className="alfred-field-label">Investigation</label>
-            <Select
-              style={{ width: "100%" }}
-              value={config.ai.routing.investigation}
-              options={allOptions}
-              getPopupContainer={(n) => n.parentElement ?? document.body}
-              onChange={(v) =>
-                updateConfig({
-                  ai: { ...config.ai, routing: { ...config.ai.routing, investigation: v } },
-                })
-              }
-            />
-          </Col>
         </Row>
+
+        <Typography.Title level={5} style={{ marginTop: 20, marginBottom: 4 }}>
+          Task routing
+        </Typography.Title>
+        <Typography.Paragraph type="secondary" style={{ marginBottom: 16, fontSize: 13 }}>
+          Choose which provider and model handle each kind of work. Empty provider on basic chat /
+          PR review falls back to default or investigation routing.
+        </Typography.Paragraph>
+
+        {ROUTE_KEYS.map((key) => {
+          const route = normalizeRoute(config.ai.routing[key]);
+          const providerName = route.provider || config.ai.default_provider;
+          const providerCfg = config.ai.providers[providerName];
+          const modelOptions = modelOptionsForProvider(
+            providerName,
+            providerCfg?.model,
+            route.model,
+          );
+
+          return (
+            <Row gutter={[16, 12]} key={key} style={{ marginBottom: 12 }}>
+              <Col xs={24} md={6}>
+                <label className="alfred-field-label">{ROUTE_LABELS[key]}</label>
+                <Typography.Text type="secondary" style={{ display: "block", fontSize: 12 }}>
+                  {ROUTE_DESCRIPTIONS[key]}
+                </Typography.Text>
+              </Col>
+              <Col xs={24} md={9}>
+                <label className="alfred-field-label">Provider</label>
+                <Select
+                  style={{ width: "100%" }}
+                  value={route.provider || undefined}
+                  placeholder={`Default (${PROVIDER_LABELS[config.ai.default_provider] || config.ai.default_provider})`}
+                  allowClear={key === "basic_chat" || key === "pr_review"}
+                  options={allOptions}
+                  getPopupContainer={(n) => n.parentElement ?? document.body}
+                  onChange={(v) => updateRoute(key, { provider: v ?? "" })}
+                />
+              </Col>
+              <Col xs={24} md={9}>
+                <label className="alfred-field-label">Model</label>
+                <AutoComplete
+                  style={{ width: "100%" }}
+                  value={route.model}
+                  placeholder={
+                    providerCfg?.model ? `Default (${providerCfg.model})` : "Provider default"
+                  }
+                  options={modelOptions.filter((o) => o.value !== "")}
+                  getPopupContainer={(n) => n.parentElement ?? document.body}
+                  onChange={(v) => updateRoute(key, { model: v ?? "" })}
+                  onSelect={(v) => updateRoute(key, { model: v ?? "" })}
+                  allowClear
+                />
+              </Col>
+            </Row>
+          );
+        })}
       </div>
 
       <ActiveSections>
@@ -128,7 +191,7 @@ export function AISettingsPanel() {
             >
               <Row gutter={[16, 12]}>
                 <Col xs={24} md={12}>
-                  <label className="alfred-field-label">Model</label>
+                  <label className="alfred-field-label">Default model</label>
                   <Input
                     value={provider.model}
                     onChange={(e) =>

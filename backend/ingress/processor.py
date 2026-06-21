@@ -210,7 +210,7 @@ class TaskProcessor:
 
         if review_skill and self.config.git.enabled:
             set_call_kind("investigation")
-            provider_name, provider, model_name = self._select_provider(review_skill)
+            provider_name, provider, model_name = self._resolve_llm("pr_review")
             logger.info(
                 "Skill-guided PR review: %s provider=%s model=%s prefetched=%s",
                 review_skill.name,
@@ -252,7 +252,9 @@ class TaskProcessor:
                     metadata_patch = {**(metadata_patch or {}), **git_patch}
 
         if response is None:
-            provider_name, provider, model_name = self._select_provider(investigation)
+            provider_name, provider, model_name = self._resolve_llm(
+                "investigation" if investigation else "basic_chat"
+            )
             logger.debug(
                 "Calling provider=%s model=%s session=%s turns=%d context=%s routed_playbook=%s investigation=%s",
                 provider_name,
@@ -289,7 +291,7 @@ class TaskProcessor:
                     inv = self._playbooks.get_by_name("investigate_bug")
                     if inv and inv.allowed_tools:
                         set_call_kind("investigation")
-                        inv_name, inv_provider, inv_model = self._select_provider(inv)
+                        inv_name, inv_provider, inv_model = self._resolve_llm("investigation")
                         response, inv_patch = self._run_investigation(
                             inv,
                             messages,
@@ -337,18 +339,10 @@ class TaskProcessor:
 
         return response
 
-    def _select_provider(self, investigation: Playbook | None) -> tuple[str, Any, str]:
-        if investigation:
-            name = self.config.ai.routing.investigation
-            cfg = self.config.ai.providers.get(name)
-            if cfg and cfg.enabled:
-                provider = self.router.get(name)
-                if provider.is_available():
-                    return name, provider, cfg.model or ""
-        name = self.config.ai.default_provider
-        provider = self.router.get(name)
-        cfg = self.config.ai.providers[name]
-        return name, provider, cfg.model or ""
+    def _resolve_llm(self, task_kind: str) -> tuple[str, Any, str]:
+        from backend.ai.routing import resolve_llm_route
+
+        return resolve_llm_route(self.config.ai, task_kind, router=self.router)
 
     def _resolve_pr_review_skill(
         self,
@@ -665,7 +659,7 @@ class TaskProcessor:
         number = detail.get("number")
         url = detail.get("url") or ""
 
-        _, provider, model = self._select_provider(None)
+        _, provider, model = self._resolve_llm("basic_chat")
         prompt = (
             f"Summarize this pull request in 2–4 sentences. "
             f"Include what changed and why if known.\n\n"

@@ -30,7 +30,7 @@ def test_processor_pr_review_uses_investigation_loop():
     processor.router = MagicMock()
     mock_provider = MagicMock()
     processor.router.get.return_value = mock_provider
-    cfg = config.ai.providers[config.ai.routing.investigation]
+    cfg = config.ai.providers[config.ai.routing.investigation.provider]
     cfg.enabled = True
 
     task = Task(
