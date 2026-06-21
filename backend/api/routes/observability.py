@@ -10,6 +10,7 @@ from fastapi import APIRouter, Depends, Query
 from backend.api.deps import get_manager, require_admin
 from backend.config_manager import ConfigManager
 from backend.observability.models import ObservabilityFilters, TimeseriesBucket
+from backend.observability.pricing import build_pricing_table
 from backend.observability.store import SQLiteObservabilityStore
 from backend.observability.users import UserLabelEnricher
 
@@ -73,6 +74,11 @@ def _enricher(manager: ConfigManager) -> UserLabelEnricher:
     return UserLabelEnricher.from_config(config, data_dir=manager.data_dir)
 
 
+def _pricing_table(manager: ConfigManager):
+    config, _ = manager.load_merged()
+    return build_pricing_table(config.observability)
+
+
 @router.get("/summary")
 def usage_summary(
     manager: ConfigManager = Depends(require_admin),
@@ -99,7 +105,7 @@ def usage_summary(
     )
     store = _store(manager)
     enricher = _enricher(manager)
-    summary = store.summary(filters)
+    summary = store.summary(filters, pricing=_pricing_table(manager))
     summary.by_user = enricher.merge_by_user(summary.by_user, store.user_breakdown(filters))
     return {
         "filters": filters.model_dump(mode="json"),
@@ -132,7 +138,7 @@ def usage_timeseries(
         event_type=event_type,
         tool_category=tool_category,
     )
-    series = _store(manager).timeseries(filters, bucket=bucket)
+    series = _store(manager).timeseries(filters, bucket=bucket, pricing=_pricing_table(manager))
     return {
         "filters": filters.model_dump(mode="json"),
         "timeseries": series.model_dump(),
@@ -165,7 +171,7 @@ def usage_events(
         event_type=event_type,
         tool_category=tool_category,
     )
-    page = _store(manager).list_events(filters, limit=limit, offset=offset)
+    page = _store(manager).list_events(filters, limit=limit, offset=offset, pricing=_pricing_table(manager))
     enricher = _enricher(manager)
     return {
         "filters": filters.model_dump(mode="json"),

@@ -112,7 +112,7 @@ class WorkspaceMirrorManager:
 
     def sync_shared(self, repos: list[str] | None = None) -> list[dict[str, Any]]:
         """Admin warm-cache: clone/update shared mirrors used to seed workspaces."""
-        targets = repos or list(self.git.repos)
+        targets = self._sync_targets(repos)
         results: list[dict[str, Any]] = []
         for repo in targets:
             slug = resolve_repo_slug(repo, self.git)
@@ -165,6 +165,12 @@ class WorkspaceMirrorManager:
         shared = self.list_shared()
         workspace_bytes = sum(int(row.get("size_bytes") or 0) for row in workspaces)
         shared_bytes = sum(int(row.get("size_bytes") or 0) for row in shared)
+        main_repo = ""
+        if self.git.main_repo:
+            try:
+                main_repo = resolve_repo_slug(self.git.main_repo, self.git)
+            except ValueError:
+                main_repo = self.git.main_repo.strip()
         return {
             "workspaces_count": len(workspaces),
             "shared_count": len(shared),
@@ -174,6 +180,8 @@ class WorkspaceMirrorManager:
             "mirror_ttl_hours": self.git.mirror_ttl_hours,
             "mirror_max_workspaces": self.git.mirror_max_workspaces,
             "mirror_refresh_minutes": self.git.mirror_refresh_minutes,
+            "main_repo": main_repo,
+            "graphify_enabled": self.git.graphify_enabled,
         }
 
     def cleanup_all_workspaces(self) -> list[str]:
@@ -316,8 +324,39 @@ class WorkspaceMirrorManager:
         if not self.git.repos:
             return
         allowed = {item.lower() for item in self.git.repos}
-        if repo.lower() not in allowed:
-            raise ValueError(f"Repository {repo!r} is not in git.repos allowlist.")
+        if repo.lower() in allowed:
+            return
+        main = (self.git.main_repo or "").strip()
+        if main:
+            try:
+                if repo.lower() == resolve_repo_slug(main, self.git).lower():
+                    return
+            except ValueError:
+                if "/" in main and repo.lower() == main.lower():
+                    return
+        raise ValueError(f"Repository {repo!r} is not in git.repos allowlist.")
+
+    def _sync_targets(self, repos: list[str] | None) -> list[str]:
+        """Repos to sync — main_repo first, then allowlist (deduped)."""
+        ordered: list[str] = []
+        seen: set[str] = set()
+
+        def add(raw: str) -> None:
+            try:
+                slug = resolve_repo_slug(raw, self.git)
+            except ValueError:
+                return
+            key = slug.lower()
+            if key in seen:
+                return
+            seen.add(key)
+            ordered.append(slug)
+
+        if self.git.main_repo:
+            add(self.git.main_repo)
+        for item in repos or self.git.repos:
+            add(item)
+        return ordered
 
     def _clone_url(self, repo: str) -> str:
         owner, name = split_repo_slug(repo)

@@ -1,13 +1,15 @@
-import { Button, Col, Input, Row, Select, Switch, Typography } from "antd";
+import { ReloadOutlined } from "@ant-design/icons";
+import { Button, Col, Flex, Input, Row, Select, Switch, Typography } from "antd";
 import type { ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { api, type AlfredConfig } from "../../api/client";
 import { useApp } from "../../context/AppContext";
-import type { AlfredConfig } from "../../api/client";
 
 const DEFAULT_GITHUB: AlfredConfig["github"] = {
   enabled: false,
   client_id: "",
   app_id: "",
-  bot_login: "",
+  bot_login: "alfred",
   allowed_repos: [],
   callback_base_url: "",
 };
@@ -23,6 +25,29 @@ function githubUrls(base: string) {
     webhook: `${host}/api/v1/github/webhook`,
     callback: `${host}/api/v1/github/callback`,
   };
+}
+
+function mainRepoOptions(repos: string[], mainRepo?: string) {
+  const seen = new Set<string>();
+  const options: { value: string; label: string }[] = [];
+  for (const repo of repos) {
+    const value = repo.trim();
+    if (!value || seen.has(value.toLowerCase())) continue;
+    seen.add(value.toLowerCase());
+    options.push({ value, label: value });
+  }
+  const current = (mainRepo ?? "").trim();
+  if (current && !seen.has(current.toLowerCase())) {
+    options.unshift({ value: current, label: `${current} (saved)` });
+  }
+  return options;
+}
+
+function mainRepoSourceLabel(source?: string, org?: string | null): string {
+  if (source === "org" && org) return `Loaded ${org} repos from GitHub/GitLab.`;
+  if (source === "user") return "Loaded your accessible repos from GitHub/GitLab.";
+  if (source === "configured") return "Using configured repos allowlist only.";
+  return "Set Org and git token (Secrets) to load repos.";
 }
 
 function IntegrationBlock({
@@ -54,7 +79,43 @@ function IntegrationBlock({
 
 export function IntegrationsPanel() {
   const { config, updateConfig, saveConfig, testIntegration } = useApp();
+  const [availableRepos, setAvailableRepos] = useState<string[]>([]);
+  const [reposSource, setReposSource] = useState<string>("configured");
+  const [reposOrg, setReposOrg] = useState<string | null>(null);
+  const [reposError, setReposError] = useState<string | null>(null);
+  const [loadingRepos, setLoadingRepos] = useState(false);
+
+  const loadAvailableRepos = useCallback(async () => {
+    if (!config?.git.enabled) {
+      setAvailableRepos([]);
+      setReposError(null);
+      return;
+    }
+    setLoadingRepos(true);
+    try {
+      const data = await api.getAvailableGitRepos();
+      setAvailableRepos(data.repos ?? []);
+      setReposSource(data.source ?? "configured");
+      setReposOrg(data.org ?? null);
+      setReposError(data.error ?? null);
+    } catch (err) {
+      setAvailableRepos(config.git.repos ?? []);
+      setReposError(err instanceof Error ? err.message : "Failed to load repos");
+    } finally {
+      setLoadingRepos(false);
+    }
+  }, [config?.git.enabled, config?.git.repos]);
+
+  useEffect(() => {
+    void loadAvailableRepos();
+  }, [loadAvailableRepos, config?.git.default_org, config?.git.provider]);
+
   if (!config) return null;
+
+  const mainRepoSelectOptions = useMemo(
+    () => mainRepoOptions(availableRepos, config.git.main_repo),
+    [availableRepos, config.git.main_repo],
+  );
 
   return (
     <div>
@@ -131,6 +192,64 @@ export function IntegrationsPanel() {
               }
             />
           </Col>
+          <Col xs={24} md={12}>
+            <label className="alfred-field-label">Main repo</label>
+            <Flex gap={8} align="start">
+              <Select
+                style={{ flex: 1 }}
+                showSearch
+                allowClear
+                loading={loadingRepos}
+                placeholder={
+                  config.git.default_org
+                    ? "Select primary repo"
+                    : "Set Org to load repos"
+                }
+                disabled={!config.git.enabled}
+                value={config.git.main_repo || undefined}
+                options={mainRepoSelectOptions}
+                optionFilterProp="label"
+                onChange={(v) =>
+                  updateConfig({ git: { ...config.git, main_repo: v ?? "" } })
+                }
+              />
+              <Button
+                icon={<ReloadOutlined />}
+                loading={loadingRepos}
+                disabled={!config.git.enabled}
+                onClick={() => void loadAvailableRepos()}
+                aria-label="Reload repos from org"
+              />
+            </Flex>
+            <Typography.Text type="secondary" style={{ fontSize: 12, display: "block" }}>
+              {mainRepoSourceLabel(reposSource, reposOrg)}
+            </Typography.Text>
+            {reposError ? (
+              <Typography.Text type="warning" style={{ fontSize: 12, display: "block" }}>
+                {reposError}
+              </Typography.Text>
+            ) : null}
+            <Typography.Text type="secondary" style={{ fontSize: 12, display: "block" }}>
+              Default codebase for context and investigation. Sync under Repo mirrors.
+            </Typography.Text>
+          </Col>
+          <Col xs={24} md={12}>
+            <label className="alfred-field-label">Graphify</label>
+            <div className="alfred-settings-action" style={{ paddingTop: 4 }}>
+              <Typography.Text type="secondary" style={{ fontSize: 13 }}>
+                Build knowledge graphs on sync; enables <Typography.Text code>query_graph</Typography.Text>.
+                Install once: <Typography.Text code>uv sync --extra graphify</Typography.Text>
+              </Typography.Text>
+              <Switch
+                checked={Boolean(config.git.graphify_enabled)}
+                checkedChildren="on"
+                unCheckedChildren="off"
+                onChange={(v) =>
+                  updateConfig({ git: { ...config.git, graphify_enabled: v } })
+                }
+              />
+            </div>
+          </Col>
         </Row>
         <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
           Manage local repo checkouts under Configure → Repo mirrors.
@@ -181,7 +300,7 @@ export function IntegrationsPanel() {
           <Col xs={24} md={12}>
             <label className="alfred-field-label">Bot login (optional)</label>
             <Input
-              placeholder="alfred-flx"
+              placeholder="alfred"
               value={githubConfig(config).bot_login}
               onChange={(e) =>
                 updateConfig({
@@ -190,7 +309,7 @@ export function IntegrationsPanel() {
               }
             />
             <Typography.Text type="secondary" style={{ fontSize: 12 }}>
-              App slug for @mentions (e.g. alfred-flx) and to ignore bot comment loops.
+              GitHub App slug for @mentions (default <Typography.Text code>alfred</Typography.Text>). Must match your app name on GitHub.
             </Typography.Text>
           </Col>
           <Col xs={24} md={12}>

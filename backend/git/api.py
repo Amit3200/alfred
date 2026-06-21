@@ -60,9 +60,16 @@ def resolve_repo_slug(repo: str, git: GitConfig) -> str:
     if len(matches) == 1:
         return matches[0]
 
+    if git.main_repo:
+        main = git.main_repo.strip().strip("/")
+        if "/" in main:
+            short_main = main.rsplit("/", 1)[-1].lower()
+            if slug.lower() == short_main:
+                return main
+
     raise ValueError(
         f"Invalid repo slug {repo!r} — expected owner/name. "
-        f"Set git.default_org in config or use a full GitHub URL."
+        f"Set git.default_org or git.main_repo in config, or use a full GitHub URL."
     )
 
 
@@ -104,6 +111,40 @@ class GitApiClient:
         if configured:
             return configured
         return self._impl.list_accessible_repos()
+
+    def list_available_repos(self) -> dict[str, Any]:
+        """Merge configured allowlist with remote org/user repos for admin UI."""
+        configured = [r.strip() for r in self.config.repos if r.strip()]
+        remote: list[str] = []
+        source = "configured"
+        error: str | None = None
+
+        if self.config.token:
+            try:
+                remote = self._impl.list_accessible_repos()
+                source = "org" if self.config.default_org else "user"
+            except Exception as exc:
+                error = str(exc)
+        elif self.config.default_org:
+            error = "Git token is not configured — add it under Secrets."
+
+        merged: list[str] = []
+        seen: set[str] = set()
+        for repo in [*configured, *remote]:
+            key = repo.lower()
+            if key in seen:
+                continue
+            seen.add(key)
+            merged.append(repo)
+
+        return {
+            "repos": sorted(merged, key=str.lower),
+            "configured": configured,
+            "remote": remote,
+            "source": source,
+            "org": self.config.default_org or None,
+            "error": error,
+        }
 
     def create_issue_comment(self, repo: str, number: int, body: str) -> dict[str, Any]:
         return self._impl.create_issue_comment(repo, number, body)

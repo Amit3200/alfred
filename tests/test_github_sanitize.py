@@ -31,19 +31,19 @@ def _issue_comment_payload(
 
 
 def test_clean_github_comment_strips_mention():
-    github = GitHubAppConfig(bot_login="alfred-flx")
+    github = GitHubAppConfig(bot_login="alfred")
     assert clean_github_comment("@alfred review this PR", github=github) == "review this PR"
-    assert clean_github_comment("@alfred-flx can you review this PR?", github=github) == "can you review this PR?"
+    assert clean_github_comment("@alfred can you review this PR?", github=github) == "can you review this PR?"
     assert clean_github_comment("@alfred[bot] summarize", github=github) == "summarize"
 
 
 def test_task_from_issue_comment_matches_bot_slug():
     config = AlfredConfig(
-        github=GitHubAppConfig(enabled=True, bot_login="alfred-flx"),
+        github=GitHubAppConfig(enabled=True, bot_login="alfred"),
         git=GitConfig(enabled=True, repos=["FlexyPe/cipher"]),
     )
     task = task_from_issue_comment(
-        _issue_comment_payload(body="@alfred-flx can you review this PR?"),
+        _issue_comment_payload(body="@alfred can you review this PR?"),
         config=config,
     )
     assert task is not None

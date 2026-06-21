@@ -164,5 +164,8 @@ def build_git_tool_registry(
         from backend.tools.git_local import register_local_git_tools
 
         register_local_git_tools(registry, config=config, data_dir=Path(data_dir))
+        from backend.tools.graphify_tool import register_graphify_tools
+
+        register_graphify_tools(registry, config=config, data_dir=Path(data_dir))
 
     return registry

@@ -21,6 +21,8 @@ export type AlfredConfig = {
     token: string;
     default_org: string;
     repos: string[];
+    main_repo?: string;
+    graphify_enabled?: boolean;
     mirror_ttl_hours?: number;
     mirror_refresh_minutes?: number;
     mirror_max_workspaces?: number;
@@ -151,6 +153,13 @@ async function request<T>(
   return res.json();
 }
 
+function encodePlaybookPath(filename: string): string {
+  return filename
+    .split("/")
+    .map((part) => encodeURIComponent(part))
+    .join("/");
+}
+
 export const api = {
   health: () =>
     request<{ status: string; version: string; initialized: boolean; data_dir?: string }>(
@@ -222,6 +231,8 @@ export const api = {
   chatExportDownloadUrl: (filename: string) => `/api/chat/exports/${encodeURIComponent(filename)}`,
 
   getGitMirrors: () => request<GitMirrorsResponse>("/api/git/mirrors", {}, true),
+  getAvailableGitRepos: () =>
+    request<AvailableGitReposResponse>("/api/git/mirrors/repos/available", {}, true),
   cleanupGitMirrors: (scope: GitMirrorCleanupScope) =>
     request<GitMirrorCleanupResult>(
       "/api/git/mirrors/cleanup",
@@ -244,6 +255,51 @@ export const api = {
     request<GitMirrorSyncResult>(
       "/api/git/mirrors/sync",
       { method: "POST", body: JSON.stringify({ repos: repos ?? [] }) },
+      true,
+    ),
+
+  getRepoContext: () => request<RepoContextResponse>("/api/repo-context", {}, true),
+  generateRepoContext: () =>
+    request<RepoContextGenerateResult>(
+      "/api/repo-context/generate",
+      { method: "POST", body: JSON.stringify({}) },
+      true,
+    ),
+  syncMainRepoContext: () =>
+    request<RepoContextSyncMainResult>(
+      "/api/repo-context/sync-main",
+      { method: "POST", body: JSON.stringify({}) },
+      true,
+    ),
+  generateContextSuggestions: () =>
+    request<{ ok: boolean; suggestions: ContextSuggestion[] }>(
+      "/api/repo-context/suggestions/generate",
+      { method: "POST", body: JSON.stringify({}) },
+      true,
+    ),
+  approveContextSuggestion: (id: string) =>
+    request<{ ok: boolean; filename: string }>(
+      `/api/repo-context/suggestions/${encodeURIComponent(id)}/approve`,
+      { method: "POST", body: JSON.stringify({}) },
+      true,
+    ),
+  dismissContextSuggestion: (id: string) =>
+    request<{ ok: boolean }>(
+      `/api/repo-context/suggestions/${encodeURIComponent(id)}/dismiss`,
+      { method: "POST", body: JSON.stringify({}) },
+      true,
+    ),
+
+  getGraphifyStatus: () =>
+    request<GraphifyDetailResponse>("/api/repo-context/graphify", {}, true),
+  getGraphifyReport: () =>
+    request<GraphifyReportResponse>("/api/repo-context/graphify/report", {}, true),
+  getGraphifySummary: () =>
+    request<GraphifySummaryResponse>("/api/repo-context/graphify/summary", {}, true),
+  rebuildGraphify: () =>
+    request<GraphifyRebuildResult>(
+      "/api/repo-context/graphify/rebuild",
+      { method: "POST", body: JSON.stringify({}) },
       true,
     ),
 
@@ -272,10 +328,18 @@ export const api = {
       true,
     ),
 
+  getDbStats: () => request<DbStatsResponse>("/api/storage/db", {}, true),
+  cleanupDb: (body: DbCleanupRequest) =>
+    request<DbCleanupResult>(
+      "/api/storage/db/cleanup",
+      { method: "POST", body: JSON.stringify(body) },
+      true,
+    ),
+
   listPlaybooks: () => request<PlaybooksListResponse>("/api/playbooks", {}, true),
   getPlaybookExample: () => request<PlaybookExampleResponse>("/api/playbooks/example", {}, true),
   getPlaybook: (filename: string) =>
-    request<PlaybookDetail>(`/api/playbooks/${encodeURIComponent(filename)}`, {}, true),
+    request<PlaybookDetail>(`/api/playbooks/${encodePlaybookPath(filename)}`, {}, true),
   createPlaybook: (filename: string, content?: string) =>
     request<PlaybookDetail>(
       "/api/playbooks",
@@ -284,13 +348,13 @@ export const api = {
     ),
   savePlaybook: (filename: string, content: string) =>
     request<PlaybookDetail>(
-      `/api/playbooks/${encodeURIComponent(filename)}`,
+      `/api/playbooks/${encodePlaybookPath(filename)}`,
       { method: "PUT", body: JSON.stringify({ content }) },
       true,
     ),
   deletePlaybook: (filename: string) =>
     request<{ ok: boolean; removed: string }>(
-      `/api/playbooks/${encodeURIComponent(filename)}`,
+      `/api/playbooks/${encodePlaybookPath(filename)}`,
       { method: "DELETE" },
       true,
     ),
@@ -355,6 +419,16 @@ export type ChatExportResult = {
 
 export type GitMirrorCleanupScope = "expired" | "workspaces" | "shared" | "all";
 
+export type AvailableGitReposResponse = {
+  enabled: boolean;
+  repos: string[];
+  configured: string[];
+  remote: string[];
+  source: "disabled" | "configured" | "org" | "user";
+  org?: string | null;
+  error?: string | null;
+};
+
 export type GitMirrorSummary = {
   workspaces_count: number;
   shared_count: number;
@@ -364,6 +438,8 @@ export type GitMirrorSummary = {
   mirror_ttl_hours: number;
   mirror_max_workspaces: number;
   mirror_refresh_minutes: number;
+  main_repo?: string;
+  graphify_enabled?: boolean;
 };
 
 export type GitMirrorWorkspace = {
@@ -405,6 +481,130 @@ export type GitMirrorCleanupResult = {
 export type GitMirrorSyncResult = {
   ok: boolean;
   results: Array<{ repo: string; ok: boolean; action?: string; error?: string }>;
+  context?: RepoContextBuildResult | null;
+  shared: GitMirrorShared[];
+  summary: GitMirrorSummary;
+};
+
+export type GraphContextStatus = {
+  available: boolean;
+  enabled: boolean;
+  present: boolean;
+  repo?: string;
+  node_count?: number | null;
+  edge_count?: number | null;
+  report_present: boolean;
+  graph_path?: string | null;
+  graph_rel_path?: string | null;
+  report_path?: string | null;
+  report_rel_path?: string | null;
+  out_rel_path?: string | null;
+  graph_bytes?: number | null;
+  report_bytes?: number | null;
+  built_at?: string | null;
+  last_error?: string | null;
+  mirror_present?: boolean;
+  version?: string | null;
+  install_hint?: string | null;
+  llm_provider?: string | null;
+  llm_ready?: boolean;
+  llm_backend?: string | null;
+  llm_model?: string | null;
+  extract_running?: boolean;
+  extract_pid?: number | null;
+  extract_started_at?: string | null;
+  extract_timeout_minutes?: number;
+};
+
+export type GraphifySummary = {
+  present: boolean;
+  node_count: number;
+  edge_count: number;
+  node_kinds: Record<string, number>;
+  top_nodes: Array<{ id: string; label: string; degree: number }>;
+  sample_edges: Array<{ source: string; target: string; kind: string }>;
+};
+
+export type GraphifyDetailResponse = GraphContextStatus & {
+  summary?: GraphifySummary | null;
+};
+
+export type GraphifyReportResponse = {
+  present: boolean;
+  repo?: string;
+  content: string;
+  truncated?: boolean;
+  bytes?: number | null;
+  rel_path?: string | null;
+  synthetic?: boolean;
+};
+
+export type GraphifySummaryResponse = GraphifySummary;
+
+export type GraphifyRebuildResult = {
+  ok: boolean;
+  result: {
+    ok?: boolean;
+    error?: string;
+    skipped?: boolean;
+    reason?: string;
+  };
+  status: GraphifyDetailResponse;
+};
+
+export type ContextSuggestion = {
+  id: string;
+  kind: string;
+  title: string;
+  description: string;
+  playbook_filename: string;
+  status: string;
+  created_at?: string;
+  source_commit?: string | null;
+};
+
+export type RepoContextStatus = {
+  main_repo: string;
+  configured: boolean;
+  generated_at?: string | null;
+  head_sha?: string | null;
+  files: string[];
+  mirror_present: boolean;
+  graphify_enabled: boolean;
+  graph?: GraphContextStatus;
+};
+
+export type RepoContextBuildResult = {
+  ok: boolean;
+  error?: string;
+  repo?: string;
+  manifest?: {
+    repo: string;
+    head_sha?: string | null;
+    generated_at?: string;
+    files?: string[];
+  };
+};
+
+export type RepoContextResponse = {
+  status: RepoContextStatus;
+  preview: string;
+  suggestions: ContextSuggestion[];
+};
+
+export type RepoContextGenerateResult = {
+  ok: boolean;
+  manifest: RepoContextBuildResult["manifest"];
+  status: RepoContextStatus;
+  suggestions: ContextSuggestion[];
+};
+
+export type RepoContextSyncMainResult = {
+  ok: boolean;
+  sync_results: Array<{ repo: string; ok: boolean; action?: string; error?: string }>;
+  context?: RepoContextBuildResult | null;
+  status: RepoContextStatus;
+  suggestions: ContextSuggestion[];
   shared: GitMirrorShared[];
   summary: GitMirrorSummary;
 };
@@ -428,6 +628,7 @@ export type ObservabilitySummary = {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  estimated_cost_usd: number;
   by_source: Record<string, number>;
   by_user: Record<string, number>;
   by_model: Record<string, number>;
@@ -440,7 +641,10 @@ export type ObservabilityTimeseries = {
     period: string;
     llm_calls: number;
     tool_calls: number;
+    prompt_tokens: number;
+    completion_tokens: number;
     total_tokens: number;
+    estimated_cost_usd: number;
   }>;
 };
 
@@ -460,6 +664,7 @@ export type ObservabilityEvent = {
   prompt_tokens: number;
   completion_tokens: number;
   total_tokens: number;
+  estimated_cost_usd?: number | null;
   duration_ms?: number | null;
   tool_name?: string | null;
   tool_category?: string | null;
@@ -491,6 +696,43 @@ export type ObservabilityFilterOptions = {
   models: string[];
   providers: string[];
   tool_categories: string[];
+};
+
+export type DbTableStats = {
+  rows: number;
+  oldest?: string | null;
+  newest?: string | null;
+};
+
+export type DbStatsResponse = {
+  path: string;
+  rel_path?: string | null;
+  size_bytes: number;
+  tables: {
+    interaction_events: DbTableStats;
+    conversation_sessions: DbTableStats;
+    slack_user_names: DbTableStats;
+  };
+};
+
+export type DbCleanupScope = "observability" | "sessions" | "slack_cache" | "all";
+
+export type DbCleanupRequest = {
+  scope: DbCleanupScope;
+  older_than_days?: number | null;
+  vacuum?: boolean;
+};
+
+export type DbCleanupResult = {
+  ok: boolean;
+  scope: DbCleanupScope;
+  older_than_days?: number | null;
+  removed: {
+    interaction_events: number;
+    conversation_sessions: number;
+    slack_user_names: number;
+  };
+  stats: DbStatsResponse;
 };
 
 export type PlaybookSummary = {

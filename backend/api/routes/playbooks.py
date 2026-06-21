@@ -51,11 +51,31 @@ def _safe_filename(raw: str) -> str:
 
 
 def _resolve_path(root: Path, filename: str) -> Path:
-    safe = _safe_filename(filename)
-    path = (root / safe).resolve()
-    if path.parent != root.resolve():
+    safe = Path(filename.strip()).as_posix().lstrip("/")
+    if ".." in safe.split("/"):
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    if safe.lower() == "readme.md":
+        raise HTTPException(status_code=400, detail="readme.md is reserved")
+    parts = [p for p in safe.split("/") if p]
+    if not parts:
+        raise HTTPException(status_code=400, detail="Invalid filename")
+    leaf = parts[-1]
+    if not leaf.lower().endswith(".md"):
+        leaf = f"{leaf}.md"
+        parts[-1] = leaf
+    if not _FILENAME_RE.match(leaf):
+        raise HTTPException(
+            status_code=400,
+            detail="Filename must be alphanumeric (hyphens/underscores allowed) and end with .md",
+        )
+    path = (root.joinpath(*parts)).resolve()
+    if path.parent != root.resolve() and root.resolve() not in path.parents:
         raise HTTPException(status_code=400, detail="Invalid filename")
     return path
+
+
+def _playbook_relative_name(root: Path, path: Path) -> str:
+    return path.relative_to(root).as_posix()
 
 
 def _iso_mtime(path: Path) -> str | None:
@@ -66,9 +86,9 @@ def _iso_mtime(path: Path) -> str | None:
         return None
 
 
-def _metadata_for(path: Path) -> dict[str, Any]:
+def _metadata_for(root: Path, path: Path) -> dict[str, Any]:
     row: dict[str, Any] = {
-        "filename": path.name,
+        "filename": _playbook_relative_name(root, path),
         "size_bytes": path.stat().st_size,
         "updated_at": _iso_mtime(path),
     }
@@ -104,8 +124,12 @@ Add your company-specific instructions here.
 @router.get("")
 def list_playbooks(manager: ConfigManager = Depends(require_admin)) -> dict[str, Any]:
     root = _playbooks_root(manager)
-    files = sorted(root.glob("*.md"), key=lambda p: p.name.lower())
-    items = [_metadata_for(path) for path in files if path.name.lower() != "readme.md"]
+    files = sorted(root.rglob("*.md"), key=lambda p: p.as_posix().lower())
+    items = [
+        _metadata_for(root, path)
+        for path in files
+        if path.name.lower() != "readme.md"
+    ]
     example = bundled_playbooks_dir() / "example-slack-summaries.md"
     return {
         "directory": str(root),
@@ -122,7 +146,7 @@ def get_example_playbook(manager: ConfigManager = Depends(require_admin)) -> dic
     return {"filename": "slack-summaries.md", "content": example.read_text(encoding="utf-8")}
 
 
-@router.get("/{filename}")
+@router.get("/{filename:path}")
 def get_playbook(
     filename: str,
     manager: ConfigManager = Depends(require_admin),
@@ -132,7 +156,7 @@ def get_playbook(
     if not path.is_file():
         raise HTTPException(status_code=404, detail=f"Playbook {filename!r} not found")
     content = path.read_text(encoding="utf-8")
-    return {"filename": path.name, "content": content, **_metadata_for(path)}
+    return {"filename": _playbook_relative_name(root, path), "content": content, **_metadata_for(root, path)}
 
 
 @router.post("")
@@ -148,11 +172,12 @@ def create_playbook(
     encoded = content.encode("utf-8")
     if len(encoded) > _MAX_BYTES:
         raise HTTPException(status_code=400, detail="Playbook exceeds 512 KB limit")
+    path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content if content.endswith("\n") else content + "\n", encoding="utf-8")
-    return {"ok": True, "filename": path.name, **_metadata_for(path)}
+    return {"ok": True, "filename": _playbook_relative_name(root, path), **_metadata_for(root, path)}
 
 
-@router.put("/{filename}")
+@router.put("/{filename:path}")
 def save_playbook(
     filename: str,
     body: PlaybookWriteBody,
@@ -169,10 +194,10 @@ def save_playbook(
         body.content if body.content.endswith("\n") else body.content + "\n",
         encoding="utf-8",
     )
-    return {"ok": True, "filename": path.name, **_metadata_for(path)}
+    return {"ok": True, "filename": _playbook_relative_name(root, path), **_metadata_for(root, path)}
 
 
-@router.delete("/{filename}")
+@router.delete("/{filename:path}")
 def delete_playbook(
     filename: str,
     manager: ConfigManager = Depends(require_admin),
@@ -182,4 +207,4 @@ def delete_playbook(
     if not path.is_file():
         raise HTTPException(status_code=404, detail=f"Playbook {filename!r} not found")
     path.unlink()
-    return {"ok": True, "removed": path.name}
+    return {"ok": True, "removed": _playbook_relative_name(root, path)}

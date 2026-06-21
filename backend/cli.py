@@ -345,6 +345,14 @@ def git_sync(data_dir: Path | None) -> None:
     if not all(item.get("ok") for item in results):
         raise SystemExit(1)
 
+    from backend.api.routes.repo_context import build_context_after_sync
+
+    ctx = build_context_after_sync(manager, sync_results=results)
+    if ctx and ctx.get("ok"):
+        click.echo(f"  • context: regenerated for {ctx.get('manifest', {}).get('repo', 'main repo')}")
+    elif ctx and not ctx.get("ok"):
+        click.echo(f"  • context: WARNING {ctx.get('error')}")
+
 
 @git.command("workspaces")
 @click.option("--data-dir", type=click.Path(path_type=Path), default=None)
@@ -380,6 +388,38 @@ def git_cleanup(data_dir: Path | None) -> None:
         click.echo(f"Removed {len(removed)} workspace(s): {', '.join(removed)}")
     else:
         click.echo("No workspaces to remove.")
+
+
+@main.group()
+def context() -> None:
+    """Manage generated main-repo context (.alfred/context/)."""
+
+
+@context.command("generate")
+@click.option("--data-dir", type=click.Path(path_type=Path), default=None)
+def context_generate(data_dir: Path | None) -> None:
+    """Regenerate markdown context from the shared main-repo mirror."""
+    from backend.context.generator import generate_repo_context, resolve_main_repo
+    from backend.paths import get_data_dir
+
+    manager = ConfigManager(data_dir)
+    if not manager.is_initialized():
+        click.echo("Alfred not initialized. Run: alfred init")
+        raise SystemExit(1)
+    config, _ = manager.load_merged()
+    if not config.git.enabled:
+        click.echo("Git integration is disabled.")
+        raise SystemExit(1)
+    main = resolve_main_repo(config.git)
+    if not main:
+        click.echo("Set git.main_repo in config first.")
+        raise SystemExit(1)
+    try:
+        manifest = generate_repo_context(get_data_dir(manager.data_dir), config.git, repo=main, ai=config.ai)
+    except FileNotFoundError as exc:
+        click.echo(str(exc))
+        raise SystemExit(1) from exc
+    click.echo(f"Generated context for {manifest.get('repo')} at commit {manifest.get('head_sha', '?')[:12]}")
 
 
 @main.command("down")

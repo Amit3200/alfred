@@ -14,6 +14,7 @@ GIT_TOOLS = frozenset(
         "git_log",
         "git_blame",
         "git_show",
+        "query_graph",
     }
 )
 

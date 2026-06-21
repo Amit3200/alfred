@@ -10,7 +10,7 @@ from backend.ingress.git_context import (
     wants_git_retry,
 )
 from backend.models.config import GitConfig
-from backend.models.session import ConversationSession
+from backend.models.session import ConversationSession, ConversationTurn
 from backend.tools.result import ToolResult
 
 
@@ -76,6 +76,58 @@ def test_detect_investigate_replays_last_action():
     )
     action = detect_investigate_direct_action("retry above", "investigate_bug", git, session)
     assert action == ("grep_repo", {"repo": "acme/backend", "pattern": "foo"})
+
+
+def test_detect_investigate_what_do_we_use_from_thread_repo():
+    git = GitConfig(
+        enabled=True,
+        provider="github",
+        token="x",
+        default_org="FlexyPe",
+        main_repo="FlexyPe/cipher",
+    )
+    session = ConversationSession(
+        key="slack:1:1",
+        source="slack",
+        scope_id="1",
+        thread_id="1",
+        turns=[
+            ConversationTurn(role="user", content="do you have access to cipher repo?"),
+            ConversationTurn(
+                role="assistant",
+                content="Yes — I have access to the `FlexyPe/cipher` repo.",
+            ),
+        ],
+    )
+    action = detect_investigate_direct_action(
+        "what do we use for currency change? do we support it?",
+        "investigate_bug",
+        git,
+        session,
+    )
+    assert action is not None
+    tool, args = action
+    assert tool == "grep_repo"
+    assert args["repo"] == "FlexyPe/cipher"
+    assert args["pattern"] == "currency"
+
+
+def test_enrich_tool_arguments_fills_repo_from_thread():
+    git = GitConfig(enabled=True, provider="github", token="x", default_org="FlexyPe")
+    session = ConversationSession(
+        key="slack:1:1",
+        source="slack",
+        scope_id="1",
+        thread_id="1",
+        turns=[
+            ConversationTurn(
+                role="assistant",
+                content="Yes — I have access to the `FlexyPe/cipher` repo.",
+            ),
+        ],
+    )
+    args = enrich_tool_arguments("grep_repo", {"pattern": "currency"}, git, session)
+    assert args["repo"] == "FlexyPe/cipher"
 
 
 def test_enrich_tool_arguments_fills_ref_from_active_pr():

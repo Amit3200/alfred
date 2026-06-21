@@ -53,6 +53,30 @@ def test_parse_valid_text_tool_call():
     assert parse_text_tool_call(raw) == ("list_my_prs", {"state": "open"})
 
 
+def test_parse_kimi_tool_tag():
+    raw = (
+        "I'll search.\n\n"
+        '<tool>{"tool_type": "function", "tool_name": "grep_repo", '
+        '"tool_input": {"pattern": "recalculation", "path": "FlexyPe/cipher"}}</tool>'
+    )
+    parsed = parse_text_tool_call(raw)
+    assert parsed == ("grep_repo", {"pattern": "recalculation", "path": "FlexyPe/cipher"})
+
+
+def test_looks_like_code_investigation():
+    from backend.ingress.git_direct import looks_like_code_investigation
+
+    assert looks_like_code_investigation(
+        "Can you tell what does recalculation method does? what are steps of it?"
+    )
+    assert not looks_like_code_investigation("hello there")
+
+
+def test_looks_like_tool_json_with_tool_tag():
+    raw = 'Intro\n<tool>{"tool_name":"grep_repo","tool_input":{}}</tool>'
+    assert looks_like_tool_json(raw)
+
+
 def test_extract_pr_from_slack_link():
     intent = (
         "summarize what this PR does - "

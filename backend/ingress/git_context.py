@@ -48,6 +48,11 @@ _FILE_LINE_RE = re.compile(
 
 _REPO_IN_TEXT_RE = re.compile(r"\b([a-zA-Z0-9_.-]+/[a-zA-Z0-9_.-]+)\b")
 
+_WHAT_USE_FOR_RE = re.compile(
+    r"\bwhat\s+(?:do\s+we|are\s+we)\s+(?:use|using)\s+for\s+(.+?)(?:\?|\s+do\s+we\b|\s*$)",
+    re.I,
+)
+
 _LOCAL_REPO_TOOLS = frozenset(
     {"grep_repo", "read_file", "git_log", "git_blame", "git_show"}
 )
@@ -66,6 +71,14 @@ def extract_file_line_hint(text: str) -> tuple[str, int] | None:
     if match := _FILE_LINE_RE.search(text):
         return match.group(1), int(match.group(2))
     return None
+
+
+def session_history_texts(session: Any | None, intent: str = "", *, limit: int = 6) -> list[str]:
+    """Recent thread messages plus the current intent."""
+    texts = [intent] if intent else []
+    if session:
+        texts.extend(turn.content for turn in session.turns[-limit:])
+    return texts
 
 
 def collect_thread_git_hints(*texts: str) -> dict[str, Any]:
@@ -164,9 +177,19 @@ def detect_investigate_direct_action(
         if isinstance(active, dict) and active.get("repo") and active.get("number"):
             return "get_pr", {"repo": active["repo"], "number": int(active["number"])}
 
-    history = [intent]
-    if session:
-        history.extend(turn.content for turn in session.turns[-4:])
+    history = session_history_texts(session, intent, limit=4)
+
+    if match := _WHAT_USE_FOR_RE.search(intent):
+        term = match.group(1).strip().rstrip("?").strip()
+        if term:
+            repo = _resolve_repo_from_hints(intent, git, session, history)
+            if repo:
+                keyword = term.split()[0] if term.split() else term
+                args: dict[str, Any] = {"repo": repo, "pattern": keyword}
+                ref = _session_ref(session)
+                if ref:
+                    args["ref"] = ref
+                return "grep_repo", args
 
     if file_line := extract_file_line_hint(intent):
         repo = _resolve_repo_from_hints(intent, git, session, history)
@@ -254,12 +277,17 @@ def enrich_tool_arguments(
 
     if tool_name in _LOCAL_REPO_TOOLS | _API_REPO_TOOLS:
         repo = str(args.get("repo") or "").strip()
-        if repo:
+        history = session_history_texts(session, limit=6)
+        if not repo:
+            fallback = _resolve_repo_from_hints("", git, session, history)
+            if fallback:
+                args["repo"] = fallback
+        elif repo:
             try:
                 args["repo"] = resolve_repo_slug(repo, git)
             except ValueError:
                 if session:
-                    fallback = _resolve_repo_from_hints("", git, session, [])
+                    fallback = _resolve_repo_from_hints("", git, session, history)
                     if fallback:
                         args["repo"] = fallback
 
@@ -311,6 +339,16 @@ def _resolve_repo_from_hints(
         if ref := extract_pr_reference(text or ""):
             return ref[0]
 
+    if session:
+        for turn in session.turns[-6:]:
+            content = turn.content or ""
+            if match := _REPO_IN_TEXT_RE.search(content):
+                slug = _resolve_repo_slug(match.group(1), git)
+                if slug:
+                    return slug
+            if ref := extract_pr_reference(content):
+                return ref[0]
+
     active = (session.metadata or {}).get("active_pr") if session else None
     if isinstance(active, dict) and active.get("repo"):
         return str(active["repo"])
@@ -328,5 +366,13 @@ def _resolve_repo_from_hints(
         match = re.search(r"\b(?:repo(?:sitory)?|on|in)\s+([a-zA-Z0-9_.-]+)\b", intent, re.I)
         if match:
             return _resolve_repo_slug(match.group(1), git)
+
+    if git.main_repo:
+        try:
+            return resolve_repo_slug(git.main_repo.strip(), git)
+        except ValueError:
+            raw = git.main_repo.strip().strip("/")
+            if "/" in raw:
+                return raw
 
     return None

@@ -6,6 +6,9 @@ trigger_keywords:
   - where is
   - where does
   - how is
+  - how does
+  - what does
+  - what do
   - find in code
   - grep
   - stack trace
@@ -13,9 +16,17 @@ trigger_keywords:
   - duplicate order
   - handled in
   - which file
+  - explain
+  - tell me what
+  - tell me about
+  - what are the steps
+  - steps of
+  - walk me through
+  - can you tell
 allowed_channels:
   - "*"
 allowed_tools:
+  - query_graph
   - grep_repo
   - read_file
   - git_log
@@ -34,10 +45,11 @@ Each Slack thread or UI chat has its **own mirror workspace** — do not assume 
 # Execution steps
 
 1. Identify the repository from the question, thread context, or `list_repos`.
-2. Use `grep_repo` to locate symbols, error strings, or paths.
-3. Use `read_file` for surrounding context (cite `path:line`).
-4. Pass `ref` when investigating a PR branch (use `head` from `get_pr`) or a named branch.
-5. Use `git_log` / `git_blame` / `git_show` when history or authorship matters.
+2. When Graphify is enabled, use `query_graph` first for structure, callers, and blast radius.
+3. Use `grep_repo` to locate symbols, error strings, or paths.
+4. Use `read_file` for surrounding context (cite `path:line`).
+5. Pass `ref` when investigating a PR branch (use `head` from `get_pr`) or a named branch.
+6. Use `git_log` / `git_blame` / `git_show` when history or authorship matters.
 
 # Response format
 

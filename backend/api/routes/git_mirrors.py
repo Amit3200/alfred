@@ -24,6 +24,50 @@ class MirrorSyncRequest(BaseModel):
     repos: list[str] = Field(default_factory=list)
 
 
+@router.get("/repos/available")
+def list_available_repos(manager: ConfigManager = Depends(require_admin)) -> dict[str, Any]:
+    """List repos from configured org (or user) plus git.repos allowlist."""
+    config, _ = manager.load_merged()
+    if not config.git.enabled:
+        return {
+            "enabled": False,
+            "repos": list(config.git.repos),
+            "configured": list(config.git.repos),
+            "remote": [],
+            "source": "disabled",
+            "org": config.git.default_org or None,
+            "error": "Git integration is disabled",
+        }
+    if not config.git.token:
+        configured = list(config.git.repos)
+        return {
+            "enabled": True,
+            "repos": configured,
+            "configured": configured,
+            "remote": [],
+            "source": "configured",
+            "org": config.git.default_org or None,
+            "error": "Git token is not configured — add it under Secrets.",
+        }
+    from backend.git.api import GitApiClient
+
+    try:
+        payload = GitApiClient.from_alfred_config(config).list_available_repos()
+    except Exception as exc:
+        configured = list(config.git.repos)
+        return {
+            "enabled": True,
+            "repos": configured,
+            "configured": configured,
+            "remote": [],
+            "source": "configured",
+            "org": config.git.default_org or None,
+            "error": str(exc),
+        }
+    payload["enabled"] = True
+    return payload
+
+
 @router.get("")
 def get_mirrors(manager: ConfigManager = Depends(require_admin)) -> dict[str, Any]:
     config, _ = manager.load_merged()
@@ -114,9 +158,14 @@ def sync_shared_mirrors(
         raise HTTPException(status_code=400, detail="Git token is not configured")
     mirror = WorkspaceMirrorManager(config.git, manager.data_dir)
     results = mirror.sync_shared(body.repos or None)
+
+    from backend.api.routes.repo_context import build_context_after_sync
+
+    context_result = build_context_after_sync(manager, sync_results=results)
     return {
         "ok": all(item.get("ok") for item in results),
         "results": results,
+        "context": context_result,
         "shared": mirror.list_shared(),
         "summary": mirror.storage_summary(),
     }

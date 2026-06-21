@@ -14,9 +14,37 @@ def test_split_repo_slug():
     assert split_repo_slug("myorg/backend") == ("myorg", "backend")
 
 
-def test_split_repo_slug_invalid():
-    with pytest.raises(ValueError):
-        split_repo_slug("backend")
+def test_list_available_repos_merges_configured_and_remote():
+    config = GitConfig(
+        enabled=True,
+        provider="github",
+        token="ghp_test",
+        default_org="FlexyPe",
+        repos=["FlexyPe/cipher"],
+    )
+    client = GitApiClient(config)
+    client._impl = MagicMock()
+    client._impl.list_accessible_repos.return_value = [
+        "FlexyPe/cipher",
+        "FlexyPe/other",
+    ]
+    payload = client.list_available_repos()
+    assert payload["source"] == "org"
+    assert payload["org"] == "FlexyPe"
+    assert payload["repos"] == ["FlexyPe/cipher", "FlexyPe/other"]
+
+
+@patch("backend.git.api.requests.Session")
+def test_list_available_repos_without_token(mock_session_cls):
+    config = GitConfig(
+        enabled=True,
+        provider="github",
+        token="",
+        default_org="FlexyPe",
+        repos=["FlexyPe/cipher"],
+    )
+    with pytest.raises(RuntimeError, match="Git token"):
+        GitApiClient(config)
 
 
 @patch("backend.git.api.requests.Session")

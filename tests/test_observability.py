@@ -48,6 +48,8 @@ def test_store_records_and_summarizes(tmp_path):
     summary = store.summary(ObservabilityFilters())
     assert summary.llm_calls == 2
     assert summary.tool_calls == 1
+    assert summary.prompt_tokens == 200
+    assert summary.completion_tokens == 100
     assert summary.total_tokens == 170
     assert summary.by_user["amit"] == 2
     assert summary.by_user["admin-ui"] == 1
@@ -64,6 +66,8 @@ def test_timeseries_buckets_by_day(tmp_path):
     series = store.timeseries(ObservabilityFilters(), bucket="day")
     assert len(series.points) == 2
     assert sum(point.llm_calls for point in series.points) == 2
+    assert sum(point.prompt_tokens for point in series.points) == 200
+    assert sum(point.completion_tokens for point in series.points) == 100
     assert sum(point.total_tokens for point in series.points) == 15
 
 

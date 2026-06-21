@@ -6,6 +6,7 @@ from typing import Literal
 
 from backend.git.api import PullRequestSummary
 from backend.ingress.git_format import format_pr_detail, format_prs
+from backend.ingress.github_format import format_for_github
 from backend.ingress.slack_format import format_for_slack
 from backend.ingress.ui_format import format_for_ui
 from backend.models.response import AssistantResponse, ResponsePayload
@@ -130,6 +131,8 @@ def _render_git_show(payload: ResponsePayload, channel: Channel) -> str:
 def _format_text(text: str, channel: Channel) -> str:
     if channel == "slack":
         return format_for_slack(text)
-    if channel in ("ui", "github"):
+    if channel == "github":
+        return format_for_github(text)
+    if channel == "ui":
         return format_for_ui(text)
     return text

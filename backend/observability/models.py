@@ -30,6 +30,7 @@ class InteractionEvent(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    estimated_cost_usd: float | None = None
     duration_ms: int | None = None
     tool_name: str | None = None
     tool_category: str | None = None
@@ -56,6 +57,7 @@ class UsageSummary(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    estimated_cost_usd: float = 0.0
     by_source: dict[str, int] = Field(default_factory=dict)
     by_user: dict[str, int] = Field(default_factory=dict)
     by_model: dict[str, int] = Field(default_factory=dict)
@@ -66,7 +68,12 @@ class TimeseriesPoint(BaseModel):
     period: str
     llm_calls: int = 0
     tool_calls: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
+    prompt_tokens: int = 0
+    completion_tokens: int = 0
     total_tokens: int = 0
+    estimated_cost_usd: float = 0.0
 
 
 class TimeseriesResponse(BaseModel):

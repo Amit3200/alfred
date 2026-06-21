@@ -26,6 +26,8 @@ class Playbook:
     body: str
     triggers: list[str] = field(default_factory=list)
     channels: list[str] = field(default_factory=list)
+    repos: list[str] = field(default_factory=list)
+    description: str = ""
     mode: SkillMode = "conversational"
     allowed_tools: list[str] = field(default_factory=list)
     requires_thread_context: bool = False
@@ -63,39 +65,104 @@ class PlaybookStore:
         if not self.directory.is_dir():
             return 0.0
         latest = 0.0
-        for path in self.directory.glob("*.md"):
+        for path in self.directory.rglob("*.md"):
             try:
                 latest = max(latest, path.stat().st_mtime)
             except OSError:
                 continue
         return latest
 
-    def match(self, intent: str, *, channel_id: str = "") -> list[Playbook]:
+    def match(
+        self,
+        intent: str,
+        *,
+        channel_id: str = "",
+        repo: str = "",
+    ) -> list[Playbook]:
+        """Return all playbooks whose triggers appear in *intent* (debug / legacy API)."""
         lower = intent.lower()
+        repo_lower = repo.strip().lower()
         matched: list[Playbook] = []
         for playbook in self.list_playbooks():
-            if playbook.channels and channel_id not in playbook.channels:
+            if not self._passes_routing_filters(playbook, lower, channel_id, repo_lower):
                 continue
-            if not playbook.triggers:
-                continue
-            if any(trigger.lower() in lower for trigger in playbook.triggers):
+            if _best_trigger_len(playbook, lower) > 0:
                 matched.append(playbook)
         return matched
 
-    def pick_investigation(self, intent: str, *, channel_id: str = "") -> Playbook | None:
+    def pick_conversational(
+        self,
+        intent: str,
+        *,
+        channel_id: str = "",
+        repo: str = "",
+    ) -> Playbook | None:
+        """Return the single best conversational playbook (longest trigger wins)."""
+        return self._pick_best(
+            intent,
+            channel_id=channel_id,
+            repo=repo,
+            modes=("conversational",),
+        )
+
+    def pick_investigation(
+        self,
+        intent: str,
+        *,
+        channel_id: str = "",
+        repo: str = "",
+    ) -> Playbook | None:
         """Return the best-matching investigation skill (longest trigger wins)."""
+        return self._pick_best(
+            intent,
+            channel_id=channel_id,
+            repo=repo,
+            modes=("investigation", "workflow"),
+            require_tools=True,
+        )
+
+    def _pick_best(
+        self,
+        intent: str,
+        *,
+        channel_id: str = "",
+        repo: str = "",
+        modes: tuple[str, ...],
+        require_tools: bool = False,
+    ) -> Playbook | None:
         lower = intent.lower()
+        repo_lower = repo.strip().lower()
         best: Playbook | None = None
         best_len = 0
-        for playbook in self.match(intent, channel_id=channel_id):
-            if playbook.mode != "investigation" or not playbook.allowed_tools:
+        for playbook in self.list_playbooks():
+            if playbook.mode not in modes:
                 continue
-            for trigger in playbook.triggers:
-                token = trigger.lower()
-                if token in lower and len(token) > best_len:
-                    best = playbook
-                    best_len = len(token)
+            if require_tools and not playbook.allowed_tools:
+                continue
+            if not self._passes_routing_filters(playbook, lower, channel_id, repo_lower):
+                continue
+            trigger_len = _best_trigger_len(playbook, lower)
+            if trigger_len > best_len:
+                best = playbook
+                best_len = trigger_len
         return best
+
+    def _passes_routing_filters(
+        self,
+        playbook: Playbook,
+        intent_lower: str,
+        channel_id: str,
+        repo_lower: str,
+    ) -> bool:
+        if playbook.channels and channel_id not in playbook.channels:
+            return False
+        if playbook.repos and repo_lower and not _repo_matches(
+            playbook.repos, intent_lower, repo_lower
+        ):
+            return False
+        if not playbook.triggers:
+            return False
+        return True
 
     def get_by_name(self, name: str) -> Playbook | None:
         """Return a loaded playbook/skill by name, or None."""
@@ -105,17 +172,91 @@ class PlaybookStore:
                 return playbook
         return None
 
+    def format_catalog_for_prompt(
+        self,
+        *,
+        channel_id: str = "",
+        repo: str = "",
+        max_triggers: int = 4,
+    ) -> str:
+        """Compact index of available playbooks/skills — metadata only, no bodies."""
+        repo_lower = repo.strip().lower()
+        visible = [
+            playbook
+            for playbook in self.list_playbooks()
+            if self._passes_catalog_filters(playbook, channel_id, repo_lower)
+        ]
+        if not visible:
+            return ""
+
+        skills = sorted(
+            (p for p in visible if p.mode in ("investigation", "workflow")),
+            key=lambda p: p.name.lower(),
+        )
+        playbooks = sorted(
+            (p for p in visible if p.mode == "conversational"),
+            key=lambda p: p.name.lower(),
+        )
+
+        sections = [
+            "## Available playbooks & skills",
+            "You have the entries below registered locally. "
+            "Only the **Active playbook** section (when present) contains full instructions "
+            "for the current request — do not invent or assume playbook content from this index.",
+            "",
+        ]
+        if skills:
+            sections.append("### Skills")
+            for playbook in skills:
+                sections.append(_format_catalog_entry(playbook, max_triggers=max_triggers))
+            sections.append("")
+        if playbooks:
+            sections.append("### Domain playbooks")
+            for playbook in playbooks:
+                sections.append(_format_catalog_entry(playbook, max_triggers=max_triggers))
+        return "\n".join(sections).strip()
+
+    def format_routed_prompt(
+        self,
+        active: Playbook | None,
+        *,
+        channel_id: str = "",
+        repo: str = "",
+        data_dir: Path | None = None,
+    ) -> str:
+        """Catalog (always) + full body for the single routed playbook (when matched)."""
+        parts = [
+            self.format_catalog_for_prompt(channel_id=channel_id, repo=repo),
+            self.format_for_prompt([active], data_dir=data_dir) if active else "",
+        ]
+        return "\n\n".join(part for part in parts if part).strip()
+
+    def _passes_catalog_filters(
+        self,
+        playbook: Playbook,
+        channel_id: str,
+        repo_lower: str,
+    ) -> bool:
+        if playbook.channels and channel_id not in playbook.channels:
+            return False
+        if playbook.repos and repo_lower:
+            for repo in playbook.repos:
+                needle = repo.strip().lower()
+                if repo_lower == needle or repo_lower.endswith("/" + needle.split("/")[-1]):
+                    return True
+            return False
+        return True
+
     def format_for_prompt(self, playbooks: list[Playbook], *, data_dir: Path | None = None) -> str:
         if not playbooks:
             return ""
         sections = [
-            "## Domain playbooks",
-            "Follow these domain-specific instructions when they apply. "
-            "They override generic examples above.",
+            "## Active playbook (loaded for this request)",
+            "Follow these instructions for this turn. They override generic examples above.",
             "",
         ]
         for playbook in playbooks:
-            label = "Skill" if playbook.mode == "investigation" else "Playbook"
+            label = "Skill" if playbook.mode in ("investigation", "workflow") else "Playbook"
             sections.append(f"### {label}: {playbook.name}")
             sections.append(playbook.body.strip())
             sections.append("")
@@ -131,7 +272,7 @@ class PlaybookStore:
         playbooks: list[Playbook] = []
         seen_names: set[str] = set()
 
-        for path in sorted(self.directory.glob("*.md")) if self.directory.is_dir() else []:
+        for path in sorted(self.directory.rglob("*.md")) if self.directory.is_dir() else []:
             if path.name.lower() == "readme.md":
                 continue
             try:
@@ -171,8 +312,10 @@ def _parse_playbook(path: Path, *, bundled: bool) -> Playbook:
         body = raw[match.end() :].strip()
 
     name = str(meta.get("name") or path.stem)
+    description = str(meta.get("description") or "").strip()
     triggers = _normalize_str_list(meta.get("triggers") or meta.get("trigger_keywords"))
-    channels = _normalize_str_list(meta.get("channels") or meta.get("allowed_channels"))
+    channels = _normalize_channels(meta.get("channels") or meta.get("allowed_channels"))
+    repos = _normalize_str_list(meta.get("repos"))
     mode = str(meta.get("mode") or "conversational")
     if mode not in ("conversational", "investigation", "workflow"):
         mode = "conversational"
@@ -190,6 +333,8 @@ def _parse_playbook(path: Path, *, bundled: bool) -> Playbook:
         body=body,
         triggers=triggers,
         channels=channels,
+        repos=repos,
+        description=description,
         mode=mode,  # type: ignore[arg-type]
         allowed_tools=allowed_tools,
         requires_thread_context=requires_thread_context,
@@ -207,3 +352,55 @@ def _normalize_str_list(value: object) -> list[str]:
     if isinstance(value, list):
         return [str(item).strip() for item in value if str(item).strip()]
     return []
+
+
+_SLACK_CHANNEL_ID_RE = re.compile(r"^C[A-Z0-9]{8,}$", re.IGNORECASE)
+
+
+def _normalize_channels(value: object) -> list[str]:
+    channels = _normalize_str_list(value)
+    if not channels or channels == ["*"]:
+        return []
+    slack_ids = [ch for ch in channels if _SLACK_CHANNEL_ID_RE.match(ch)]
+    return slack_ids
+
+
+def _best_trigger_len(playbook: Playbook, intent_lower: str) -> int:
+    best = 0
+    for trigger in playbook.triggers:
+        token = trigger.lower()
+        if token in intent_lower and len(token) > best:
+            best = len(token)
+    return best
+
+
+def _format_catalog_entry(playbook: Playbook, *, max_triggers: int) -> str:
+    label = playbook.description or playbook.name.replace("_", " ").replace("-", " ")
+    shown = playbook.triggers[:max_triggers]
+    trigger_bits = ", ".join(f"`{token}`" for token in shown)
+    if len(playbook.triggers) > max_triggers:
+        trigger_bits += f", +{len(playbook.triggers) - max_triggers} more"
+    repo_note = f" [{', '.join(playbook.repos)}]" if playbook.repos else ""
+    kind = "skill" if playbook.mode in ("investigation", "workflow") else "playbook"
+    return f"- **{playbook.name}** ({kind}{repo_note}) — {label}. Triggers: {trigger_bits}"
+
+
+def _repo_matches(repos: list[str], intent_lower: str, repo_lower: str) -> bool:
+    """Match repo-scoped playbooks when task repo or intent mentions the repo."""
+    if repo_lower:
+        for repo in repos:
+            needle = repo.strip().lower()
+            if not needle:
+                continue
+            if repo_lower == needle or repo_lower.endswith("/" + needle.split("/")[-1]):
+                return True
+    for repo in repos:
+        needle = repo.strip().lower()
+        if not needle:
+            continue
+        if needle in intent_lower:
+            return True
+        short = needle.split("/")[-1]
+        if short and short in intent_lower:
+            return True
+    return False

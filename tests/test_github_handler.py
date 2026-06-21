@@ -11,7 +11,7 @@ from backend.models.config import AlfredConfig, GitConfig, GitHubAppConfig
 def test_webhook_queues_and_reacts_eyes_immediately():
     manager = MagicMock()
     config = AlfredConfig(
-        github=GitHubAppConfig(enabled=True, bot_login="alfred-flx"),
+        github=GitHubAppConfig(enabled=True, bot_login="alfred"),
         git=GitConfig(enabled=True, provider="github", token="ghp_test"),
     )
     manager.load_merged.return_value = (config, MagicMock())
@@ -21,7 +21,7 @@ def test_webhook_queues_and_reacts_eyes_immediately():
         "action": "created",
         "comment": {
             "id": 123,
-            "body": "@alfred-flx review this PR",
+            "body": "@alfred review this PR",
             "user": {"login": "dev", "type": "User"},
         },
         "issue": {

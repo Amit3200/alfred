@@ -90,6 +90,21 @@ def workspace_repos_root(data_dir: Path | None = None) -> Path:
     return path
 
 
+def context_dir(data_dir: Path | None = None) -> Path:
+    """Generated repo context markdown under .alfred/context/."""
+    path = get_data_dir(data_dir) / "context"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def repo_context_dir(data_dir: Path | None, repo_slug: str) -> Path:
+    """Per-repo context output: .alfred/context/{owner__name}/."""
+    safe = repo_slug.replace("/", "__")
+    path = context_dir(data_dir) / safe
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def bundled_web_dist() -> Path | None:
     """Return path to bundled admin UI static assets, if present."""
     package_root = Path(__file__).resolve().parent

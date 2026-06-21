@@ -71,4 +71,41 @@ def test_agent_loop_respects_max_iterations():
         max_iterations=2,
     )
 
-    assert "maximum number" in result
+    assert "ran out of investigation steps" in result
+
+
+def test_agent_loop_synthesizes_when_max_iterations():
+    provider = MagicMock()
+    provider.chat.side_effect = [
+        LLMResponse(
+            content=None,
+            tool_calls=[ToolCall(id="c1", name="echo", arguments={"text": "x"})],
+        ),
+        LLMResponse(
+            content=None,
+            tool_calls=[ToolCall(id="c2", name="echo", arguments={"text": "y"})],
+        ),
+        LLMResponse(content="Currency uses updateCurrency in session.controller.ts", tool_calls=[]),
+    ]
+
+    registry = ToolRegistry()
+    registry.register(
+        ToolSchema(
+            name="echo",
+            description="Echo",
+            parameters={"type": "object", "properties": {"text": {"type": "string"}}, "required": []},
+        ),
+        lambda args: "tool result",
+    )
+
+    result = run_agent_loop(
+        provider,
+        [Message(role="user", content="what do we use for currency change?")],
+        registry,
+        ["echo"],
+        max_iterations=2,
+    )
+
+    assert result == "Currency uses updateCurrency in session.controller.ts"
+    assert provider.chat.call_count == 3
+    assert provider.chat.call_args_list[2].kwargs.get("tools") is None

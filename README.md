@@ -183,7 +183,7 @@ Mirrors live under `.alfred/repos/shared/` (cache) and `.alfred/repos/workspaces
 
 Use this when you want **`@your-app-slug review`** on **GitHub pull request comments** (not just Slack). Requires a **public HTTPS URL** — see [Optional — Public URL](#optional--public-url-cloudflare-tunnel).
 
-1. Create a [GitHub App](https://github.com/settings/apps/new) (org or user). Example app name/slug: `alfred-flx` → users mention **`@alfred-flx`** on PRs.
+1. Create a [GitHub App](https://github.com/settings/apps/new) named **`alfred`** (org or user). Users mention **`@alfred`** on PRs. The app slug is fixed at creation — if you already have `alfred-flx`, create a new app named `alfred` (or rename only if GitHub still allows changing the slug) and uninstall the old one.
 2. Set URLs (replace host with yours, e.g. `alfred.flexype.dev`):
 
 | Field | URL |
@@ -198,7 +198,7 @@ Use this when you want **`@your-app-slug review`** on **GitHub pull request comm
 7. Admin → **Integrations** → **GitHub App**:
    - Enable toggle
    - **Client ID** / **App ID** from GitHub App settings
-   - **Bot login** = app slug (e.g. `alfred-flx`) — **must match** the `@mention` in PR comments exactly
+   - **Bot login** = `alfred` — must match the GitHub App slug / `@mention` exactly
    - **Public base URL** = `https://alfred.yourdomain.dev` (shows copyable webhook/callback URLs)
    - Save changes
 
@@ -209,7 +209,7 @@ github:
   enabled: true
   client_id: Iv1.xxxxx
   app_id: "123456"
-  bot_login: alfred-flx              # must match @mention slug
+  bot_login: alfred
   callback_base_url: https://alfred.yourdomain.dev
   allowed_repos: []                  # optional; empty uses git.repos allowlist
 ```
@@ -228,13 +228,13 @@ curl -s https://alfred.yourdomain.dev/api/health
 
 GitHub App → Webhook → **Recent deliveries**: `ping` and `issue_comment` should return **200**. In `.alfred/alfred.log` look for `status=queued` (not `ignored issue_comment`).
 
-Comment on a PR: `@alfred-flx can you review this PR?` — Alfred reacts with 👀 immediately, posts the review when done, then 👍. Same `review_pr` skill as Slack.
+Comment on a PR: `@alfred can you review this PR?` — Alfred reacts with 👀 immediately, posts the review when done, then 👍. Same `review_pr` skill as Slack.
 
 **Troubleshooting**
 
 | Symptom | Fix |
 |---------|-----|
-| Log: `ignored issue_comment` | **Bot login** typo — must match `@mention` (e.g. `alfred-flx` not `alfred-fix`) |
+| Log: `ignored issue_comment` | **Bot login** mismatch — set `alfred` to match your GitHub App slug |
 | No webhook in log | App installed with **No repositories**, tunnel down, or `Issue comment` event not subscribed |
 | Log: `signature verification failed` | Re-paste webhook secret on GitHub and in Alfred Secrets |
 | Reactions show as your user | Expected with PAT — webhook is the app; API calls use `git_token` |
@@ -288,7 +288,7 @@ Use this **only** when you need Alfred reachable from the internet — for examp
 | Scenario | Tunnel needed? |
 |----------|----------------|
 | Slack `@alfred`, local Admin UI, PR review in Slack | **No** |
-| GitHub PR comment bot (`@alfred-flx review`) | **Yes** |
+| GitHub PR comment bot (`@alfred review`) | **Yes** |
 | Remote Admin UI without VPN | **Yes** (or EC2/nginx instead) |
 
 Each public hostname (e.g. `alfred.yourdomain.dev`) is a **separate DNS record** — adding Alfred’s subdomain does not change other dev hosts on the same domain.

@@ -9,9 +9,18 @@ import {
 
 type Preset = "24h" | "7d" | "30d" | "month";
 type Bucket = "hour" | "day" | "month";
+const EVENTS_PAGE_SIZE = 20;
 
 function formatNumber(value: number): string {
   return value.toLocaleString();
+}
+
+function formatCostUsd(value: number | null | undefined): string {
+  const amount = value ?? 0;
+  if (amount <= 0) return "$0.00";
+  if (amount >= 1) return `$${amount.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  if (amount >= 0.01) return `$${amount.toFixed(2)}`;
+  return `$${amount.toFixed(4)}`;
 }
 
 function formatWhen(iso: string): string {
@@ -128,6 +137,113 @@ function UsageBarChart({
   );
 }
 
+function TokenStackedBarChart({
+  points,
+  bucket,
+}: {
+  points: ObservabilityTimeseries["points"];
+  bucket: Bucket;
+}) {
+  const totals = useMemo(
+    () => points.map((point) => (point.prompt_tokens ?? 0) + (point.completion_tokens ?? 0)),
+    [points],
+  );
+  const inputTotal = useMemo(
+    () => points.reduce((sum, point) => sum + (point.prompt_tokens ?? 0), 0),
+    [points],
+  );
+  const outputTotal = useMemo(
+    () => points.reduce((sum, point) => sum + (point.completion_tokens ?? 0), 0),
+    [points],
+  );
+  const costTotal = useMemo(
+    () => points.reduce((sum, point) => sum + (point.estimated_cost_usd ?? 0), 0),
+    [points],
+  );
+  const max = useMemo(() => Math.max(...totals, 0), [totals]);
+  const ticks = useMemo(() => niceTicks(max), [max]);
+  const scaleMax = ticks[ticks.length - 1] || 1;
+
+  if (!points.length) {
+    return (
+      <div className="alfred-usage-chart-panel">
+        <Typography.Title level={5}>Tokens (input / output)</Typography.Title>
+        <Typography.Text type="secondary">No data for this range.</Typography.Text>
+      </div>
+    );
+  }
+
+  return (
+    <div className="alfred-usage-chart-panel">
+      <div className="alfred-usage-chart-header">
+        <Typography.Title level={5} style={{ margin: 0 }}>
+          Tokens (input / output)
+        </Typography.Title>
+        <Typography.Text type="secondary" className="alfred-usage-chart-total">
+          {formatNumber(inputTotal)} in · {formatNumber(outputTotal)} out · {formatCostUsd(costTotal)} est.
+        </Typography.Text>
+      </div>
+      <div className="alfred-usage-chart-body">
+        <div className="alfred-usage-y-axis">
+          {[...ticks].reverse().map((tick) => (
+            <span key={tick}>{formatNumber(tick)}</span>
+          ))}
+        </div>
+        <div className="alfred-usage-plot">
+          <div className="alfred-usage-grid">
+            {ticks.map((tick) => (
+              <div
+                key={tick}
+                className="alfred-usage-grid-line"
+                style={{ bottom: `${(tick / scaleMax) * 100}%` }}
+              />
+            ))}
+          </div>
+          <div className="alfred-usage-bars">
+            {points.map((point) => {
+              const input = point.prompt_tokens ?? 0;
+              const output = point.completion_tokens ?? 0;
+              const total = input + output;
+              return (
+                <div key={point.period} className="alfred-usage-bar-wrap">
+                  <span className="alfred-usage-bar-value">{formatNumber(total)}</span>
+                  <div className="alfred-usage-bar-track alfred-usage-bar-track-stacked">
+                    <div
+                      className="alfred-usage-bar-stack"
+                      style={{
+                        height: `${Math.max(total > 0 ? 6 : 0, scaleMax > 0 ? (total / scaleMax) * 100 : 0)}%`,
+                      }}
+                      title={`${formatPeriod(point.period, bucket)}: ${formatNumber(input)} in / ${formatNumber(output)} out`}
+                    >
+                      <div
+                        className="alfred-usage-bar alfred-usage-bar-output"
+                        style={{ height: total > 0 ? `${(output / total) * 100}%` : "0%" }}
+                      />
+                      <div
+                        className="alfred-usage-bar alfred-usage-bar-input"
+                        style={{ height: total > 0 ? `${(input / total) * 100}%` : "0%" }}
+                      />
+                    </div>
+                  </div>
+                  <span className="alfred-usage-bar-label">{formatPeriod(point.period, bucket)}</span>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+      <div className="alfred-usage-token-legend">
+        <span className="alfred-usage-token-legend-item">
+          <span className="alfred-usage-token-legend-swatch alfred-usage-bar-input" /> Input
+        </span>
+        <span className="alfred-usage-token-legend-item">
+          <span className="alfred-usage-token-legend-swatch alfred-usage-bar-output" /> Output
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function BreakdownChart({
   title,
   entries,
@@ -197,6 +313,9 @@ export function UsagePanel() {
   const [summary, setSummary] = useState<ObservabilitySummary | null>(null);
   const [timeseries, setTimeseries] = useState<ObservabilityTimeseries | null>(null);
   const [events, setEvents] = useState<ObservabilityEvent[]>([]);
+  const [eventsTotal, setEventsTotal] = useState(0);
+  const [eventsPage, setEventsPage] = useState(1);
+  const [eventsLoading, setEventsLoading] = useState(false);
   const [filterOptions, setFilterOptions] = useState<{
     sources: string[];
     users: string[];
@@ -220,24 +339,45 @@ export function UsagePanel() {
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const [summaryRes, seriesRes, eventsRes, filtersRes] = await Promise.all([
+      const [summaryRes, seriesRes, filtersRes] = await Promise.all([
         api.observabilitySummary(query),
         api.observabilityTimeseries(query),
-        api.observabilityEvents({ ...query, limit: 50 }),
         api.observabilityFilters("30d"),
       ]);
       setSummary(summaryRes.summary);
       setTimeseries(seriesRes.timeseries);
-      setEvents(eventsRes.events);
       setFilterOptions(filtersRes);
     } finally {
       setLoading(false);
     }
   }, [query]);
 
+  const loadEvents = useCallback(async () => {
+    setEventsLoading(true);
+    try {
+      const eventsRes = await api.observabilityEvents({
+        ...query,
+        limit: EVENTS_PAGE_SIZE,
+        offset: (eventsPage - 1) * EVENTS_PAGE_SIZE,
+      });
+      setEvents(eventsRes.events);
+      setEventsTotal(eventsRes.total);
+    } finally {
+      setEventsLoading(false);
+    }
+  }, [query, eventsPage]);
+
+  useEffect(() => {
+    setEventsPage(1);
+  }, [query]);
+
   useEffect(() => {
     void load();
   }, [load]);
+
+  useEffect(() => {
+    void loadEvents();
+  }, [loadEvents]);
 
   const byUserEntries = useMemo(
     () => Object.entries(summary?.by_user ?? {}).sort((a, b) => b[1] - a[1]),
@@ -288,11 +428,19 @@ export function UsagePanel() {
     },
     {
       title: "Tokens",
-      dataIndex: "total_tokens",
-      key: "total_tokens",
+      key: "tokens",
+      width: 150,
+      render: (_: unknown, row: ObservabilityEvent) =>
+        row.event_type === "llm_call"
+          ? `${formatNumber(row.prompt_tokens || 0)} in / ${formatNumber(row.completion_tokens || 0)} out`
+          : "—",
+    },
+    {
+      title: "Est. cost",
+      key: "estimated_cost_usd",
       width: 90,
-      render: (value: number, row: ObservabilityEvent) =>
-        row.event_type === "llm_call" ? formatNumber(value || 0) : "—",
+      render: (_: unknown, row: ObservabilityEvent) =>
+        row.event_type === "llm_call" ? formatCostUsd(row.estimated_cost_usd) : "—",
     },
     {
       title: "Kind",
@@ -308,9 +456,11 @@ export function UsagePanel() {
         Usage & observability
       </Typography.Title>
       <Typography.Paragraph className="alfred-page-desc">
-        Track AI calls, token usage, tools, and who triggered them. Slack users show display names
-        when the bot token can resolve them; add manual aliases in{" "}
-        <Typography.Text code>observability.user_labels</Typography.Text> in config.yaml.
+        Track AI calls, token usage, estimated cost, tools, and who triggered them. Slack users show
+        display names when the bot token can resolve them; add manual aliases in{" "}
+        <Typography.Text code>observability.user_labels</Typography.Text> in config.yaml. Cost uses
+        approximate per-model rates — override via{" "}
+        <Typography.Text code>observability.model_pricing</Typography.Text>.
       </Typography.Paragraph>
 
       <div className="alfred-panel" style={{ marginBottom: 20 }}>
@@ -408,7 +558,7 @@ export function UsagePanel() {
         </Row>
       </div>
 
-      <div className="alfred-stat-grid" style={{ marginBottom: 20 }}>
+      <div className="alfred-stat-grid alfred-stat-grid-usage" style={{ marginBottom: 20 }}>
         <div className="alfred-stat-card">
           <div className="alfred-stat-label">LLM calls</div>
           <div className="alfred-stat-value">{formatNumber(summary?.llm_calls ?? 0)}</div>
@@ -418,8 +568,20 @@ export function UsagePanel() {
           <div className="alfred-stat-value">{formatNumber(summary?.tool_calls ?? 0)}</div>
         </div>
         <div className="alfred-stat-card">
+          <div className="alfred-stat-label">Input tokens</div>
+          <div className="alfred-stat-value">{formatNumber(summary?.prompt_tokens ?? 0)}</div>
+        </div>
+        <div className="alfred-stat-card">
+          <div className="alfred-stat-label">Output tokens</div>
+          <div className="alfred-stat-value">{formatNumber(summary?.completion_tokens ?? 0)}</div>
+        </div>
+        <div className="alfred-stat-card">
           <div className="alfred-stat-label">Total tokens</div>
           <div className="alfred-stat-value">{formatNumber(summary?.total_tokens ?? 0)}</div>
+        </div>
+        <div className="alfred-stat-card">
+          <div className="alfred-stat-label">Est. cost</div>
+          <div className="alfred-stat-value">{formatCostUsd(summary?.estimated_cost_usd)}</div>
         </div>
         <div className="alfred-stat-card">
           <div className="alfred-stat-label">Unique users</div>
@@ -450,12 +612,7 @@ export function UsagePanel() {
         </Col>
         <Col xs={24} lg={8}>
           <div className="alfred-panel alfred-usage-chart-card">
-            <UsageBarChart
-              title="Tokens"
-              points={timeseries?.points ?? []}
-              metric="total_tokens"
-              bucket={bucket}
-            />
+            <TokenStackedBarChart points={timeseries?.points ?? []} bucket={bucket} />
           </div>
         </Col>
       </Row>
@@ -484,10 +641,18 @@ export function UsagePanel() {
           rowKey={(row) =>
             `${row.recorded_at}-${row.event_type}-${row.task_id || ""}-${row.tool_name || row.model || ""}`
           }
-          loading={loading}
+          loading={eventsLoading}
           columns={columns}
           dataSource={events}
-          pagination={false}
+          pagination={{
+            current: eventsPage,
+            pageSize: EVENTS_PAGE_SIZE,
+            total: eventsTotal,
+            showSizeChanger: false,
+            hideOnSinglePage: true,
+            showTotal: (total) => `${total.toLocaleString()} interactions`,
+            onChange: (page) => setEventsPage(page),
+          }}
           scroll={{ x: 960 }}
         />
       </div>

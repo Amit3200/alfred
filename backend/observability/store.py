@@ -21,6 +21,7 @@ from backend.observability.models import (
     TimeseriesResponse,
     UsageSummary,
 )
+from backend.observability.pricing import PricingTable, build_pricing_table
 from backend.paths import db_path
 
 logger = logging.getLogger(__name__)
@@ -62,7 +63,12 @@ class ObservabilityStore(ABC):
     def record(self, event: InteractionEvent) -> None: ...
 
     @abstractmethod
-    def summary(self, filters: ObservabilityFilters) -> UsageSummary: ...
+    def summary(
+        self,
+        filters: ObservabilityFilters,
+        *,
+        pricing: PricingTable | None = None,
+    ) -> UsageSummary: ...
 
     @abstractmethod
     def timeseries(
@@ -70,6 +76,7 @@ class ObservabilityStore(ABC):
         filters: ObservabilityFilters,
         *,
         bucket: TimeseriesBucket,
+        pricing: PricingTable | None = None,
     ) -> TimeseriesResponse: ...
 
     @abstractmethod
@@ -79,6 +86,7 @@ class ObservabilityStore(ABC):
         *,
         limit: int = 50,
         offset: int = 0,
+        pricing: PricingTable | None = None,
     ) -> EventsPage: ...
 
     @abstractmethod
@@ -104,7 +112,13 @@ class SQLiteObservabilityStore(ObservabilityStore):
             db.add(row)
             db.commit()
 
-    def summary(self, filters: ObservabilityFilters) -> UsageSummary:
+    def summary(
+        self,
+        filters: ObservabilityFilters,
+        *,
+        pricing: PricingTable | None = None,
+    ) -> UsageSummary:
+        pricing = pricing or build_pricing_table()
         with self._factory() as db:
             rows = db.scalars(select(InteractionEventRow).where(*_where(filters))).all()
 
@@ -115,6 +129,12 @@ class SQLiteObservabilityStore(ObservabilityStore):
                 summary.prompt_tokens += int(row.prompt_tokens or 0)
                 summary.completion_tokens += int(row.completion_tokens or 0)
                 summary.total_tokens += int(row.total_tokens or 0)
+                summary.estimated_cost_usd += pricing.estimate(
+                    provider=row.provider,
+                    model=row.model,
+                    prompt_tokens=int(row.prompt_tokens or 0),
+                    completion_tokens=int(row.completion_tokens or 0),
+                )
                 if row.model:
                     summary.by_model[row.model] = summary.by_model.get(row.model, 0) + 1
             elif row.event_type == "tool_call":
@@ -128,6 +148,7 @@ class SQLiteObservabilityStore(ObservabilityStore):
             label = row.user_label or row.user_id or "unknown"
             summary.by_user[label] = summary.by_user.get(label, 0) + 1
 
+        summary.estimated_cost_usd = round(summary.estimated_cost_usd, 4)
         return summary
 
     def timeseries(
@@ -135,7 +156,9 @@ class SQLiteObservabilityStore(ObservabilityStore):
         filters: ObservabilityFilters,
         *,
         bucket: TimeseriesBucket,
+        pricing: PricingTable | None = None,
     ) -> TimeseriesResponse:
+        pricing = pricing or build_pricing_table()
         with self._factory() as db:
             rows = db.scalars(
                 select(InteractionEventRow)
@@ -149,13 +172,32 @@ class SQLiteObservabilityStore(ObservabilityStore):
             point = buckets.setdefault(period, TimeseriesPoint(period=period))
             if row.event_type == "llm_call":
                 point.llm_calls += 1
+                point.prompt_tokens += int(row.prompt_tokens or 0)
+                point.completion_tokens += int(row.completion_tokens or 0)
                 point.total_tokens += int(row.total_tokens or 0)
+                point.estimated_cost_usd += pricing.estimate(
+                    provider=row.provider,
+                    model=row.model,
+                    prompt_tokens=int(row.prompt_tokens or 0),
+                    completion_tokens=int(row.completion_tokens or 0),
+                )
             elif row.event_type == "tool_call":
                 point.tool_calls += 1
 
         return TimeseriesResponse(
             bucket=bucket,
-            points=sorted(buckets.values(), key=lambda p: p.period),
+            points=[
+                TimeseriesPoint(
+                    period=point.period,
+                    llm_calls=point.llm_calls,
+                    tool_calls=point.tool_calls,
+                    prompt_tokens=point.prompt_tokens,
+                    completion_tokens=point.completion_tokens,
+                    total_tokens=point.total_tokens,
+                    estimated_cost_usd=round(point.estimated_cost_usd, 4),
+                )
+                for point in sorted(buckets.values(), key=lambda p: p.period)
+            ],
         )
 
     def list_events(
@@ -164,7 +206,9 @@ class SQLiteObservabilityStore(ObservabilityStore):
         *,
         limit: int = 50,
         offset: int = 0,
+        pricing: PricingTable | None = None,
     ) -> EventsPage:
+        pricing = pricing or build_pricing_table()
         with self._factory() as db:
             where = _where(filters)
             total = db.scalar(
@@ -177,7 +221,10 @@ class SQLiteObservabilityStore(ObservabilityStore):
                 .offset(offset)
                 .limit(limit)
             ).all()
-        return EventsPage(total=int(total or 0), events=[_row_to_event(row) for row in rows])
+        return EventsPage(
+            total=int(total or 0),
+            events=[_row_to_event(row, pricing=pricing) for row in rows],
+        )
 
     def filter_options(self, filters: ObservabilityFilters) -> dict[str, list[str]]:
         with self._factory() as db:
@@ -278,13 +325,24 @@ def _event_to_row(event: InteractionEvent) -> InteractionEventRow:
     )
 
 
-def _row_to_event(row: InteractionEventRow) -> InteractionEvent:
+def _row_to_event(row: InteractionEventRow, *, pricing: PricingTable | None = None) -> InteractionEvent:
+    pricing = pricing or build_pricing_table()
     metadata: dict[str, Any] = {}
     if row.metadata_json:
         try:
             metadata = json.loads(row.metadata_json)
         except json.JSONDecodeError:
             logger.debug("Invalid metadata_json for event %s", row.id)
+
+    estimated_cost_usd: float | None = None
+    if row.event_type == "llm_call":
+        estimated_cost_usd = pricing.estimate(
+            provider=row.provider,
+            model=row.model,
+            prompt_tokens=int(row.prompt_tokens or 0),
+            completion_tokens=int(row.completion_tokens or 0),
+        )
+
     return InteractionEvent(
         recorded_at=row.recorded_at,
         event_type=row.event_type,  # type: ignore[arg-type]
@@ -300,6 +358,7 @@ def _row_to_event(row: InteractionEventRow) -> InteractionEvent:
         prompt_tokens=row.prompt_tokens,
         completion_tokens=row.completion_tokens,
         total_tokens=row.total_tokens,
+        estimated_cost_usd=estimated_cost_usd,
         duration_ms=row.duration_ms,
         tool_name=row.tool_name,
         tool_category=row.tool_category,

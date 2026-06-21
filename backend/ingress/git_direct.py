@@ -111,6 +111,8 @@ _TEXT_TOOL_CALL_RE = re.compile(
     re.I | re.DOTALL,
 )
 
+_TOOL_TAG_RE = re.compile(r"<tool>\s*(\{.*?\})\s*</tool>", re.I | re.DOTALL)
+
 
 def extract_pr_reference(text: str) -> tuple[str, int] | None:
     """Parse owner/repo and PR number from GitHub/GitLab URLs (including Slack links)."""
@@ -243,31 +245,120 @@ def normalize_tool_arguments(
     return args
 
 
+_CODE_INVESTIGATION_HINTS = (
+    "what does",
+    "what do ",
+    "how does",
+    "how do ",
+    "explain",
+    "tell me what",
+    "tell me about",
+    "what are the steps",
+    "steps of",
+    "what is the",
+    "what's the",
+    "walk me through",
+    "show me where",
+    "can you tell",
+    "where is",
+    "where does",
+    "which file",
+    "find in code",
+    "handled in",
+)
+
+
+def looks_like_code_investigation(intent: str) -> bool:
+    """Heuristic for code-structure questions that should use investigation tools."""
+    lower = intent.lower()
+    return any(hint in lower for hint in _CODE_INVESTIGATION_HINTS)
+
+
+def _extract_braced_json(text: str, start: int) -> str | None:
+    """Return a balanced {...} substring starting at start, or None."""
+    if start >= len(text) or text[start] != "{":
+        return None
+    depth = 0
+    in_string = False
+    escape = False
+    for index in range(start, len(text)):
+        char = text[index]
+        if in_string:
+            if escape:
+                escape = False
+            elif char == "\\":
+                escape = True
+            elif char == '"':
+                in_string = False
+            continue
+        if char == '"':
+            in_string = True
+        elif char == "{":
+            depth += 1
+        elif char == "}":
+            depth -= 1
+            if depth == 0:
+                return text[start : index + 1]
+    return None
+
+
+def _tool_tag_json_payloads(content: str) -> list[str]:
+    payloads: list[str] = []
+    for match in re.finditer(r"<tool>\s*", content, re.I):
+        payload = _extract_braced_json(content, match.end())
+        if payload:
+            payloads.append(payload.strip())
+    return payloads
+
+
+def _parse_tool_call_dict(data: dict[str, Any]) -> tuple[str, dict[str, Any]] | None:
+    name = data.get("name") or data.get("tool") or data.get("tool_name")
+    if not isinstance(name, str):
+        return None
+    params = (
+        data.get("parameters")
+        or data.get("arguments")
+        or data.get("input")
+        or data.get("tool_input")
+        or {}
+    )
+    if isinstance(params, str):
+        try:
+            params = json.loads(params)
+        except json.JSONDecodeError:
+            params = {}
+    if not isinstance(params, dict):
+        params = {}
+    return name, params
+
+
+def _tool_call_json_candidates(content: str) -> list[str]:
+    text = content.strip()
+    candidates: list[str] = []
+    candidates.extend(_tool_tag_json_payloads(text))
+    if text.startswith("{"):
+        candidates.append(text)
+    for match in _TEXT_TOOL_CALL_RE.finditer(text):
+        candidates.append(match.group(0))
+    return candidates
+
+
 def parse_text_tool_call(content: str) -> tuple[str, dict[str, Any]] | None:
     """Parse tool calls some models emit as JSON text instead of structured tool_calls."""
     text = content.strip()
-    if not text.startswith("{") or "name" not in text:
+    if not text:
         return None
 
-    for candidate in (text, _fix_malformed_tool_json(text)):
-        try:
-            data = json.loads(candidate)
-        except json.JSONDecodeError:
-            continue
-        if not isinstance(data, dict):
-            continue
-        name = data.get("name") or data.get("tool")
-        if not isinstance(name, str):
-            continue
-        params = data.get("parameters") or data.get("arguments") or data.get("input") or {}
-        if isinstance(params, str):
+    for candidate in _tool_call_json_candidates(text):
+        for variant in (candidate, _fix_malformed_tool_json(candidate)):
             try:
-                params = json.loads(params)
+                data = json.loads(variant)
             except json.JSONDecodeError:
-                params = {}
-        if not isinstance(params, dict):
-            params = {}
-        return name, params
+                continue
+            if not isinstance(data, dict):
+                continue
+            if parsed := _parse_tool_call_dict(data):
+                return parsed
 
     match = _TEXT_TOOL_CALL_RE.search(text)
     if match:
@@ -283,10 +374,31 @@ def parse_text_tool_call(content: str) -> tuple[str, dict[str, Any]] | None:
     return None
 
 
+def strip_text_tool_markup(content: str) -> str:
+    """Remove inline tool-call markup from assistant text."""
+    cleaned = re.sub(r"<tool>\s*\{.*?\}\s*</tool>", "", content, flags=re.I | re.DOTALL)
+    for match in list(re.finditer(r"<tool>\s*", cleaned, re.I)):
+        if payload := _extract_braced_json(cleaned, match.end()):
+            end = match.end() + len(payload)
+            trailing = cleaned[end : end + 8]
+            if trailing.lstrip().startswith("</tool>"):
+                end = end + trailing.lower().find("</tool>") + len("</tool>")
+            cleaned = cleaned[: match.start()] + cleaned[end:]
+    stripped = cleaned.strip()
+    if stripped.startswith("{") and parse_text_tool_call(stripped):
+        return ""
+    return stripped
+
+
 def looks_like_tool_json(text: str) -> bool:
     stripped = text.strip()
-    return stripped.startswith("{") and '"name"' in stripped and (
-        "parameters" in stripped or "arguments" in stripped
+    if _TOOL_TAG_RE.search(text):
+        return True
+    if parse_text_tool_call(text):
+        return True
+    return stripped.startswith("{") and (
+        ("name" in stripped and ("parameters" in stripped or "arguments" in stripped))
+        or ("tool_name" in stripped and "tool_input" in stripped)
     )
 
 

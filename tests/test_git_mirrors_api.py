@@ -70,11 +70,26 @@ def test_cleanup_all_workspaces(tmp_path):
     assert body["summary"]["workspaces_count"] == 0
 
 
-def test_delete_workspace_by_id(tmp_path):
+def test_list_available_repos_api(tmp_path):
     client, admin_token, manager = _client(tmp_path)
     headers = {"X-Alfred-Token": admin_token}
-    _seed_workspace(manager, "ui_one")
+    config, secrets = manager.load_merged()
+    config.git = GitConfig(
+        enabled=True,
+        provider="github",
+        token="ghp_test",
+        default_org="FlexyPe",
+        repos=["FlexyPe/cipher"],
+    )
+    manager.save_merged(config, secrets)
 
-    res = client.delete("/api/git/mirrors/workspaces/ui_one", headers=headers)
+    from unittest.mock import patch
+
+    with patch("backend.git.api._GitHubClient.list_accessible_repos") as mock_list:
+        mock_list.return_value = ["FlexyPe/cipher", "FlexyPe/other"]
+        res = client.get("/api/git/mirrors/repos/available", headers=headers)
+
     assert res.status_code == 200
-    assert res.json()["removed"] == "ui_one"
+    body = res.json()
+    assert body["source"] == "org"
+    assert "FlexyPe/other" in body["repos"]

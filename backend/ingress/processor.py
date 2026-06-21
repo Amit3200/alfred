@@ -100,14 +100,18 @@ class TaskProcessor:
             )
         )
 
-        matched_playbooks = self._playbooks.match(
-            task.cleaned_intent,
-            channel_id=task.channel_id,
-        )
+        repo_hint = str(task.metadata.get("repo") or task.metadata.get("repository") or "")
+
         investigation = self._playbooks.pick_investigation(
             task.cleaned_intent,
             channel_id=task.channel_id,
+            repo=repo_hint,
         )
+        if investigation is None and self.config.git.enabled:
+            from backend.ingress.git_direct import looks_like_code_investigation
+
+            if looks_like_code_investigation(task.cleaned_intent):
+                investigation = self._playbooks.get_by_name("investigate_bug")
         review_skill = self._resolve_pr_review_skill(investigation, task, session)
         omit_assistant = omit_assistant_session_history(
             task.cleaned_intent,
@@ -128,9 +132,26 @@ class TaskProcessor:
         if review_skill and self.config.git.enabled:
             pr_context_prompt, pr_metadata = self._prefetch_pr_context(task, session=session)
 
-        prompt_playbooks = [review_skill] if review_skill else ([investigation] if investigation else matched_playbooks)
+        conversational = None if active_skill else self._playbooks.pick_conversational(
+            task.cleaned_intent,
+            channel_id=task.channel_id,
+            repo=repo_hint,
+        )
+        routed_playbook = active_skill or conversational
+
+        repo_context_prompt = ""
+        if self.config.git.enabled:
+            from backend.context.generator import load_repo_context_for_prompt
+
+            repo_context_prompt = load_repo_context_for_prompt(
+                self._data_dir_path(),
+                self.config.git,
+            )
+
         extra_system = "\n\n".join(
-            part for part in (git_context_prompt, pr_context_prompt) if part
+            part
+            for part in (repo_context_prompt, git_context_prompt, pr_context_prompt)
+            if part
         )
         messages = self._build_messages(
             task,
@@ -138,8 +159,10 @@ class TaskProcessor:
             slack_context=slack_context if include_context else None,
             history_window_label=history_window_label if include_context else "",
             omit_assistant_turns=omit_assistant,
-            playbook_prompt=self._playbooks.format_for_prompt(
-                prompt_playbooks,
+            playbook_prompt=self._playbooks.format_routed_prompt(
+                routed_playbook,
+                channel_id=task.channel_id,
+                repo=repo_hint,
                 data_dir=self._data_dir_path(),
             ),
             extra_system=extra_system,
@@ -186,13 +209,13 @@ class TaskProcessor:
         if response is None:
             provider_name, provider, model_name = self._select_provider(investigation)
             logger.debug(
-                "Calling provider=%s model=%s session=%s turns=%d context=%s playbooks=%d investigation=%s",
+                "Calling provider=%s model=%s session=%s turns=%d context=%s routed_playbook=%s investigation=%s",
                 provider_name,
                 model_name,
                 session_key,
                 len(session.turns) if session else 0,
                 include_context,
-                len(prompt_playbooks),
+                routed_playbook.name if routed_playbook else None,
                 bool(investigation),
             )
 
@@ -209,18 +232,43 @@ class TaskProcessor:
                 if inv_patch:
                     metadata_patch = {**(metadata_patch or {}), **inv_patch}
             else:
+                from backend.ingress.git_direct import looks_like_tool_json
+
                 set_call_kind("chat")
                 llm_response = provider.chat(messages, model=model_name or None)
-                content = clean_response_scaffold((llm_response.content or "").strip())
-                response = (
-                    AssistantResponse.from_text(content)
-                    if content
-                    else AssistantResponse.from_text(
+                raw = (llm_response.content or "").strip()
+                content = clean_response_scaffold(raw)
+                if (not content or looks_like_tool_json(raw)) and self.config.git.enabled:
+                    inv = self._playbooks.get_by_name("investigate_bug")
+                    if inv and inv.allowed_tools:
+                        set_call_kind("investigation")
+                        inv_name, inv_provider, inv_model = self._select_provider(inv)
+                        response, inv_patch = self._run_investigation(
+                            inv,
+                            messages,
+                            provider=inv_provider,
+                            model=inv_model,
+                            task=task,
+                            session=session,
+                        )
+                        if inv_patch:
+                            metadata_patch = {**(metadata_patch or {}), **inv_patch}
+                    elif not content:
+                        response = AssistantResponse.from_text(
+                            "I couldn't generate a reply — the model returned an empty response. "
+                            "For Kimi K2.6, try again or check Admin → AI; large Slack summaries "
+                            "may need a playbook for ticket formatting."
+                        )
+                    else:
+                        response = AssistantResponse.from_text(content)
+                elif content:
+                    response = AssistantResponse.from_text(content)
+                else:
+                    response = AssistantResponse.from_text(
                         "I couldn't generate a reply — the model returned an empty response. "
                         "For Kimi K2.6, try again or check Admin → AI; large Slack summaries "
                         "may need a playbook for ticket formatting."
                     )
-                )
 
         if session_key and self.session_store:
             rendered = render_for_channel(response, channel)
@@ -416,7 +464,7 @@ class TaskProcessor:
         session: ConversationSession | None,
     ) -> tuple[AssistantResponse, dict[str, Any] | None]:
         from backend.agent.loop import run_agent_loop
-        from backend.ingress.git_direct import looks_like_tool_json
+        from backend.ingress.git_direct import looks_like_tool_json, strip_text_tool_markup
         from backend.ingress.git_context import metadata_patch_for_tool_result
         from backend.tools.git_api import build_git_tool_registry
 
@@ -454,7 +502,7 @@ class TaskProcessor:
                 registry.last_result,
             )
 
-        raw_stripped = (raw or "").strip()
+        raw_stripped = strip_text_tool_markup((raw or "").strip()).strip()
         if raw_stripped and not looks_like_tool_json(raw_stripped):
             return AssistantResponse.from_text(clean_response_scaffold(raw_stripped)), patch
 

@@ -6,13 +6,13 @@ import json
 import logging
 from typing import Any
 
-from backend.ai.base import LLMProvider, LLMResponse, Message
-from backend.ingress.git_direct import parse_text_tool_call
+from backend.ai.base import LLMProvider, LLMResponse, Message, ToolCall
+from backend.ingress.git_direct import parse_text_tool_call, strip_text_tool_markup
 from backend.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
 
-DEFAULT_MAX_ITERATIONS = 8
+DEFAULT_MAX_ITERATIONS = 20
 
 
 def run_agent_loop(
@@ -64,8 +64,17 @@ def run_agent_loop(
             if parsed:
                 name, arguments = parsed
                 if name in allowed_tools:
+                    tool_id = f"text_call_{iteration + 1}"
                     logger.info("Executing text-emitted tool call: %s", name)
-                    _execute_tool(
+                    summary = strip_text_tool_markup(content) or f"Calling {name}..."
+                    conversation.append(
+                        Message(
+                            role="assistant",
+                            content=summary,
+                            tool_calls=[ToolCall(id=tool_id, name=name, arguments=arguments)],
+                        )
+                    )
+                    observation = _execute_tool(
                         registry,
                         name,
                         arguments,
@@ -73,7 +82,15 @@ def run_agent_loop(
                         session=session,
                         git=git,
                     )
-                    return content
+                    conversation.append(
+                        Message(
+                            role="tool",
+                            content=observation,
+                            tool_call_id=tool_id,
+                            name=name,
+                        )
+                    )
+                    continue
             return content
 
         return (
@@ -81,10 +98,47 @@ def run_agent_loop(
             "Try rephrasing or check Git integration settings."
         )
 
+    synthesized = _synthesize_final_answer(provider, conversation, model=model)
+    if synthesized:
+        return synthesized
+
     return (
-        "I hit the maximum number of investigation steps. "
-        "Try a more specific question (e.g. repo name or PR number)."
+        "I searched the codebase but ran out of investigation steps before I could "
+        "finish. Try a narrower question (e.g. a specific function, file, or error message)."
     )
+
+
+def _synthesize_final_answer(
+    provider: LLMProvider,
+    conversation: list[Message],
+    *,
+    model: str | None = None,
+) -> str | None:
+    """One tool-free LLM pass to answer from gathered tool results."""
+    synthesis_messages = [
+        *conversation,
+        Message(
+            role="user",
+            content=(
+                "You reached the investigation step limit. Using only the tool results "
+                "and context above, give the user a direct answer to their question. "
+                "Cite file paths when relevant. If evidence is incomplete, summarize "
+                "what you found and what remains unclear — do not ask them to restate "
+                "the repo name if it already appears in this thread."
+            ),
+        ),
+    ]
+    try:
+        response = provider.chat(synthesis_messages, model=model)
+    except Exception:
+        logger.exception("Synthesis pass failed")
+        return None
+
+    if response.tool_calls:
+        return None
+
+    content = strip_text_tool_markup((response.content or "").strip()).strip()
+    return content or None
 
 
 def _assistant_tool_message(response: LLMResponse) -> Message:

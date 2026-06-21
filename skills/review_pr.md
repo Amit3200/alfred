@@ -25,6 +25,7 @@ allowed_channels:
 allowed_tools:
   - get_pr
   - get_pr_changes
+  - query_graph
   - grep_repo
   - read_file
   - git_log
@@ -42,7 +43,7 @@ You are a **Staff Engineer and Risk Architect**. Analyze the provided Pull Reque
 1. If **Pre-fetched PR data** is already in context, use it as the starting point. Call `get_pr` / `get_pr_changes` only when data is missing or you need more detail.
 2. Note the `head` branch from PR metadata — pass it as `ref` to `grep_repo`, `read_file`, etc.
 3. Read changed files for context when diffs are truncated or unclear.
-4. For the impact matrix, trace **direct imports** and **downstream dependencies** of each changed file using `grep_repo` and `read_file`.
+4. For the impact matrix, use `query_graph` when available, then trace **direct imports** and **downstream dependencies** of each changed file using `grep_repo` and `read_file`.
 5. Flag database/schema changes, API contract shifts, async/state issues, and deployment ordering requirements.
 6. Cite file paths from tool results and pre-fetched data; do not invent changes.
 
@@ -57,13 +58,16 @@ Return your analysis in this **exact** Markdown structure:
 ## 2. Impact Matrix & Blast Radius
 List changed files, their direct imports, and downstream dependencies (graph touchpoints).
 
-Use a *single* aligned table in a fenced code block (no markdown pipe tables, no backticks per row):
+Use a **Markdown table** (renders on GitHub; Slack converts automatically). One row per changed file — **do not** wrap the table in a code fence:
 
-```
-File Path                         | Impact Risk | Downstream Components | Breaking?
-----------------------------------+-------------+-----------------------+----------
-payload-builder/utils.ts          | Low         | acr-checkout.ts       | Backward-compatible
-```
+| File Path | Impact Risk | Downstream Components | Breaking? |
+|-----------|-------------|------------------------|-----------|
+| `payload-builder/utils.ts` | Med | `acr-checkout.ts`, `abandoned-session.ts`, `product-viewed.ts` | Behavior change (not compile break) |
+| `payload-builder/acr-checkout.ts` | Low | `index.ts`, `acr-checkout.spec.ts` | Backward-compatible |
+
+- **Impact Risk:** High / Med / Low
+- **Downstream Components:** comma-separated importers/callers (backtick file paths)
+- Keep cells concise; do not split one file across multiple rows
 
 ## 3. High-Risk Callouts
 > ⚠️ **Critical Checkpoints:**

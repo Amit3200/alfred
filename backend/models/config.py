@@ -27,7 +27,7 @@ class GitHubAppConfig(BaseModel):
     enabled: bool = False
     client_id: str = ""
     app_id: str = ""
-    bot_login: str = ""
+    bot_login: str = "alfred"
     allowed_repos: list[str] = Field(default_factory=list)
     callback_base_url: str = ""
     webhook_secret: str = ""
@@ -40,6 +40,20 @@ class GitConfig(BaseModel):
     token: str = ""
     default_org: str = ""
     repos: list[str] = Field(default_factory=list)
+    main_repo: str = Field(
+        default="",
+        description="Primary repository for default code context and investigation.",
+    )
+    graphify_enabled: bool = Field(
+        default=False,
+        description="Build Graphify knowledge graphs on sync and enable query_graph tool.",
+    )
+    graphify_extract_timeout_minutes: int = Field(
+        default=120,
+        ge=15,
+        le=360,
+        description="Max minutes to wait for graphify extract (large repos with doc/image files need more).",
+    )
     # Repo mirror — per-conversation workspaces under .alfred/repos/workspaces/
     mirror_ttl_hours: int = 24
     mirror_refresh_minutes: int = 30
@@ -83,12 +97,35 @@ class SkillsConfig(BaseModel):
     disabled: list[str] = Field(default_factory=list)
 
 
+class ModelPricingConfig(BaseModel):
+    """USD per 1M tokens — used for approximate cost estimates in Usage."""
+
+    input_per_million: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="USD per 1M input (prompt) tokens.",
+    )
+    output_per_million: float = Field(
+        default=0.0,
+        ge=0.0,
+        description="USD per 1M output (completion) tokens.",
+    )
+
+
 class ObservabilityConfig(BaseModel):
     """Usage tracking and display — optional manual Slack user aliases."""
 
     user_labels: dict[str, str] = Field(
         default_factory=dict,
         description="Map Slack user IDs (or internal keys) to display names, e.g. U0522NX5GG0: amit",
+    )
+    model_pricing: dict[str, ModelPricingConfig] = Field(
+        default_factory=dict,
+        description="Override token rates by model name (USD per 1M input/output tokens).",
+    )
+    provider_pricing: dict[str, ModelPricingConfig] = Field(
+        default_factory=dict,
+        description="Fallback token rates by provider when model is unknown.",
     )
 
 

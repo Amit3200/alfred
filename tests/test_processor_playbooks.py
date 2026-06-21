@@ -17,7 +17,7 @@ def test_processor_injects_matched_playbook(tmp_path: Path):
         """---
 name: test-playbook
 triggers:
-  - summarize
+  - unique-summarize-keyword
 ---
 
 Always include a code block table.
@@ -39,11 +39,12 @@ Always include a code block table.
         channel_id="C1",
         thread_ts="1.0",
         raw_text="@alfred summarize alerts",
-        cleaned_intent="summarize alerts",
+        cleaned_intent="unique-summarize-keyword for merchants",
     )
     processor.process(task)
 
     messages = mock_provider.chat.call_args.args[0]
     system = messages[0].content
-    assert "Domain playbooks" in system
+    assert "Available playbooks & skills" in system
+    assert "## Active playbook (loaded for this request)" in system
     assert "code block table" in system
