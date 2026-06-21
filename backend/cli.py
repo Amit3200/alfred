@@ -316,6 +316,94 @@ def stop_cmd(data_dir: Path | None, with_ollama: bool, with_frontend: bool) -> N
 
 
 @main.group()
+def slack() -> None:
+    """Slack workspace utilities."""
+
+
+@slack.command("emojis")
+@click.option("--data-dir", type=click.Path(path_type=Path), default=None)
+@click.option("--search", "-q", default=None, help="Filter emoji names (case-insensitive).")
+@click.option(
+    "--aliases/--no-aliases",
+    default=False,
+    help="Include emoji aliases (default: custom emoji only).",
+)
+@click.option(
+    "--yaml",
+    "as_yaml",
+    is_flag=True,
+    help="Print a ready-to-paste slack.loading_messages YAML snippet.",
+)
+def slack_emojis(
+    data_dir: Path | None,
+    search: str | None,
+    aliases: bool,
+    as_yaml: bool,
+) -> None:
+    """List custom Slack emoji shortcodes for thinking-status lines."""
+    from backend.slack.emojis import (
+        example_loading_line,
+        fetch_workspace_emojis,
+        filter_workspace_emojis,
+        format_emojis_yaml,
+        slack_bot_client,
+    )
+
+    manager = ConfigManager(data_dir)
+    if not manager.is_initialized():
+        click.echo("Alfred not initialized. Run: alfred init")
+        raise SystemExit(1)
+
+    config, _ = manager.load_merged()
+    token = (config.slack.bot_token or "").strip()
+    if not token.startswith("xoxb-"):
+        click.echo("Slack bot token (xoxb-) not configured. Add it in the admin UI Secrets panel.")
+        raise SystemExit(1)
+
+    try:
+        emojis = fetch_workspace_emojis(slack_bot_client(token))
+    except RuntimeError as exc:
+        click.echo(str(exc), err=True)
+        raise SystemExit(1) from exc
+    except Exception as exc:
+        click.echo(f"Failed to list Slack emojis: {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    matches = filter_workspace_emojis(
+        emojis,
+        search=search,
+        include_aliases=aliases,
+        custom_only=not aliases,
+    )
+    if not matches:
+        if search:
+            click.echo(f"No emojis matching {search!r}.")
+        else:
+            click.echo("No custom workspace emojis found.")
+        raise SystemExit(0)
+
+    if as_yaml:
+        click.echo(format_emojis_yaml(matches))
+    else:
+        for item in matches:
+            if item.kind == "alias" and item.target_shortcode:
+                click.echo(f"{item.shortcode}  ->  {item.target_shortcode}")
+            else:
+                click.echo(item.shortcode)
+
+    custom_count = sum(1 for item in emojis if item.kind == "custom")
+    click.echo("", err=True)
+    click.echo(
+        f"{len(matches)} shown · {custom_count} custom emoji(s) in workspace",
+        err=True,
+    )
+    if not as_yaml:
+        click.echo("Add to .alfred/config.yaml under slack.loading_messages, e.g.:", err=True)
+        click.echo(f'  - "{example_loading_line(matches[0].name)}"', err=True)
+        click.echo("Or run: alfred slack emojis --yaml", err=True)
+
+
+@main.group()
 def git() -> None:
     """Manage local repository mirrors."""
 

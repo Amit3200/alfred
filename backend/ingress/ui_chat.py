@@ -11,7 +11,7 @@ from typing import Any
 from backend.config_manager import ConfigManager
 from backend.ingress.chat_export import export_session_markdown, wants_export_markdown
 from backend.ingress.render import render_for_channel
-from backend.ingress.processor import TaskProcessor
+from backend.ingress.processor import STRUCTURED_TOOL_KINDS, TaskProcessor
 from backend.models.session import ConversationSession, session_key_for_task
 from backend.models.task import Task
 from backend.storage.session_store import SessionStore
@@ -104,7 +104,10 @@ class UIChatService:
             metadata={"chat_id": chat_id, "user_label": "Admin UI"},
         )
         response = self.processor.process(task)
-        reply = render_for_channel(response, "ui")
+        if response.payload.kind in STRUCTURED_TOOL_KINDS and response.text:
+            reply = response.text
+        else:
+            reply = render_for_channel(response, "ui")
         return {
             "reply": reply,
             "payload": response.payload.model_dump(),

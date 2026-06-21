@@ -19,6 +19,15 @@ class SlackConfig(BaseModel):
     signing_secret: str = ""
     app_token: str = ""
     allowed_channels: list[str] = Field(default_factory=lambda: ["*"])
+    loading_messages: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Optional workspace-specific thinking lines for Slack Assistant status. "
+            "Use custom emoji shortcodes from your workspace, e.g. "
+            "':this_is_fine: Everything is fine. Checking prod…'. "
+            "Mixed randomly with built-in defaults (up to 10 per request)."
+        ),
+    )
 
 
 class GitHubAppConfig(BaseModel):
@@ -68,7 +77,38 @@ class AWSConfig(BaseModel):
     access_key_id: str = ""
     secret_access_key: str = ""
     allowed_services: list[str] = Field(
-        default_factory=lambda: ["cloudwatch", "ecs", "s3"]
+        default_factory=lambda: ["cloudwatch", "athena", "ecs", "s3"]
+    )
+    athena_database: str = Field(
+        default="",
+        description="Default Glue/Athena database for athena_query.",
+    )
+    athena_workgroup: str = Field(
+        default="primary",
+        description="Athena workgroup name.",
+    )
+    athena_output_location: str = Field(
+        default="",
+        description="S3 prefix for Athena query results, e.g. s3://bucket/athena/.",
+    )
+    log_group_map: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Map service short names to CloudWatch log groups, "
+            "e.g. 'checkout-api': '/ecs/checkout-api'."
+        ),
+    )
+    grade_events_database: str = Field(
+        default="",
+        description="Glue/Athena database for grade_events. Falls back to athena_database.",
+    )
+    grade_events_table: str = Field(
+        default="grade_events",
+        description="Athena table name for FlexyPe checkout event dumps.",
+    )
+    grade_events_s3_location: str = Field(
+        default="",
+        description="S3 location of grade_events data (documentation / validation).",
     )
 
 

@@ -56,12 +56,14 @@ export const SECRETS_HELP: Record<string, HelpGuide> = {
   aws: {
     title: "AWS",
     summary:
-      "IAM credentials for read-only CloudWatch, ECS, and S3 queries. Use a scoped policy — not root keys.",
+      "IAM credentials or a server-side AWS profile for read-only Athena and CloudWatch Logs queries.",
     steps: [
-      "IAM → Users → Create user with programmatic access.",
-      "Attach a custom policy limiting to: logs:FilterLogEvents, ecs:Describe*, s3:ListBucket, s3:GetObject.",
-      "Copy Access Key ID and Secret Access Key.",
-      "Alternatively, leave blank and use an AWS profile configured on the server (see Integrations tab).",
+      "IAM → create a user/role with scoped read access (see policy hints below).",
+      "CloudWatch Logs: logs:DescribeLogGroups, logs:StartQuery, logs:GetQueryResults, logs:FilterLogEvents.",
+      "Athena: athena:StartQueryExecution, athena:GetQueryExecution, athena:GetQueryResults, athena:StopQueryExecution, plus glue:GetDatabase and s3 read/write on the query results bucket.",
+      "Copy Access Key ID and Secret Access Key, or leave them blank and set Integrations → Profile (e.g. default).",
+      "Set aws.athena_database, aws.athena_output_location, and aws.log_group_map in config.yaml for your environment.",
+      "Requires: pip install alfred-agent[aws] or boto3.",
     ],
     links: [{ label: "IAM best practices", href: "https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html" }],
   },

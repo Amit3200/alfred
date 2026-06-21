@@ -113,26 +113,22 @@ def check_aws(config: AlfredConfig) -> dict:
     if not config.aws.enabled:
         return {"ok": False, "skipped": True, "message": "AWS disabled"}
     try:
-        import boto3
-    except ImportError:
-        return {"ok": False, "message": "boto3 not installed (optional)"}
-    try:
-        if config.aws.access_key_id and config.aws.secret_access_key:
-            sts = boto3.client(
-                "sts",
-                region_name=config.aws.region,
-                aws_access_key_id=config.aws.access_key_id,
-                aws_secret_access_key=config.aws.secret_access_key,
-            )
-        else:
-            session = boto3.Session(profile_name=config.aws.profile)
-            sts = session.client("sts")
-        identity = sts.get_caller_identity()
+        from backend.aws.session import aws_call, aws_client
+
+        sts = aws_client(config, "sts", check_allowed=False)
+        identity = aws_call(
+            config,
+            "sts",
+            "GetCallerIdentity",
+            lambda: sts.get_caller_identity(),
+        )
         return {
             "ok": True,
             "message": f"Account {identity.get('Account')}",
             "arn": identity.get("Arn"),
         }
+    except RuntimeError as exc:
+        return {"ok": False, "message": str(exc)}
     except Exception as exc:
         return {"ok": False, "message": str(exc)}
 

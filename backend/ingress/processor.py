@@ -40,6 +40,10 @@ STRUCTURED_TOOL_KINDS = frozenset(
         "jira_list",
         "jira_detail",
         "jira_action",
+        "athena_query",
+        "cloudwatch_query",
+        "cloudwatch_log_groups",
+        "grade_events_query",
     }
 )
 
@@ -314,7 +318,10 @@ class TaskProcessor:
                     )
 
         if session_key and self.session_store:
-            rendered = render_for_channel(response, channel)
+            if response.payload.kind in STRUCTURED_TOOL_KINDS and response.text:
+                rendered = response.text
+            else:
+                rendered = render_for_channel(response, channel)
             self.session_store.append_exchange(
                 session_key,
                 source=task.source,
@@ -618,13 +625,21 @@ class TaskProcessor:
             )
 
         raw_stripped = strip_text_tool_markup((raw or "").strip()).strip()
-        if raw_stripped and not looks_like_tool_json(raw_stripped):
-            return AssistantResponse.from_text(clean_response_scaffold(raw_stripped)), patch
+        prose = (
+            clean_response_scaffold(raw_stripped)
+            if raw_stripped and not looks_like_tool_json(raw_stripped)
+            else ""
+        )
 
         if registry.last_result and registry.last_result.kind in STRUCTURED_TOOL_KINDS:
             structured = _tool_result_to_response(registry.last_result)
             if structured is not None:
+                if prose:
+                    structured.text = prose
                 return structured, patch
+
+        if prose:
+            return AssistantResponse.from_text(prose), patch
 
         if looks_like_tool_json(raw_stripped):
             return (

@@ -20,6 +20,10 @@ PayloadKind = Literal[
     "jira_list",
     "jira_detail",
     "jira_action",
+    "athena_query",
+    "cloudwatch_query",
+    "cloudwatch_log_groups",
+    "grade_events_query",
 ]
 
 
@@ -43,5 +47,11 @@ class AssistantResponse(BaseModel):
         return cls(payload=ResponsePayload(kind="error", data={"message": message}), text=message)
 
     @classmethod
-    def structured(cls, kind: PayloadKind, data: dict[str, Any]) -> AssistantResponse:
-        return cls(payload=ResponsePayload(kind=kind, data=data))
+    def structured(
+        cls,
+        kind: PayloadKind,
+        data: dict[str, Any],
+        *,
+        text: str | None = None,
+    ) -> AssistantResponse:
+        return cls(payload=ResponsePayload(kind=kind, data=data), text=text)

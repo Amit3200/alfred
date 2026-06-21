@@ -22,15 +22,70 @@ STATUS_LINES: list[tuple[str, str]] = [
     ("🧭", "Triangulating the root cause…"),
     ("🛠️", "Tuning the flux capacitor…"),
     ("🗺️", "Mapping dependencies…"),
+    # Cats
+    ("🐱", "Judging your query from atop the keyboard…"),
+    ("😺", "Purring through the logs…"),
+    ("🐈", "Knocking your priorities off the desk…"),
+    ("😸", "Cat is sitting on the router again…"),
+    ("🙀", "Staring at the void (and the error message)…"),
+    # Alfred / butler
+    ("🎩", "I am just a butler…"),
+    ("🍵", "Polishing the silver while the servers spin…"),
+    ("🦹", "Trying to become vengeance…"),
+    ("🦸", "Fighting Superman with kryptonite…"),
+    ("🕷️", "Contacting Spider-Man…"),
+    ("🦾", "Borrowing something from Iron Man…"),
+    ("💰", "Drafting a pay-raise request to Bruce Wayne…"),
+    ("📋", "Some men just want to watch the world grep…"),
+    # Life & chaos
+    ("🕳️", "Filling potholes on the information superhighway…"),
+    ("🌍", "Fighting global warming one query at a time…"),
+    ("♟️", "Asking Samay for life goals…"),
+    ("💻", "Grinding LeetCode instead of your ticket…"),
+    ("⚔️", "Fighting AI in the parking lot…"),
+    ("🧠", "Negotiating with the singularity…"),
+    ("🎬", "This is Alfred. I am inevitable…"),
+    # More pop culture & tech
+    ("⚡", "Waiting for Gandalf to arrive at prod…"),
+    ("💍", "One does not simply deploy to Mordor…"),
+    ("🐍", "There is no spoon — only stack overflow…"),
+    ("🧙", "You shall not pass… without unit tests…"),
+    ("🎮", "Press F to pay respects to the build…"),
+    ("🖖", "Live long and grep prosper…"),
+    ("👾", "Pac-Man is eating the latency spikes…"),
+    ("🎸", "Smells like teen spirit (and stale coffee)…"),
+    ("🧊", "Let it go… let it cache…"),
+    ("🐉", "Training dragons on your dataset…"),
+    ("🎯", "Winter is coming — bundle up the deps…"),
+    ("🍕", "Deploying pizza to the on-call engineer…"),
+    ("🧪", "Breaking bad… habits in the codebase…"),
+    ("🎪", "This is fine. Everything is fine. Checking logs…"),
+    ("🏃", "Running from responsibility at O(n) speed…"),
+    ("🎰", "Spinning up another microservice…"),
+    ("🦥", "Moving at sloth speed through the backlog…"),
+    ("🎱", "Shaken, not stirred — mixing the API response…"),
+    ("🚕", "Follow the yellow brick stack trace…"),
+    ("🔮", "Consulting the oracle (it said try again)…"),
 ]
 
 MAX_LOADING_MESSAGES = 10
 ASSISTANT_STATUS = "is thinking…"
 
 
-def loading_messages_for_slack(*, count: int = MAX_LOADING_MESSAGES) -> list[str]:
+def _default_status_lines() -> list[str]:
+    return [f"{emoji} {line}" for emoji, line in STATUS_LINES]
+
+
+def loading_messages_for_slack(
+    *,
+    custom_lines: list[str] | None = None,
+    count: int = MAX_LOADING_MESSAGES,
+) -> list[str]:
     """Build loading_messages for assistant.threads.setStatus (max 10)."""
-    pool = [f"{emoji} {line}" for emoji, line in STATUS_LINES]
+    custom = [line.strip() for line in (custom_lines or []) if line and line.strip()]
+    defaults = _default_status_lines()
+    pool = custom + defaults
+
     if len(pool) <= count:
         return pool
     return random.sample(pool, count)
@@ -45,10 +100,12 @@ class ThinkingIndicator:
         *,
         channel: str,
         thread_ts: str | None,
+        loading_messages: list[str] | None = None,
     ) -> None:
         self.client = client
         self.channel = channel
         self.thread_ts = thread_ts
+        self._loading_messages = loading_messages
         self._assistant_active = False
         self._legacy_message_ts: str | None = None
 
@@ -94,7 +151,7 @@ class ThinkingIndicator:
                 channel_id=self.channel,
                 thread_ts=self.thread_ts,
                 status=ASSISTANT_STATUS,
-                loading_messages=loading_messages_for_slack(),
+                loading_messages=loading_messages_for_slack(custom_lines=self._loading_messages),
             )
             return bool(response.get("ok"))
         except Exception:
@@ -113,11 +170,13 @@ class ThinkingIndicator:
 
     def _start_legacy_placeholder(self) -> None:
         """Fallback when Assistant API is unavailable (shows edited badge on update)."""
-        emoji, line = random.choice(STATUS_LINES)
+        line = random.choice(
+            loading_messages_for_slack(custom_lines=self._loading_messages, count=MAX_LOADING_MESSAGES)
+        )
         response = self.client.chat_postMessage(
             channel=self.channel,
             thread_ts=self.thread_ts,
-            text=f"{emoji}  _{line}_",
+            text=f"_{line}_",
         )
         self._legacy_message_ts = response.get("ts")
 

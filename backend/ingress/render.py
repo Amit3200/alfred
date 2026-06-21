@@ -5,6 +5,12 @@ from __future__ import annotations
 from typing import Literal
 
 from backend.git.api import PullRequestSummary
+from backend.ingress.aws_format import (
+    format_athena_query,
+    format_cloudwatch_log_groups,
+    format_cloudwatch_query,
+    format_grade_events_query,
+)
 from backend.ingress.git_format import format_pr_detail, format_prs
 from backend.ingress.github_format import format_for_github
 from backend.ingress.jira_format import format_jira_action, format_jira_detail, format_jira_issues
@@ -47,6 +53,14 @@ def render_for_channel(response: AssistantResponse, channel: Channel) -> str:
         return _render_jira_detail(payload, channel)
     if payload.kind == "jira_action":
         return _render_jira_action(payload, channel)
+    if payload.kind == "athena_query":
+        return _render_athena_query(payload, channel)
+    if payload.kind == "cloudwatch_query":
+        return _render_cloudwatch_query(payload, channel)
+    if payload.kind == "cloudwatch_log_groups":
+        return _render_cloudwatch_log_groups(payload, channel)
+    if payload.kind == "grade_events_query":
+        return _render_grade_events_query(payload, channel)
     return _format_text(response.text or "", channel)
 
 
@@ -148,6 +162,24 @@ def _render_jira_detail(payload: ResponsePayload, channel: Channel) -> str:
 def _render_jira_action(payload: ResponsePayload, channel: Channel) -> str:
     action = str(payload.data.get("action") or "")
     return format_jira_action(action, payload.data, slack=channel == "slack")
+
+
+def _render_athena_query(payload: ResponsePayload, channel: Channel) -> str:
+    return format_athena_query(payload.data, slack=channel == "slack")
+
+
+def _render_cloudwatch_query(payload: ResponsePayload, channel: Channel) -> str:
+    return format_cloudwatch_query(payload.data, slack=channel == "slack")
+
+
+def _render_cloudwatch_log_groups(payload: ResponsePayload, channel: Channel) -> str:
+    groups = [str(item) for item in payload.data.get("groups") or []]
+    prefix = str(payload.data.get("prefix") or "")
+    return format_cloudwatch_log_groups(groups, prefix=prefix, slack=channel == "slack")
+
+
+def _render_grade_events_query(payload: ResponsePayload, channel: Channel) -> str:
+    return format_grade_events_query(payload.data, slack=channel == "slack")
 
 
 def _format_text(text: str, channel: Channel) -> str:

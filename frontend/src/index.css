@@ -1077,12 +1077,16 @@ body,
   background: var(--alfred-surface-muted);
   border: 1px solid var(--alfred-border-subtle);
   overflow-x: auto;
+  white-space: pre;
+  word-break: normal;
 }
 
 .alfred-chat-markdown pre code {
   padding: 0;
   border: none;
   background: transparent;
+  white-space: pre;
+  display: block;
 }
 
 .alfred-chat-markdown a {
@@ -1186,6 +1190,162 @@ body,
 
 .alfred-repo-list li {
   padding: 6px 0;
+}
+
+/* ── AWS / grade_events query results ── */
+.alfred-grade-events-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 8px 12px;
+  margin-bottom: 12px;
+  font-size: 13px;
+  color: var(--alfred-text-faint);
+}
+
+.alfred-grade-events-meta-title {
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--alfred-text);
+}
+
+.alfred-grade-events-analysis {
+  margin-bottom: 14px;
+}
+
+.alfred-grade-events-list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.alfred-grade-event-card {
+  border: 1px solid var(--alfred-border-subtle);
+  border-radius: 10px;
+  background: var(--alfred-surface-muted);
+  padding: 12px 14px;
+}
+
+.alfred-grade-event-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.alfred-grade-event-kind {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--alfred-accent);
+  word-break: break-all;
+}
+
+.alfred-grade-event-time {
+  font-size: 12px;
+  color: var(--alfred-text-faint);
+  white-space: nowrap;
+}
+
+.alfred-grade-event-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+  gap: 8px 12px;
+  margin: 0;
+}
+
+.alfred-grade-event-field {
+  min-width: 0;
+}
+
+.alfred-grade-event-field dt {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--alfred-text-faint);
+}
+
+.alfred-grade-event-field dd {
+  margin: 2px 0 0;
+  font-size: 13px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alfred-grade-event-data {
+  margin-top: 10px;
+  font-size: 12px;
+}
+
+.alfred-grade-event-data summary {
+  cursor: pointer;
+  color: var(--alfred-text-faint);
+  user-select: none;
+}
+
+.alfred-grade-event-data pre {
+  margin: 8px 0 0;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--alfred-surface);
+  border: 1px solid var(--alfred-border-subtle);
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.alfred-aws-query {
+  width: 100%;
+  min-width: 0;
+}
+
+.alfred-aws-table-wrap {
+  overflow-x: auto;
+  border: 1px solid var(--alfred-border-subtle);
+  border-radius: 10px;
+  background: var(--alfred-surface-muted);
+}
+
+.alfred-aws-table {
+  width: max-content;
+  min-width: 100%;
+  border-collapse: collapse;
+  font-size: 12px;
+}
+
+.alfred-aws-table th,
+.alfred-aws-table td {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--alfred-border-subtle);
+  text-align: left;
+  vertical-align: top;
+  white-space: nowrap;
+  max-width: 280px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.alfred-aws-table th {
+  position: sticky;
+  top: 0;
+  background: var(--alfred-surface);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  color: var(--alfred-text-faint);
+}
+
+.alfred-aws-table tbody tr:last-child td {
+  border-bottom: none;
 }
 
 .alfred-chat-error {

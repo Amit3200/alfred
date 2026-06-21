@@ -43,6 +43,13 @@ export type AlfredConfig = {
     access_key_id: string;
     secret_access_key: string;
     allowed_services: string[];
+    athena_database: string;
+    athena_workgroup: string;
+    athena_output_location: string;
+    log_group_map: Record<string, string>;
+    grade_events_database: string;
+    grade_events_table: string;
+    grade_events_s3_location: string;
   };
   jira: {
     enabled: boolean;
@@ -403,7 +410,11 @@ export type ResponsePayload = {
     | "git_show"
     | "jira_list"
     | "jira_detail"
-    | "jira_action";
+    | "jira_action"
+    | "athena_query"
+    | "cloudwatch_query"
+    | "cloudwatch_log_groups"
+    | "grade_events_query";
   data: Record<string, unknown>;
 };
 

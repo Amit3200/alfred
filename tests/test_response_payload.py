@@ -11,6 +11,12 @@ def test_response_payload_accepts_jira_kinds():
         assert payload.kind == kind
 
 
+def test_response_payload_accepts_aws_kinds():
+    for kind in ("athena_query", "cloudwatch_query", "cloudwatch_log_groups", "grade_events_query"):
+        payload = ResponsePayload(kind=kind, data={})
+        assert payload.kind == kind
+
+
 def test_assistant_response_structured_jira_list():
     response = AssistantResponse.structured(
         "jira_list",

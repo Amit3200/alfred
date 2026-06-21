@@ -52,6 +52,22 @@ class ToolResult:
     def jira_action(cls, action: str, data: dict[str, Any]) -> ToolResult:
         return cls(kind="jira_action", data={"action": action, **data})
 
+    @classmethod
+    def athena_query(cls, data: dict[str, Any]) -> ToolResult:
+        return cls(kind="athena_query", data=data)
+
+    @classmethod
+    def cloudwatch_query(cls, data: dict[str, Any]) -> ToolResult:
+        return cls(kind="cloudwatch_query", data=data)
+
+    @classmethod
+    def cloudwatch_log_groups(cls, groups: list[str], *, prefix: str = "") -> ToolResult:
+        return cls(kind="cloudwatch_log_groups", data={"groups": groups, "prefix": prefix})
+
+    @classmethod
+    def grade_events_query(cls, data: dict[str, Any]) -> ToolResult:
+        return cls(kind="grade_events_query", data=data)
+
 
 def pr_summary_to_dict(pr: PullRequestSummary) -> dict[str, Any]:
     return {

@@ -72,7 +72,12 @@ def build_slack_bolt_app(
             thread_ts,
             task.cleaned_intent[:120],
         )
-        indicator = ThinkingIndicator(client, channel=channel, thread_ts=thread_ts)
+        indicator = ThinkingIndicator(
+            client,
+            channel=channel,
+            thread_ts=thread_ts,
+            loading_messages=config.slack.loading_messages or None,
+        )
         indicator.start()
 
         worker = threading.Thread(

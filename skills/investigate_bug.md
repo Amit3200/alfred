@@ -34,6 +34,9 @@ allowed_tools:
   - git_show
   - get_pr
   - list_repos
+  - cloudwatch_query
+  - list_cloudwatch_log_groups
+  - athena_query
 requires_thread_context: true
 ---
 
@@ -50,6 +53,7 @@ Each Slack thread or UI chat has its **own mirror workspace** — do not assume 
 4. Use `read_file` for surrounding context (cite `path:line`).
 5. Pass `ref` when investigating a PR branch (use `head` from `get_pr`) or a named branch.
 6. Use `git_log` / `git_blame` / `git_show` when history or authorship matters.
+7. When the question involves production errors or runtime behavior, use `cloudwatch_query` (by `service_name` or `log_group`) or `athena_query` for dataset lookups.
 
 # Response format
 

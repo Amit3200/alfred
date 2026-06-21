@@ -2,10 +2,12 @@
 
 from __future__ import annotations
 
+import random
 from unittest.mock import MagicMock
 
 from backend.slack.status import (
     ASSISTANT_STATUS,
+    STATUS_LINES,
     ThinkingIndicator,
     loading_messages_for_slack,
 )
@@ -13,8 +15,64 @@ from backend.slack.status import (
 
 def test_loading_messages_max_ten():
     messages = loading_messages_for_slack()
-    assert len(messages) <= 10
-    assert any("cooking" in m for m in messages)
+    assert len(messages) == 10
+    assert all(message.strip() for message in messages)
+
+
+def test_loading_messages_mixes_custom_and_defaults(monkeypatch):
+    custom = [
+        ":this_is_fine: Everything is fine. Checking prod…",
+        ":rollsafe: Big brain debugging…",
+    ]
+    defaults = {f"{emoji} {line}" for emoji, line in STATUS_LINES}
+
+    def sample_first(pool: list[str], count: int) -> list[str]:
+        return pool[:count]
+
+    monkeypatch.setattr(random, "sample", sample_first)
+    messages = loading_messages_for_slack(custom_lines=custom)
+
+    assert len(messages) == 10
+    assert messages[:2] == custom
+    assert any(message in defaults for message in messages[2:])
+
+
+def test_loading_messages_returns_full_merged_pool_when_under_limit():
+    custom = [":doge: Much query.", ":cat: Meow."]
+    messages = loading_messages_for_slack(custom_lines=custom, count=1000)
+    assert messages[:2] == custom
+    assert len(messages) == 2 + len(STATUS_LINES)
+
+
+def test_loading_messages_samples_from_merged_pool():
+    custom = [f":emoji_{index}: line {index}" for index in range(12)]
+    messages = loading_messages_for_slack(custom_lines=custom)
+    assert len(messages) == 10
+    defaults = {f"{emoji} {line}" for emoji, line in STATUS_LINES}
+    assert all(message in set(custom) or message in defaults for message in messages)
+
+
+def test_assistant_status_uses_mixed_loading_messages(monkeypatch):
+    client = MagicMock()
+    client.assistant_threads_setStatus.return_value = {"ok": True}
+    custom = [":doge: Much query. Very wait."]
+
+    def sample_first(pool: list[str], count: int) -> list[str]:
+        return pool[:count]
+
+    monkeypatch.setattr(random, "sample", sample_first)
+
+    indicator = ThinkingIndicator(
+        client,
+        channel="C1",
+        thread_ts="100.1",
+        loading_messages=custom,
+    )
+    indicator.start()
+
+    call = client.assistant_threads_setStatus.call_args.kwargs
+    assert call["loading_messages"][0] == custom[0]
+    assert any("cooking" in message for message in call["loading_messages"])
 
 
 def test_assistant_status_on_start_and_finish():

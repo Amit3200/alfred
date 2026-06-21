@@ -174,4 +174,8 @@ def build_git_tool_registry(
 
     register_jira_tools(registry, config)
 
+    from backend.tools.aws_tool import register_aws_tools
+
+    register_aws_tools(registry, config)
+
     return registry

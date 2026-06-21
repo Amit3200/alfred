@@ -21,7 +21,7 @@ fi
 
 echo "==> Installing backend (editable)"
 .venv/bin/pip install --upgrade pip hatchling -q
-.venv/bin/pip install -e ".[ai,dev]" -q
+.venv/bin/pip install -e ".[ai,dev,aws]" -q
 
 echo "==> Installing frontend"
 cd frontend

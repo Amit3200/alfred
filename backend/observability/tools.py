@@ -18,7 +18,14 @@ GIT_TOOLS = frozenset(
     }
 )
 
-AWS_TOOLS = frozenset()
+AWS_TOOLS = frozenset(
+    {
+        "athena_query",
+        "cloudwatch_query",
+        "list_cloudwatch_log_groups",
+        "grade_events_query",
+    }
+)
 SLACK_TOOLS = frozenset()
 JIRA_TOOLS = frozenset(
     {
