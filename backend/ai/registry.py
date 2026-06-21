@@ -7,27 +7,41 @@ from backend.ai.base import LLMProvider
 from backend.ai.gemini_adapter import GeminiProvider
 from backend.ai.openai_compat import OpenAICompatProvider
 from backend.models.config import AIConfig, AIProviderConfig, AlfredConfig
+from backend.observability.instrumentation import InstrumentedLLMProvider
+from backend.observability.recorder import get_recorder
 
 
 OPENAI_COMPAT_NAMES = {"ollama", "openai", "groq", "together", "mistral", "kimi"}
 
 
-def build_provider(name: str, config: AIProviderConfig) -> LLMProvider:
+def build_provider(
+    name: str,
+    config: AIProviderConfig,
+    *,
+    data_dir=None,
+) -> LLMProvider:
     if name == "anthropic":
-        return AnthropicProvider(config)
-    if name == "gemini":
-        return GeminiProvider(config)
-    return OpenAICompatProvider(name, config)
+        base: LLMProvider = AnthropicProvider(config)
+    elif name == "gemini":
+        base = GeminiProvider(config)
+    else:
+        base = OpenAICompatProvider(name, config)
+    return InstrumentedLLMProvider(
+        base,
+        provider_name=name,
+        recorder=get_recorder(data_dir),
+    )
 
 
 class LLMRouter:
-    def __init__(self, ai_config: AIConfig) -> None:
+    def __init__(self, ai_config: AIConfig, *, data_dir=None) -> None:
         self.ai_config = ai_config
+        self._data_dir = data_dir
         self._providers: dict[str, LLMProvider] = {}
 
     @classmethod
-    def from_config(cls, config: AlfredConfig) -> "LLMRouter":
-        return cls(config.ai)
+    def from_config(cls, config: AlfredConfig, *, data_dir=None) -> "LLMRouter":
+        return cls(config.ai, data_dir=data_dir or getattr(config, "_data_dir", None))
 
     def get(self, provider_name: str | None = None) -> LLMProvider:
         name = provider_name or self.ai_config.default_provider
@@ -35,7 +49,7 @@ class LLMRouter:
             provider_cfg = self.ai_config.providers.get(name)
             if provider_cfg is None:
                 raise KeyError(f"Unknown AI provider: {name}")
-            self._providers[name] = build_provider(name, provider_cfg)
+            self._providers[name] = build_provider(name, provider_cfg, data_dir=self._data_dir)
         return self._providers[name]
 
     def for_task(self, task_type: str) -> LLMProvider:

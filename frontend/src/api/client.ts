@@ -234,6 +234,31 @@ export const api = {
       { method: "POST", body: JSON.stringify({ repos: repos ?? [] }) },
       true,
     ),
+
+  observabilitySummary: (params: ObservabilityQuery = {}) =>
+    request<ObservabilitySummaryResponse>(
+      `/api/observability/summary${buildObservabilityQuery(params)}`,
+      {},
+      true,
+    ),
+  observabilityTimeseries: (params: ObservabilityQuery = {}) =>
+    request<ObservabilityTimeseriesResponse>(
+      `/api/observability/timeseries${buildObservabilityQuery(params)}`,
+      {},
+      true,
+    ),
+  observabilityEvents: (params: ObservabilityQuery & { limit?: number; offset?: number } = {}) =>
+    request<ObservabilityEventsResponse>(
+      `/api/observability/events${buildObservabilityQuery(params)}`,
+      {},
+      true,
+    ),
+  observabilityFilters: (preset = "30d") =>
+    request<ObservabilityFilterOptions>(
+      `/api/observability/filters?preset=${encodeURIComponent(preset)}`,
+      {},
+      true,
+    ),
 };
 
 export type ChatSessionSummary = {
@@ -327,3 +352,98 @@ export type GitMirrorSyncResult = {
   shared: GitMirrorShared[];
   summary: GitMirrorSummary;
 };
+
+export type ObservabilityQuery = {
+  preset?: string;
+  bucket?: "hour" | "day" | "month";
+  source?: string;
+  user?: string;
+  model?: string;
+  provider?: string;
+  event_type?: "llm_call" | "tool_call";
+  tool_category?: string;
+  since?: string;
+  until?: string;
+};
+
+export type ObservabilitySummary = {
+  llm_calls: number;
+  tool_calls: number;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  by_source: Record<string, number>;
+  by_user: Record<string, number>;
+  by_model: Record<string, number>;
+  by_tool_category: Record<string, number>;
+};
+
+export type ObservabilityTimeseries = {
+  bucket: "hour" | "day" | "month";
+  points: Array<{
+    period: string;
+    llm_calls: number;
+    tool_calls: number;
+    total_tokens: number;
+  }>;
+};
+
+export type ObservabilityEvent = {
+  recorded_at: string;
+  event_type: "llm_call" | "tool_call";
+  source: string;
+  user_id: string;
+  user_label: string;
+  user_display_name?: string;
+  task_id?: string | null;
+  session_key?: string | null;
+  provider?: string | null;
+  model?: string | null;
+  call_kind: string;
+  skill_name?: string | null;
+  prompt_tokens: number;
+  completion_tokens: number;
+  total_tokens: number;
+  duration_ms?: number | null;
+  tool_name?: string | null;
+  tool_category?: string | null;
+  success: boolean;
+  metadata?: Record<string, unknown>;
+};
+
+export type ObservabilityFilters = Record<string, unknown>;
+
+export type ObservabilitySummaryResponse = {
+  filters: ObservabilityFilters;
+  summary: ObservabilitySummary;
+};
+
+export type ObservabilityTimeseriesResponse = {
+  filters: ObservabilityFilters;
+  timeseries: ObservabilityTimeseries;
+};
+
+export type ObservabilityEventsResponse = {
+  filters: ObservabilityFilters;
+  total: number;
+  events: ObservabilityEvent[];
+};
+
+export type ObservabilityFilterOptions = {
+  sources: string[];
+  users: string[];
+  models: string[];
+  providers: string[];
+  tool_categories: string[];
+};
+
+function buildObservabilityQuery(params: ObservabilityQuery & { limit?: number; offset?: number }) {
+  const search = new URLSearchParams();
+  for (const [key, value] of Object.entries(params)) {
+    if (value !== undefined && value !== null && value !== "") {
+      search.set(key, String(value));
+    }
+  }
+  const query = search.toString();
+  return query ? `?${query}` : "";
+}

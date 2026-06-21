@@ -4,6 +4,18 @@ Playbooks teach Alfred how **your company** formats answers and maps fields — 
 
 Alfred loads Markdown files from **`.alfred/playbooks/*.md`** at runtime. Copy and edit the example below; add more files as you grow.
 
+## Do not commit company playbooks
+
+Playbooks are **company-specific** (alert bots, merchant fields, internal naming). They live under **`.alfred/playbooks/`**, which is inside **`.alfred/`** — that entire directory is **gitignored** and must stay local.
+
+| Location | Commit? |
+|----------|---------|
+| `docs/playbooks/example-*.md` | Yes — generic examples only |
+| `.alfred/playbooks/*.md` | **No** — your production playbooks |
+| `skills/*.md` | Yes — generic investigation/review skills shipped with Alfred |
+
+On ECS/EC2, store playbooks on the persistent volume (EFS/EBS), not in the git repo.
+
 ## File format
 
 Each playbook is a Markdown file with optional YAML front matter:

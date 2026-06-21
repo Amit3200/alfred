@@ -1,10 +1,10 @@
 # Alfred
 
-**Alfred** is a local-first AI assistant for small teams. Install it once, connect Slack and your AI provider, and `@alfred` answers in thread — with per-conversation memory, channel history context, and **Markdown playbooks** for company-specific rules (no custom Python per domain).
+**Alfred** is a local-first AI assistant for small teams. Install it once, connect Slack and your AI provider, mirror your repos, and `@alfred` answers in thread — with per-conversation memory, channel history, **git investigation**, PR review, and company-specific **playbooks**.
 
-Built for companies that want a distributable agent (not a SaaS): config + encrypted secrets in `.alfred/`, optional Ollama on your machine, and a web admin UI for setup.
+Built for companies that want a distributable agent (not a SaaS): config + encrypted secrets in `.alfred/`, optional Ollama on your machine, and a web admin UI for setup and usage tracking.
 
-> **Status:** Alpha — Slack ingress, session memory, pluggable AI, and playbooks are working. Git/AWS tools, ReAct agent loop, and full skills engine are planned. See [implementation tracker](docs/build-reference/building_phase_v0.md).
+> **Status:** Alpha — Slack ingress, session memory, git mirrors, read-only code investigation, PR review, ReAct agent loop, observability, and pluggable AI (including Kimi) are working. Write ops, AWS tools, and full skill matching are planned. See [implementation tracker](docs/build-reference/building_phase_v0.md).
 
 **Requires Python 3.10+.** Local development targets **Python 3.13** (see `.python-version`). macOS system `python3` is often 3.9 and will not work.
 
@@ -15,22 +15,268 @@ Built for companies that want a distributable agent (not a SaaS): config + encry
 | Capability | Description |
 |------------|-------------|
 | **Slack `@alfred` mentions** | Socket Mode ingress — no public URL required. Replies stay in the thread. |
-| **Thinking indicator** | Native Slack Assistant status (`assistant.threads.setStatus`) when Agents & AI Apps is enabled. |
-| **Per-thread memory** | SQLite session store — follow-up questions in the same thread keep context. |
+| **Thinking indicator** | Native Slack Assistant status when Agents & AI Apps is enabled. |
+| **Per-thread memory** | SQLite session store — follow-ups in the same thread keep context (including active PR / last git action). |
 | **Channel + thread history** | Fetches Slack messages (default **30-day** window) with reaction display names. |
-| **Domain playbooks** | `.alfred/playbooks/*.md` — YAML triggers + instructions injected into the model (your formatting, field mapping, completeness rules). |
-| **Pluggable AI** | Ollama (default), OpenAI-compatible APIs, Anthropic, Gemini — switch via config. |
-| **Admin UI** | Secrets, integrations, AI settings, health checks, Ollama setup wizard. |
-| **CLI** | `alfred exec "question"` — same processing path as Slack, without posting. |
+| **Git investigation** | Mirror repos locally; `grep_repo`, `read_file`, `git_log`, `git_blame`, `git_show` via ReAct loop or direct routing. |
+| **PR review** | Summarize and review PRs from URLs or thread context; deterministic overview + diff analysis. |
+| **Open PRs / repo queries** | List PRs, get PR metadata — direct routing without full agent loop when intent is clear. |
+| **Domain playbooks** | `.alfred/playbooks/*.md` — YAML triggers + instructions for **your company's** formatting rules (local only). |
+| **Shipped skills** | Generic `skills/*.md` in the repo — investigate, review PR, git status (committed with Alfred). |
+| **Pluggable AI** | Ollama, OpenAI-compatible APIs, Anthropic, Gemini, **Kimi** — switch via config; route investigation to a capable model. |
+| **Admin UI** | Chat, secrets, AI routing, repo mirrors, **Usage** dashboard (tokens, tools, users), health checks. |
+| **CLI** | `alfred exec`, `alfred git sync`, `alfred up` / `alfred stop`. |
 
-### Not built yet (see roadmap)
+### Not built yet
 
-- ReAct agent loop and tool registry (git grep, read_file, AWS read, etc.)
-- Full **skills** engine with BM25 matching and `allowed_tools` enforcement
-- Thread relevancy ranking (stack traces, PR links, recency)
-- Git webhook ingress and durable task queue
+- Git write operations (checkout, cherry-pick, open PR)
+- AWS tools (CloudWatch, ECS, etc.)
+- BM25 skill matcher and strict single-skill selection
+- Thread relevancy ranking (beyond git session hints)
+- Durable task queue / git webhook ingress
 
 Details: [`docs/build-reference/building_phase_v0.md`](docs/build-reference/building_phase_v0.md)
+
+---
+
+## Skills vs playbooks (important)
+
+| | **Skills** (`skills/`) | **Playbooks** (`.alfred/playbooks/`) |
+|---|------------------------|--------------------------------------|
+| **Purpose** | Generic agent behavior — investigate code, review PRs, list PRs | Company-specific rules — alert field names, table formats, bot quirks |
+| **Shipped with Alfred** | Yes — in git | No — you create locally |
+| **Commit to git?** | **Yes** | **No** — company-specific; `.alfred/` is gitignored |
+| **Example** | `skills/investigate_bug.md` | Copy `docs/playbooks/example-slack-summaries.md` → `.alfred/playbooks/` and edit |
+
+Never commit `.alfred/playbooks/` or other company context. The repo includes only generic examples under `docs/playbooks/`.
+
+---
+
+## Setup Alfred in your workspace
+
+End-to-end checklist to run Alfred for your team. Pick **local**, **EC2**, or **ECS/Docker** for where Alfred runs — the configure steps are the same after install.
+
+### Prerequisites
+
+- Python **3.13** (local dev) or Docker (production)
+- A Slack workspace where you can create an app
+- At least one AI provider API key (Anthropic, Kimi/Moonshot, OpenAI, or local Ollama)
+- GitHub or GitLab token with repo read access (for mirrors and PR tools)
+- Disk space for repo mirrors under `.alfred/repos/` (depends on repo count/size)
+
+### Step 1 — Get the code and install
+
+**Local / EC2 (Python):**
+
+```bash
+git clone <your-fork-or-repo-url> alfred
+cd alfred
+chmod +x scripts/*.sh
+./scripts/setup.sh
+```
+
+This creates `.venv`, installs `alfred-agent[ai,dev]`, runs `alfred init` in `./.alfred`, and seeds an example playbook.
+
+**Docker / ECS:**
+
+```bash
+git clone <repo> alfred && cd alfred
+docker compose up --build -d
+```
+
+First container start runs `alfred init` in the persistent volume. Admin token appears in logs:
+
+```bash
+docker compose logs alfred | grep -i token
+# or locally:
+alfred token
+```
+
+Save the admin token — you need it for the Admin UI.
+
+### Step 2 — Open Admin UI
+
+| Environment | Admin UI URL |
+|-------------|--------------|
+| Local dev (`./scripts/dev.sh` or `alfred up`) | http://127.0.0.1:5173 (Vite) or http://127.0.0.1:8080 (serve only) |
+| Docker / EC2 / ECS | http://\<host\>:8080 |
+
+Authenticate with the admin token (`alfred token`).
+
+### Step 3 — Secrets (Admin → Secrets)
+
+Save encrypted secrets via the UI (preferred over plain env vars).
+
+| Secret | Where to get it | Used for |
+|--------|-----------------|----------|
+| **Slack Bot Token** (`xoxb-…`) | Slack app → OAuth & Permissions → Install App | Posting replies, reading history |
+| **Slack Signing Secret** | Slack app → Basic Information | Event verification |
+| **Slack App-Level Token** (`xapp-…`) | Slack app → Socket Mode → App-Level Token with `connections:write` | Socket Mode (no public URL) |
+| **AI API key** | Provider dashboard (Anthropic, OpenAI, Moonshot for Kimi, etc.) | LLM calls |
+| **Git token** | GitHub PAT or GitLab token with `repo` read | PR API + repo clone for mirrors |
+| **AWS keys** (optional) | IAM user — not used by tools yet | Future Phase 7 |
+
+Env var fallbacks: see [`.env.example`](.env.example) (`MOONSHOT_API_KEY` for Kimi, `GIT_TOKEN`, etc.).
+
+### Step 4 — Slack app configuration
+
+In [api.slack.com/apps](https://api.slack.com/apps):
+
+1. Create app → enable **Socket Mode**
+2. App-Level Token: `connections:write`
+3. **OAuth & Permissions** → Bot Token Scopes:
+   `app_mentions:read`, `channels:history`, `channels:read`, `chat:write`, `groups:history`, `groups:read`, `users:read`, `assistant:write`
+4. Enable **Agents & AI Apps** for native thinking status
+5. **Event Subscriptions** → subscribe to `app_mention`
+6. Install app to workspace
+7. Paste all three Slack tokens in Admin → **Secrets** → enable Slack → save
+
+Then in Slack: `/invite @Alfred` in a channel, `@alfred hello`.
+
+Optional: Admin → **Integrations** → restrict `allowed_channels`.
+
+`users:read` lets the Usage dashboard resolve Slack IDs to display names automatically.
+
+### Step 5 — AI provider (Admin → AI)
+
+1. Enable your provider(s) and set API keys in Secrets if not already done
+2. Set **Default provider** (e.g. `ollama` for local, `anthropic` or `kimi` for cloud)
+3. Set **routing** in `config.yaml` or AI panel:
+   - `ai.routing.investigation` → capable model for PR review and code search (e.g. `kimi`, `anthropic`)
+   - `ai.routing.skill_matching` → can stay on `ollama` for cheap tasks
+
+**Kimi:** provider key `kimi`, base URL `https://api.moonshot.ai/v1`, model `kimi-k2.6`, secret `MOONSHOT_API_KEY`.
+
+Local Ollama small models (e.g. 3B) are unreliable for tool-calling — use Kimi/Claude for investigation.
+
+### Step 6 — Git integration (Admin → Integrations + Secrets)
+
+1. Enable Git in Integrations
+2. Set provider (`github` or `gitlab`) and paste token in Secrets
+3. In `config.yaml` (or via config API):
+
+```yaml
+git:
+  enabled: true
+  provider: github
+  default_org: YourOrg        # short repo names like "backend" → YourOrg/backend
+  repos:                      # optional allowlist; empty = discover via API
+    - YourOrg/service-a
+    - YourOrg/service-b
+  mirror_ttl_hours: 24
+  mirror_refresh_minutes: 30
+```
+
+4. Sync mirrors:
+
+```bash
+alfred git sync
+```
+
+5. Admin → **Repo mirrors** — verify shared cache, trigger sync, inspect workspaces
+
+Mirrors live under `.alfred/repos/shared/` (cache) and `.alfred/repos/workspaces/{session}/` (per-conversation).
+
+### Step 7 — Company playbooks (local only)
+
+```bash
+mkdir -p .alfred/playbooks
+cp docs/playbooks/example-slack-summaries.md .alfred/playbooks/my-alerts.md
+# edit triggers and formatting rules for your bots/fields
+```
+
+Playbooks are loaded on each request when trigger keywords match. **Do not commit** `.alfred/` — it contains secrets, DB, mirrors, and company playbooks.
+
+See [`docs/playbooks/README.md`](docs/playbooks/README.md).
+
+### Step 8 — Run Alfred
+
+**Local development:**
+
+```bash
+./scripts/up.sh          # background: API + Slack + Vite UI (+ Ollama if default)
+# or foreground:
+./scripts/dev.sh
+```
+
+Stop: `alfred stop`
+
+**Production (serve only, no Vite):**
+
+```bash
+source .venv/bin/activate
+alfred serve --host 0.0.0.0 --port 8080
+```
+
+**Docker:**
+
+```bash
+docker compose up -d
+docker compose logs -f alfred
+```
+
+Logs: `.alfred/alfred.log` (or `docker compose logs`).
+
+### Step 9 — Verify
+
+| Check | How |
+|-------|-----|
+| Health | Admin → Health — Slack, AI, Git mirrors |
+| Chat | Admin → Chat — ask a question without Slack |
+| Slack | `@alfred what are my open PRs?` |
+| Investigate | `@alfred where is X handled in org/repo?` (after `alfred git sync`) |
+| PR review | Paste a PR URL in thread, `@alfred review this PR` |
+| Usage | Admin → Usage — tokens, tools, users over time |
+
+---
+
+## Deploy on AWS
+
+Alfred uses **Slack Socket Mode** — outbound WebSocket to Slack. You do **not** need a public HTTPS endpoint for Slack events. You **do** need outbound internet (Slack, AI APIs, Git).
+
+### EC2 (single instance)
+
+Good for a small team; simplest production path.
+
+1. **Instance** — e.g. `t3.medium` or larger; **30+ GB** EBS if mirroring many repos
+2. **Security group** — inbound **8080** (or 443 via reverse proxy) restricted to your office/VPN IP for Admin UI; outbound HTTPS allowed
+3. **Install** — Docker (recommended) or Python 3.13 + `./scripts/setup.sh`
+4. **Persistent data** — mount EBS at `/data` and set `ALFRED_DATA_DIR=/data/.alfred`, or use Docker volume:
+
+```bash
+export ALFRED_DATA_DIR=/data/.alfred
+docker compose up -d
+```
+
+5. **Process manager** — `restart: unless-stopped` in compose, or systemd unit calling `alfred serve`
+6. **Configure** — follow Steps 2–9 above via browser to `http://<ec2-ip>:8080`
+7. **Ollama on EC2** (optional) — only if using local models; otherwise use cloud AI keys only
+
+No Application Load Balancer required for Slack. Add nginx + TLS in front of `:8080` if exposing Admin UI on the public internet.
+
+### ECS (Fargate)
+
+Good when you already run containers on AWS.
+
+1. **Build & push** image from this repo's `Dockerfile` to ECR
+2. **Task definition** — port 8080, env `ALFRED_DATA_DIR=/data/.alfred`
+3. **Persistent volume** — mount **EFS** at `/data/.alfred` so secrets, DB, mirrors, and playbooks survive redeploys
+4. **Networking** — task in private subnet with NAT gateway (outbound to Slack, AI, GitHub)
+5. **Load balancer** (optional) — ALB → 8080 for Admin UI; not required for Slack Socket Mode
+6. **Secrets** — prefer mounting playbooks on EFS or baking none; enter API/Slack keys via Admin UI on first boot (admin token from logs)
+7. **Health check** — `GET /api/health` (configured in Dockerfile)
+
+Playbooks on ECS: edit files on the EFS mount (e.g. `playbooks/my-alerts.md`) or sync from an internal bucket at startup — keep them **out of git**.
+
+### Docker Compose (any host)
+
+```bash
+docker compose up --build -d
+```
+
+- Port: `8080`
+- Volume: `alfred_data` → `/data/.alfred`
+- Skills mounted read-only from `./skills` (override in compose if needed)
 
 ---
 
@@ -47,153 +293,62 @@ flowchart LR
         Sanitize[Sanitizer]
         Processor[TaskProcessor]
         Playbooks[PlaybookStore]
-        Sessions[SessionStore SQLite]
+        Skills[Skill loader]
+        Sessions[SessionStore]
+        GitCtx[Git thread context]
     end
 
-    subgraph context [Context]
-        SlackCtx[Channel + thread fetch]
-        Policy[context_policy]
+    subgraph exec [Execution]
+        Direct[Direct paths PR/git]
+        Agent[ReAct loop]
+        Tools[Tool registry]
+        Mirrors[Repo mirrors]
     end
 
     subgraph ai [AI]
-        Router[LLMRouter]
-        Ollama[Ollama]
-        Cloud[Anthropic / Gemini / OpenAI]
+        Router[LLMRouter + routing]
+        Providers[Ollama / Claude / Kimi / …]
+        Obs[Observability]
     end
 
     Slack --> Sanitize --> Processor
     CLI --> Processor
-    Processor --> Policy --> SlackCtx
-    Processor --> Playbooks
-    Processor --> Sessions
-    Processor --> Router
-    Router --> Ollama & Cloud
+    Processor --> Playbooks & Skills & Sessions & GitCtx
+    Processor --> Direct & Agent
+    Agent --> Tools --> Mirrors
+    Processor --> Router --> Providers
+    Router --> Obs
 ```
 
-**Design principles** (from [`docs/build-reference/v0.md`](docs/build-reference/v0.md)):
+**Design principles** ([`docs/build-reference/v0.md`](docs/build-reference/v0.md)):
 
-- **Local-first** — data in `.alfred/`, default AI via Ollama
-- **Generic core** — no company-specific parsers in Python; domain rules live in playbooks
-- **Pluggable AI** — one config key changes provider/model
-- **Governed execution** (planned) — skills define *what*; tools define *how*
+- **Local-first** — data in `.alfred/`
+- **Generic core** — company rules in local playbooks, not Python
+- **Pluggable AI** — config-driven providers and per-task routing
+- **Governed execution** (partial) — skills define allowed tools; observability tracks usage
 
 ---
 
-## Quick start
-
-### One-shot setup (recommended)
+## Quick start (local only)
 
 ```bash
 chmod +x scripts/*.sh
 ./scripts/setup.sh
-```
-
-Creates `.venv` with Python 3.13, installs `alfred-agent[ai,dev]`, runs `alfred init`, seeds `.alfred/playbooks/`.
-
-### Run locally
-
-**Terminal 1 — API + Slack listener:**
-
-```bash
-./scripts/dev.sh
-# or: source .venv/bin/activate && alfred serve --reload
-```
-
-**Terminal 2 — Admin UI (dev):**
-
-```bash
-cd frontend && npm install && npm run dev
+./scripts/up.sh
 ```
 
 | Service | URL |
 |---------|-----|
 | Admin UI (dev) | http://127.0.0.1:5173 |
-| API + bundled UI (serve) | http://127.0.0.1:8080 |
+| API + bundled UI (`serve`) | http://127.0.0.1:8080 |
 | Health | http://127.0.0.1:8080/api/health |
 
-Get the admin token (needed to save secrets in the UI):
-
 ```bash
-alfred token
+alfred token    # admin token for UI
+alfred status   # init state, Slack readiness
 ```
 
-Logs: `.alfred/alfred.log`
-
-### Manual setup
-
-```bash
-python3.13 -m venv .venv
-source .venv/bin/activate
-pip install -e ".[ai,dev]"
-
-cp .env.example .env   # optional
-export ALFRED_DATA_DIR=$PWD/.alfred
-alfred init
-alfred serve --host 127.0.0.1 --port 8080
-```
-
-Apple Silicon Homebrew Python:
-
-```bash
-/opt/homebrew/bin/python3.13 -m venv .venv
-```
-
-### Docker
-
-```bash
-docker compose up --build
-```
-
-Open http://localhost:8080 — on first run Alfred auto-initializes; admin token appears in logs.
-
----
-
-## Slack setup
-
-Alfred uses **Socket Mode** (no Request URL). In [api.slack.com/apps](https://api.slack.com/apps):
-
-1. Create app → enable **Socket Mode** → App-Level Token (`xapp-…`) with `connections:write`
-2. **OAuth & Permissions** → Bot Token Scopes:
-   `app_mentions:read`, `channels:history`, `channels:read`, `chat:write`, `groups:history`, `groups:read`, `users:read`, `assistant:write`
-3. Enable **Agents & AI Apps** for native thinking status
-4. **Event Subscriptions** → `app_mention`
-5. Install app → copy **Bot Token** (`xoxb-…`) and **Signing Secret**
-6. Paste all three tokens in Admin UI → **Secrets** → enable Slack → save (listener auto-restarts)
-7. `/invite @Alfred` in a channel, then `@alfred …`
-
-Optional: restrict channels in Integrations (`allowed_channels`).
-
----
-
-## Domain playbooks
-
-Company-specific instructions live in **Markdown**, not Python:
-
-```
-.alfred/playbooks/
-  slack-summaries.md    # seeded on alfred init (from docs/playbooks/example)
-```
-
-Example front matter:
-
-```yaml
----
-name: slack-summaries
-triggers:
-  - summarize
-  - merchant
-  - threshold
-channels: []   # empty = all channels
----
-
-# Your rules here
-- Include every row in a code-block table
-- Use only timestamps from Slack context
-```
-
-Docs: [`docs/playbooks/README.md`](docs/playbooks/README.md)
-
-Shipped **skills** (future full engine) live in [`skills/`](skills/) — e.g. `investigate_bug.md` — tools not wired yet.
+Then complete [Setup steps 3–9](#step-3--secrets-admin--secrets) for Slack, AI, and Git.
 
 ---
 
@@ -205,16 +360,17 @@ Shipped **skills** (future full engine) live in [`skills/`](skills/) — e.g. `i
 | `alfred init --force` | Re-initialize (new admin token) |
 | `alfred serve` | Start API, admin UI, Slack Socket Mode listener |
 | `alfred serve --reload` | Dev auto-reload |
+| `alfred up` | Start API + Slack in background; optional Vite UI and Ollama |
+| `alfred stop` | Stop background Alfred (and optional Ollama) |
 | `alfred status` | Data dir, init state, default AI provider, Slack readiness |
 | `alfred token` | Print admin token for the UI |
 | `alfred exec "…"` | Run a message through Alfred locally (no Slack post) |
+| `alfred git sync` | Clone/update shared repo mirrors |
+| `alfred git workspaces` | List per-session mirror workspaces |
+| `alfred git cleanup` | Remove expired mirror workspaces |
 | `alfred ollama setup` | Install, start, pull default Ollama model |
-| `alfred ollama status` | Ollama install/runtime/model status |
-| `alfred ollama install` | Install Ollama CLI |
-| `alfred ollama start` | Start Ollama server |
-| `alfred ollama pull --model llama3.2:3b` | Pull a model |
 
-Global option: `--data-dir PATH` (default: `ALFRED_DATA_DIR` env, else `./.alfred` if initialized, else `~/.alfred`)
+Global option: `--data-dir PATH` (default: `ALFRED_DATA_DIR` env, else `./.alfred`)
 
 ---
 
@@ -222,64 +378,72 @@ Global option: `--data-dir PATH` (default: `ALFRED_DATA_DIR` env, else `./.alfre
 
 ### Data directory (`.alfred/`)
 
-| File | Purpose |
-|------|---------|
-| `config.yaml` | Non-secret settings (AI provider, Slack enabled, channels, server port) |
+| File / path | Purpose |
+|-------------|---------|
+| `config.yaml` | Non-secret settings (AI, Slack, git, routing, observability aliases) |
 | `secrets.enc` | Encrypted tokens and API keys |
 | `.key` | Local encryption key (mode 600) |
-| `alfred.db` | Session memory (SQLite) |
+| `alfred.db` | Sessions + observability events (SQLite) |
 | `alfred.log` | Runtime logs |
-| `playbooks/` | Domain Markdown playbooks |
+| `playbooks/` | **Your** domain Markdown playbooks (not in git) |
+| `repos/` | Git mirror cache and session workspaces |
 
-**Local dev:** use `./.alfred` in the repo (`scripts/env.sh` sets `ALFRED_DATA_DIR`). Avoid `alfred init` in `$HOME` unless intentional.
+**Local dev:** `./.alfred` in the repo (`scripts/env.sh` sets `ALFRED_DATA_DIR`).
 
 Clean duplicate state: `./scripts/clean-local.sh`
 
+### Example routing + git snippet
+
+```yaml
+ai:
+  default_provider: ollama
+  routing:
+    skill_matching: ollama
+    investigation: kimi
+git:
+  enabled: true
+  default_org: YourOrg
+observability:
+  user_labels:
+    U0522NX5GG0: "Amit"   # optional fallback if Slack users:read unavailable
+```
+
 ### Environment variables
 
-See [`.env.example`](.env.example):
+See [`.env.example`](.env.example): `ALFRED_DATA_DIR`, `ALFRED_HOST`, `ALFRED_PORT`, optional `ALFRED_ADMIN_TOKEN`.
 
-| Variable | Description |
-|----------|-------------|
-| `ALFRED_DATA_DIR` | Data directory path |
-| `ALFRED_HOST` / `ALFRED_PORT` | Server bind (optional) |
-| `ALFRED_ADMIN_TOKEN` | Pre-seed admin token (optional) |
-
-Secrets are preferred via Admin UI → encrypted storage, not plain env.
+Secrets are preferred via Admin UI → encrypted storage.
 
 ---
 
 ## AI providers
 
-Switch in Admin UI or `config.yaml` — no code changes.
-
-| Provider | Config key | Install extra |
-|----------|------------|---------------|
-| **Ollama** (default, local) | `ollama` | `pip install alfred-agent[ai-openai]` |
-| OpenAI / Groq / Together / etc. | `openai` | same (OpenAI-compatible API) |
+| Provider | Config key | Notes |
+|----------|------------|-------|
+| **Ollama** (local) | `ollama` | Default; `pip install alfred-agent[ai-openai]` |
+| OpenAI / Groq / Together | `openai` | OpenAI-compatible API |
 | Anthropic Claude | `anthropic` | `pip install alfred-agent[ai-anthropic]` |
 | Google Gemini | `gemini` | `pip install alfred-agent[ai-gemini]` |
-| **Kimi** (Moonshot AI) | `kimi` | `pip install alfred-agent[ai-openai]` |
+| **Kimi** (Moonshot) | `kimi` | `https://api.moonshot.ai/v1`, model `kimi-k2.6` |
 
-All providers: `pip install alfred-agent[ai]`
-
-Recommended local model (M2 Air): `llama3.2:3b` or similar via Ollama.
+Install all: `pip install alfred-agent[ai]`
 
 ---
 
 ## Admin UI
 
-React + Vite app in [`frontend/`](frontend/):
-
-| Tab | Purpose |
-|-----|---------|
+| Section | Purpose |
+|---------|---------|
 | **Home** | Overview, Ollama get-started |
-| **AI** | Enable providers, models, default routing |
+| **Chat** | Test Alfred without Slack |
+| **AI** | Providers, models, default + routing |
 | **Secrets** | Slack, Git, AWS, API keys (encrypted) |
 | **Integrations** | Toggle services, channel allowlists |
-| **Health** | Connectivity checks (Slack ingress, AI, etc.) |
+| **Repo mirrors** | Sync status, shared cache, workspaces |
+| **Usage** | AI tokens, tool calls, users — filters and charts |
+| **Health** | Slack, AI, Git connectivity |
 
-Dev: `cd frontend && npm run dev` (proxies API). Production: built into wheel / served by FastAPI from `frontend/dist`.
+Dev: `cd frontend && npm run dev`. Production: static bundle served by FastAPI on `:8080`.
 
 ---
 
@@ -288,54 +452,38 @@ Dev: `cd frontend && npm run dev` (proxies API). Production: built into wheel / 
 ```
 alfred/
 ├── backend/
-│   ├── ai/                 # LLMProvider adapters + registry
-│   ├── api/                # FastAPI routes (config, health, ollama)
-│   ├── ingress/            # Slack context, processor, playbooks, prompts
-│   ├── slack/              # Socket Mode listener, thinking status
-│   ├── storage/            # SQLite session store
-│   ├── ollama/             # Local Ollama install/start/pull helpers
-│   ├── models/             # Pydantic config, Task, Session
-│   ├── config_manager.py   # config.yaml + secrets.enc
-│   └── cli.py              # alfred CLI entrypoint
+│   ├── agent/              # ReAct loop
+│   ├── ai/                 # LLM adapters + instrumentation
+│   ├── api/                # FastAPI routes
+│   ├── git/                # Mirrors, sandbox, API client
+│   ├── ingress/            # Processor, playbooks, PR analysis, git context
+│   ├── observability/      # Usage tracking + Slack user labels
+│   ├── slack/              # Socket Mode listener
+│   ├── storage/            # SQLite sessions + slack user cache
+│   ├── tools/              # Tool registry, git_local, git_api
+│   └── cli.py
 ├── frontend/               # React admin UI
-├── skills/                 # Shipped skill templates (tools not wired yet)
+├── skills/                 # Generic skills (committed)
 ├── docs/
-│   ├── build-reference/    # Architecture (v0, idea, build tracker)
-│   └── playbooks/          # Playbook format docs + example
-├── tests/                  # pytest suite
-├── scripts/                # setup.sh, dev.sh, clean-local.sh
-├── docker/                 # Container entrypoint
+│   ├── playbooks/          # Example playbooks (copy to .alfred/playbooks/)
+│   └── build-reference/    # Architecture + building_phase_v0.md
+├── tests/
+├── scripts/                # setup.sh, up.sh, dev.sh
 ├── Dockerfile
-├── docker-compose.yml
-└── pyproject.toml
+└── docker-compose.yml
 ```
 
 ---
 
 ## Development
 
-### Tests
-
 ```bash
 source .venv/bin/activate
 uv run pytest tests/ -q
-# or: pytest tests/ -q
-```
-
-### Lint
-
-```bash
 ruff check backend tests
 ```
 
-### Production wheel
-
-```bash
-chmod +x scripts/build-release.sh
-./scripts/build-release.sh
-pip install dist/alfred_agent-*.whl
-alfred init && alfred serve
-```
+Production wheel: `./scripts/build-release.sh`
 
 ---
 
@@ -343,33 +491,30 @@ alfred init && alfred serve
 
 | Document | Description |
 |----------|-------------|
-| [`docs/build-reference/v0.md`](docs/build-reference/v0.md) | Full layer architecture and build phases |
-| [`docs/build-reference/idea.md`](docs/build-reference/idea.md) | Original blueprint (queue, skills, ReAct, governance) |
-| [`docs/build-reference/building_phase_v0.md`](docs/build-reference/building_phase_v0.md) | **Implementation status & gaps** (living tracker) |
-| [`docs/playbooks/README.md`](docs/playbooks/README.md) | How to write domain playbooks |
+| [`docs/build-reference/v0.md`](docs/build-reference/v0.md) | Full layer architecture |
+| [`docs/build-reference/building_phase_v0.md`](docs/build-reference/building_phase_v0.md) | **Implementation status & gaps** |
+| [`docs/playbooks/README.md`](docs/playbooks/README.md) | Playbook format (local `.alfred/playbooks/`) |
 | [`docs/README.md`](docs/README.md) | Docs index |
-
-HTML exports under `docs/build-reference/*.html` are local-only (gitignored).
 
 ---
 
 ## Example interactions
 
-**Slack (in thread):**
+**Slack:**
 
 ```
-@alfred can you summarize what happened in this channel last week?
-@alfred when was the last alert posted and who reacted?
-@alfred can you try again?
+@alfred what are my open PRs?
+@alfred review https://github.com/YourOrg/backend/pull/42
+@alfred where is duplicate order handled in backend?
+@alfred summarize what happened in this channel last week
 ```
 
 **CLI:**
 
 ```bash
-alfred exec "who are you and what can you do?"
+alfred exec "list open PRs on YourOrg/backend"
+alfred git sync && alfred exec "grep for OrderValidator in backend"
 ```
-
-Responses use Slack formatting (bold, code blocks, fenced tables). Domain playbooks steer structure for your company's alert bots and fields.
 
 ---
 
@@ -378,10 +523,12 @@ Responses use Slack formatting (bold, code blocks, fenced tables). Domain playbo
 | Phase | Goal |
 |-------|------|
 | ✅ 0–1 | Foundation, config, pluggable AI |
-| ✅ 3 | Slack `@alfred` ingress + thread replies |
-| 🟡 2–4 | Playbooks (partial), context fetch (partial) |
-| ❌ 5 | ReAct loop + read-only git investigation |
-| ❌ 6–8 | Workflow skills, AWS tools, distribution polish |
+| ✅ 3 | Slack ingress + thread replies |
+| 🟡 2–4 | Skills (partial), context (partial), git hints |
+| 🟡 5 | ReAct loop + read-only git investigation |
+| 🟡 7–8 | Admin UI + Usage; Docker/docs |
+| ❌ 6 | Write git, governance, confirmation |
+| ❌ 7 | AWS tools |
 
 Full gap list: [`building_phase_v0.md`](docs/build-reference/building_phase_v0.md)
 

@@ -70,6 +70,15 @@ class SkillsConfig(BaseModel):
     disabled: list[str] = Field(default_factory=list)
 
 
+class ObservabilityConfig(BaseModel):
+    """Usage tracking and display — optional manual Slack user aliases."""
+
+    user_labels: dict[str, str] = Field(
+        default_factory=dict,
+        description="Map Slack user IDs (or internal keys) to display names, e.g. U0522NX5GG0: amit",
+    )
+
+
 class AlfredConfig(BaseModel):
     """Non-secret configuration persisted to config.yaml."""
 
@@ -80,6 +89,7 @@ class AlfredConfig(BaseModel):
     aws: AWSConfig = Field(default_factory=AWSConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
     skills: SkillsConfig = Field(default_factory=SkillsConfig)
+    observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
 
 
 class AlfredSecrets(BaseModel):

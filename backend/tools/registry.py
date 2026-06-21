@@ -51,6 +51,7 @@ class ToolRegistry:
             self.last_tool_name = name
             self.last_tool_args = dict(arguments)
             logger.info("Tool %s completed kind=%s", name, result.kind)
+            self._record_tool(name, success=result.kind != "error")
             return result
         except Exception as exc:
             logger.exception("Tool %s failed", name)
@@ -58,7 +59,17 @@ class ToolRegistry:
             self.last_result = result
             self.last_tool_name = name
             self.last_tool_args = dict(arguments)
+            self._record_tool(name, success=False)
             return result
+
+    def _record_tool(self, name: str, *, success: bool) -> None:
+        try:
+            from backend.observability.recorder import get_recorder
+
+            data_dir = getattr(self, "data_dir", None)
+            get_recorder(data_dir).record_tool_call(name, success=success)
+        except Exception:
+            logger.debug("Tool observability recording skipped", exc_info=True)
 
     def run_normalized(
         self,

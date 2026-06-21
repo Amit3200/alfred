@@ -137,15 +137,26 @@ def check_aws(config: AlfredConfig) -> dict:
         return {"ok": False, "message": str(exc)}
 
 
-def check_ai(config: AlfredConfig, provider: str | None = None) -> dict:
-    router = LLMRouter.from_config(config)
+def check_ai(config: AlfredConfig, provider: str | None = None, *, data_dir=None) -> dict:
+    from backend.observability.context import (
+        InteractionContext,
+        bind_interaction_context,
+        reset_interaction_context,
+    )
+
+    router = LLMRouter.from_config(config, data_dir=data_dir)
     name = provider or config.ai.default_provider
+    token = bind_interaction_context(
+        InteractionContext(source="ui", user_label="health-check", call_kind="health_check")
+    )
     try:
         result = router.ping(name)
         message = result.get("message") or result.get("reply", "")
         return {"ok": result["ok"], "message": message, **result}
     except Exception as exc:
         return {"ok": False, "message": str(exc), "provider": name}
+    finally:
+        reset_interaction_context(token)
 
 
 def run_all_checks(config: AlfredConfig, *, data_dir: Path | None = None) -> dict:
@@ -153,5 +164,5 @@ def run_all_checks(config: AlfredConfig, *, data_dir: Path | None = None) -> dic
         "slack": check_slack(config),
         "git": check_git(config, data_dir=data_dir),
         "aws": check_aws(config),
-        "ai": check_ai(config),
+        "ai": check_ai(config, data_dir=data_dir),
     }

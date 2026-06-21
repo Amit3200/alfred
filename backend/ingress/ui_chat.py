@@ -101,7 +101,7 @@ class UIChatService:
             thread_ts=chat_id,
             raw_text=stripped,
             cleaned_intent=stripped,
-            metadata={"chat_id": chat_id},
+            metadata={"chat_id": chat_id, "user_label": "Admin UI"},
         )
         response = self.processor.process(task)
         reply = render_for_channel(response, "ui")

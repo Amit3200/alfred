@@ -1,0 +1,37 @@
+"""Tool name → category mapping for observability."""
+
+from __future__ import annotations
+
+GIT_TOOLS = frozenset(
+    {
+        "list_my_prs",
+        "list_prs",
+        "get_pr",
+        "get_pr_changes",
+        "list_repos",
+        "grep_repo",
+        "read_file",
+        "git_log",
+        "git_blame",
+        "git_show",
+    }
+)
+
+AWS_TOOLS = frozenset()
+SLACK_TOOLS = frozenset()
+JIRA_TOOLS = frozenset()
+UI_TOOLS = frozenset()
+
+
+def tool_category(tool_name: str) -> str:
+    if tool_name in GIT_TOOLS:
+        return "git"
+    if tool_name in SLACK_TOOLS:
+        return "slack"
+    if tool_name in JIRA_TOOLS:
+        return "jira"
+    if tool_name in AWS_TOOLS:
+        return "aws"
+    if tool_name in UI_TOOLS:
+        return "ui"
+    return "other"

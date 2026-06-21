@@ -7,6 +7,7 @@ import { HealthPanel } from "./panels/HealthPanel";
 import { IntegrationsPanel } from "./panels/IntegrationsPanel";
 import { RepoMirrorsPanel } from "./panels/RepoMirrorsPanel";
 import { SecretsPanel } from "./panels/SecretsPanel";
+import { UsagePanel } from "./panels/UsagePanel";
 import { useApp } from "../context/AppContext";
 
 const { Content } = Layout;
@@ -25,6 +26,8 @@ function SettingsContent() {
       return <RepoMirrorsPanel />;
     case "health":
       return <HealthPanel />;
+    case "usage":
+      return <UsagePanel />;
     default:
       return <AISettingsPanel />;
   }

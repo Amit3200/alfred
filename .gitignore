@@ -217,7 +217,7 @@ __marimo__/
 # Streamlit
 .streamlit/secrets.toml
 
-# Alfred local data
+# Alfred local data (secrets, DB, mirrors, company playbooks — never commit)
 .alfred/
 
 # Alfred build-reference — local HTML exports and personal work notes

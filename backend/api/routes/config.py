@@ -87,7 +87,7 @@ def test_provider(
     manager: ConfigManager = Depends(require_admin),
 ) -> dict:
     config, _ = manager.load_merged()
-    return check_ai(config, provider_name)
+    return check_ai(config, provider_name, data_dir=manager.data_dir)
 
 
 @router.post("/integrations/{name}/test")

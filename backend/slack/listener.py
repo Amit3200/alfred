@@ -76,7 +76,7 @@ def build_slack_bolt_app(
 
         worker = threading.Thread(
             target=_process_mention,
-            args=(task, processor, indicator, on_task_complete),
+            args=(task, processor, indicator, app.client, on_task_complete),
             daemon=True,
             name=f"alfred-slack-{task.id[:8]}",
         )
@@ -89,9 +89,17 @@ def _process_mention(
     task: Any,
     processor: TaskProcessor,
     indicator: ThinkingIndicator,
+    client: Any,
     on_task_complete: Callable[[], None] | None,
 ) -> None:
     try:
+        from backend.ingress.slack_users import SlackUserResolver
+        from backend.storage.slack_user_cache import SlackUserCache
+
+        display_name = SlackUserResolver(client).display_name(task.user_id)
+        task.metadata["user_label"] = display_name
+        if processor._data_dir is not None:
+            SlackUserCache(processor._data_dir).remember(task.user_id, display_name)
         response = processor.process(task)
         reply = render_for_channel(response, "slack")
         indicator.finish(reply)

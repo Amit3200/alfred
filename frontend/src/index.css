@@ -1185,3 +1185,166 @@ body,
   padding: 16px;
   text-align: center;
 }
+
+.alfred-usage-chart-panel {
+  min-height: 240px;
+}
+
+.alfred-usage-chart-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+
+.alfred-usage-chart-total {
+  font-size: 12px;
+}
+
+.alfred-usage-chart-body {
+  display: flex;
+  gap: 10px;
+  min-height: 200px;
+}
+
+.alfred-usage-y-axis {
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  width: 42px;
+  font-size: 11px;
+  color: var(--alfred-text-faint);
+  padding-bottom: 28px;
+}
+
+.alfred-usage-plot {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+}
+
+.alfred-usage-grid {
+  position: absolute;
+  inset: 0 0 28px 0;
+  pointer-events: none;
+}
+
+.alfred-usage-grid-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed var(--alfred-border);
+}
+
+.alfred-usage-bars {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  height: 200px;
+  padding-bottom: 28px;
+  overflow-x: auto;
+}
+
+.alfred-usage-bar-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 52px;
+  flex: 1 1 52px;
+  height: 100%;
+}
+
+.alfred-usage-bar-value {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--alfred-text);
+  margin-bottom: 4px;
+}
+
+.alfred-usage-bar-track {
+  display: flex;
+  align-items: flex-end;
+  width: 100%;
+  flex: 1;
+}
+
+.alfred-usage-bar {
+  width: 100%;
+  max-width: 36px;
+  margin: 0 auto;
+  background: linear-gradient(
+    180deg,
+    var(--alfred-accent),
+    color-mix(in srgb, var(--alfred-accent) 55%, transparent)
+  );
+  border-radius: 6px 6px 2px 2px;
+  transition: height 0.2s ease;
+}
+
+.alfred-usage-bar-label {
+  margin-top: 8px;
+  font-size: 10px;
+  color: var(--alfred-text-faint);
+  text-align: center;
+  line-height: 1.2;
+  max-width: 72px;
+}
+
+.alfred-usage-chart-card {
+  padding-bottom: 12px;
+}
+
+.alfred-usage-breakdown {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.alfred-usage-breakdown-row {
+  display: grid;
+  grid-template-columns: minmax(80px, 120px) 1fr auto;
+  gap: 12px;
+  align-items: center;
+}
+
+.alfred-usage-breakdown-label {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.alfred-usage-breakdown-bar-wrap {
+  height: 10px;
+  background: color-mix(in srgb, var(--alfred-border) 70%, transparent);
+  border-radius: 999px;
+  overflow: hidden;
+}
+
+.alfred-usage-breakdown-bar {
+  height: 100%;
+  background: var(--alfred-accent);
+  border-radius: 999px;
+}
+
+.alfred-usage-breakdown-value {
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 28px;
+  text-align: right;
+}
+
+.alfred-usage-user-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.alfred-usage-user-sub {
+  font-size: 11px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+}

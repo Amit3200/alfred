@@ -1,5 +1,5 @@
 export type AppView = "home" | "chat" | "settings";
-export type SettingsPage = "ai" | "secrets" | "integrations" | "repos" | "health";
+export type SettingsPage = "ai" | "secrets" | "integrations" | "repos" | "health" | "usage";
 
 export const PROVIDER_LABELS: Record<string, string> = {
   ollama: "Ollama",

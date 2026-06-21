@@ -52,7 +52,7 @@ class TaskProcessor:
         data_dir: Path | None = None,
     ) -> None:
         self.config = config
-        self.router = LLMRouter.from_config(config)
+        self.router = LLMRouter.from_config(config, data_dir=data_dir)
         self.session_store = session_store
         self._context_fetcher = context_fetcher
         self._playbooks = playbook_store or PlaybookStore(
@@ -62,7 +62,19 @@ class TaskProcessor:
         self._data_dir = data_dir
 
     def process(self, task: Task) -> AssistantResponse:
+        from backend.observability.context import interaction_scope, set_call_kind, set_skill_name
+
         logger.debug("Processing task %s source=%s", task.id, task.source)
+        with interaction_scope(task) as _ctx:
+            return self._process_task(task, set_call_kind=set_call_kind, set_skill_name=set_skill_name)
+
+    def _process_task(
+        self,
+        task: Task,
+        *,
+        set_call_kind: Any,
+        set_skill_name: Any,
+    ) -> AssistantResponse:
         session_key = task_session_key(task)
         session = self._load_session(session_key)
         channel = _task_channel(task)
@@ -100,6 +112,7 @@ class TaskProcessor:
             task.cleaned_intent,
             channel_id=task.channel_id,
         )
+        set_skill_name(investigation.name if investigation else None)
         prompt_playbooks = [investigation] if investigation else matched_playbooks
         git_context_prompt = ""
         if investigation and session and self.config.git.enabled:
@@ -120,16 +133,19 @@ class TaskProcessor:
         response: AssistantResponse | None = None
         metadata_patch: dict[str, Any] | None = None
         if self.config.git.enabled:
+            set_call_kind("pr_review")
             response, pr_patch = self._try_direct_pr_analysis(task, session=session)
             if pr_patch:
                 metadata_patch = {"active_pr": pr_patch}
 
             if response is None and investigation:
+                set_call_kind("investigation")
                 response, inv_patch = self._try_direct_investigate(investigation, task, session)
                 if inv_patch:
                     metadata_patch = {**(metadata_patch or {}), **inv_patch}
 
             if response is None and investigation and investigation.allowed_tools:
+                set_call_kind("git_direct")
                 response, git_patch = self._try_direct_git(investigation, task, session)
                 if git_patch:
                     metadata_patch = {**(metadata_patch or {}), **git_patch}
@@ -148,6 +164,7 @@ class TaskProcessor:
             )
 
             if investigation and investigation.allowed_tools and self.config.git.enabled:
+                set_call_kind("investigation")
                 response, inv_patch = self._run_investigation(
                     investigation,
                     messages,
@@ -159,6 +176,7 @@ class TaskProcessor:
                 if inv_patch:
                     metadata_patch = {**(metadata_patch or {}), **inv_patch}
             else:
+                set_call_kind("chat")
                 llm_response = provider.chat(messages, model=model_name or None)
                 content = clean_response_scaffold((llm_response.content or "").strip())
                 response = (
@@ -432,6 +450,9 @@ class TaskProcessor:
 
     def _summarize_pr(self, detail: dict[str, Any], task: Task) -> str | None:
         """One-shot LLM summary of a fetched PR (after get_pr)."""
+        from backend.observability.context import set_call_kind
+
+        set_call_kind("pr_summary")
         body = (detail.get("body") or "").strip()
         title = detail.get("title") or "Untitled"
         repo = detail.get("repo") or ""
