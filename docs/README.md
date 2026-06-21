@@ -9,3 +9,5 @@ Planning and reference materials for Alfred live here.
 | `build-reference/scratch/` | **Local only** (gitignored) — personal ideation and phase plans while building |
 
 Start with [`build-reference/README.md`](build-reference/README.md) before writing code.
+
+**Current status:** [`building_phase_v0.md`](build-reference/building_phase_v0.md) (last reviewed 2026-06-22) — includes JIRA, identity mapping, Graphify, and usage cost tracking.

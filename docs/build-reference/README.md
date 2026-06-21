@@ -8,7 +8,7 @@ These documents are the **planning and architecture references for building Alfr
 |------|-------------|-----------|
 | [`idea.md`](idea.md) | Original V1 engineering blueprint — local-first agent, ABC interfaces, skill MD pattern, phased roadmap | Starting implementation; understanding core constraints |
 | [`v0.md`](v0.md) | Expanded architecture evaluation — product vision, layer plan, Slack thread context, pluggable AI, build phases | Planning features; deciding what to build next |
-| [`building_phase_v0.md`](building_phase_v0.md) | **Implementation status & gaps** vs v0 — what is done, partial, and missing | Before picking the next build task; keep updated as layers ship |
+| [`building_phase_v0.md`](building_phase_v0.md) | **Implementation status & gaps** vs v0 — phases, layers, shipped skills, next steps | Before picking the next build task; **update when layers ship** |
 
 ## Reading order
 
@@ -22,7 +22,9 @@ These documents are the **planning and architecture references for building Alfr
 - `v0.md` = *what to build and how the layers fit together* (extends and evaluates `idea.md`)
 - `building_phase_v0.md` = *what we have built so far and what remains*
 
-When code and docs diverge, update `building_phase_v0.md` first, then revise `v0.md` if the plan itself changes.
+When code and docs diverge, update **`building_phase_v0.md`** first, then **`README.md`** (user setup), then revise **`v0.md`** only if the architectural plan itself changes.
+
+**Recently completed (2026-06):** JIRA integration, assignee resolution, workspace identity map, Graphify, usage cost tracking, GitHub App PR ingress, structured JIRA response payloads.
 
 ## Local-only files (gitignored)
 

@@ -4,7 +4,7 @@
 
 Built for companies that want a distributable agent (not a SaaS): config + encrypted secrets in `.alfred/`, optional Ollama on your machine, and a web admin UI for setup and usage tracking.
 
-> **Status:** Alpha — Slack ingress, session memory, git mirrors, read-only code investigation, PR review, ReAct agent loop, observability, and pluggable AI (including Kimi) are working. Write ops, AWS tools, and full skill matching are planned. See [implementation tracker](docs/build-reference/building_phase_v0.md).
+> **Status:** Alpha — Slack ingress, session memory, git mirrors, read-only code investigation, PR review, **JIRA ticket tools**, **Slack↔JIRA↔GitHub identity mapping**, Graphify code graphs, ReAct agent loop, observability (tokens + estimated cost), and pluggable AI (including Kimi) are working. Write ops, AWS tools, and full skill matching are planned. See [implementation tracker](docs/build-reference/building_phase_v0.md).
 
 **Requires Python 3.10+.** Local development targets **Python 3.13** (see `.python-version`). macOS system `python3` is often 3.9 and will not work.
 
@@ -21,10 +21,15 @@ Built for companies that want a distributable agent (not a SaaS): config + encry
 | **Git investigation** | Mirror repos locally; `grep_repo`, `read_file`, `git_log`, `git_blame`, `git_show` via ReAct loop or direct routing. |
 | **PR review** | Summarize and review PRs from URLs or thread context; deterministic overview + diff analysis. |
 | **Open PRs / repo queries** | List PRs, get PR metadata — direct routing without full agent loop when intent is clear. |
+| **GitHub PR comment bot** | Optional GitHub App webhook — `@alfred review` on PR comments (requires public URL / tunnel). |
+| **JIRA tickets** | Search, get, update, comment, create, and link issues via `jira_management` / `jira_ticket` skills. |
+| **Assignee resolution** | Slack `@mentions` → JIRA assignee emails via `assignee_map` + JIRA user search; avoids wrong `currentUser()` defaults. |
+| **Workspace identity map** | Bulk map all Slack members to JIRA + GitHub; outputs `assignee_map` YAML for config. |
+| **Graphify** | Optional knowledge graphs on repo sync — `query_graph` tool for semantic code search (when enabled). |
 | **Domain playbooks** | `.alfred/playbooks/*.md` — YAML triggers + instructions for **your company's** formatting rules (local only). |
-| **Shipped skills** | Generic `skills/*.md` in the repo — investigate, review PR, git status, summarize bugs/alerts (committed with Alfred). |
+| **Shipped skills** | Generic `skills/*.md` in the repo — investigate, review PR, git status, JIRA, summarize bugs/alerts (committed with Alfred). |
 | **Pluggable AI** | Ollama, OpenAI-compatible APIs, Anthropic, Gemini, **Kimi** — switch via config; route investigation to a capable model. |
-| **Admin UI** | Chat, secrets, AI routing, repo mirrors, **Usage** dashboard (tokens, tools, users), health checks. |
+| **Admin UI** | Chat, secrets, AI routing, repo mirrors, **Usage** dashboard (input/output tokens, est. cost, tools, users), health checks. |
 | **CLI** | `alfred exec`, `alfred git sync`, `alfred up` / `alfred stop`. |
 
 ### Not built yet
@@ -33,7 +38,8 @@ Built for companies that want a distributable agent (not a SaaS): config + encry
 - AWS tools (CloudWatch, ECS, etc.)
 - BM25 skill matcher and strict single-skill selection
 - Thread relevancy ranking (beyond git session hints)
-- Durable task queue / GitHub PR comment bot (webhook ingress — use optional Cloudflare Tunnel when available)
+- Unified structured intent router (replacing per-domain direct routes)
+- Durable task queue (Socket Mode handles Slack today; GitHub webhook is synchronous)
 
 Details: [`docs/build-reference/building_phase_v0.md`](docs/build-reference/building_phase_v0.md)
 
@@ -115,6 +121,7 @@ Save encrypted secrets via the UI (preferred over plain env vars).
 | **Slack App-Level Token** (`xapp-…`) | Slack app → Socket Mode → App-Level Token with `connections:write` | Socket Mode (no public URL) |
 | **AI API key** | Provider dashboard (Anthropic, OpenAI, Moonshot for Kimi, etc.) | LLM calls |
 | **Git token** | GitHub PAT or GitLab token with `repo` read/write | PR API, repo mirrors, **GitHub PR comments + reactions** (via PAT user) |
+| **JIRA API token** (optional) | Atlassian → Security → API tokens | JIRA search, get/update issues, assignee mapping |
 | **GitHub webhook secret** (optional) | GitHub App → Webhook → Secret | Verify inbound PR comment webhooks |
 | **AWS keys** (optional) | IAM user — not used by tools yet | Future Phase 7 |
 
@@ -127,7 +134,7 @@ In [api.slack.com/apps](https://api.slack.com/apps):
 1. Create app → enable **Socket Mode**
 2. App-Level Token: `connections:write`
 3. **OAuth & Permissions** → Bot Token Scopes:
-   `app_mentions:read`, `channels:history`, `channels:read`, `chat:write`, `files:write`, `groups:history`, `groups:read`, `lists:read`, `users:read`, `assistant:write`
+   `app_mentions:read`, `channels:history`, `channels:read`, `chat:write`, `files:write`, `groups:history`, `groups:read`, `lists:read`, `users:read`, **`users:read.email`**, `assistant:write`
 4. Enable **Agents & AI Apps** for native thinking status
 5. **Event Subscriptions** → subscribe to `app_mention`
 6. Install app to workspace
@@ -137,7 +144,7 @@ Then in Slack: `/invite @Alfred` in a channel, `@alfred hello`.
 
 Optional: Admin → **Integrations** → restrict `allowed_channels`.
 
-`users:read` lets the Usage dashboard resolve Slack IDs to display names automatically.
+`users:read` resolves Slack IDs to display names (Usage dashboard, identity map). **`users:read.email`** is required for Slack email addresses in workspace identity maps — without it, JIRA/GitHub matching falls back to names and handles only.
 
 ### Step 5 — AI provider (Admin → AI)
 
@@ -178,6 +185,16 @@ alfred git sync
 5. Admin → **Repo mirrors** — verify shared cache, trigger sync, inspect workspaces
 
 Mirrors live under `.alfred/repos/shared/` (cache) and `.alfred/repos/workspaces/{session}/` (per-conversation).
+
+**Optional — Graphify** (semantic code graphs on sync):
+
+```yaml
+git:
+  graphify_enabled: true
+  graphify_extract_timeout_minutes: 120
+```
+
+Requires the `graphify` CLI on the host and a capable LLM for extraction (uses investigation routing). Enables the `query_graph` tool during investigation.
 
 ### Step 6b — GitHub App (PR comment bot) — optional
 
@@ -238,6 +255,36 @@ Comment on a PR: `@alfred can you review this PR?` — Alfred reacts with 👀 i
 | No webhook in log | App installed with **No repositories**, tunnel down, or `Issue comment` event not subscribed |
 | Log: `signature verification failed` | Re-paste webhook secret on GitHub and in Alfred Secrets |
 | Reactions show as your user | Expected with PAT — webhook is the app; API calls use `git_token` |
+
+### Step 6c — JIRA (optional)
+
+Use when the team tracks work in JIRA Cloud and wants `@alfred` to search tickets, resolve assignees from Slack `@mentions`, or build a workspace identity map.
+
+1. Admin → **Secrets** — add **JIRA API token** (Atlassian account → Security → API tokens)
+2. Admin → **Integrations** → enable **JIRA**:
+   - **Site URL** — e.g. `https://yourorg.atlassian.net`
+   - **Email** — Atlassian account email for API auth
+   - **Default project** — e.g. `ENG` or `TECH`
+3. Or in `config.yaml`:
+
+```yaml
+jira:
+  enabled: true
+  base_url: https://yourorg.atlassian.net
+  email: dev@yourorg.io
+  default_project: TECH
+  allowed_projects: []          # empty = no restriction; or list keys
+  assignee_map:                 # optional — improves @mention → JIRA assignee
+    "Jane Doe": jane@yourorg.io
+    U01234567: jane@yourorg.io
+```
+
+4. Admin → **Health** — JIRA row should show connected site + user
+5. In Slack:
+   - `@alfred list open tickets assigned to @Jane` — uses resolved assignee, not `currentUser()`
+   - `@alfred map all slack users to jira and github` — bulk workspace identity map + suggested `assignee_map` YAML
+
+**Skills:** `skills/jira_management.md` (search, update, comment, create, identity map), `skills/jira_ticket.md` (link PRs to tickets).
 
 ### Step 7 — Company playbooks (local only)
 
@@ -330,13 +377,15 @@ If you skip tunnel setup, Alfred behaves exactly as before — only `./scripts/u
 
 | Check | How |
 |-------|-----|
-| Health | Admin → Health — Slack, AI, Git mirrors |
+| Health | Admin → Health — Slack, AI, Git mirrors, **JIRA** |
 | Chat | Admin → Chat — ask a question without Slack |
 | Slack | `@alfred what are my open PRs?` |
 | Investigate | `@alfred where is X handled in org/repo?` (after `alfred git sync`) |
 | PR review (Slack) | Paste a PR URL in thread, `@alfred review this PR` |
 | PR review (GitHub) | Comment `@your-app-slug review` on a PR (requires GitHub App + tunnel) |
-| Usage | Admin → Usage — tokens, tools, users over time |
+| JIRA | `@alfred list my open TECH tickets` or `@alfred status of ENG-123` |
+| Identity map | `@alfred map all slack users to jira and github` (needs `users:read.email`) |
+| Usage | Admin → Usage — input/output tokens, est. cost, tools, users over time |
 
 ---
 
@@ -397,6 +446,7 @@ flowchart LR
     subgraph ingress [Ingress]
         Slack[Slack Socket Mode]
         CLI[alfred exec]
+        GitHub[GitHub App webhook]
     end
 
     subgraph core [Core]
@@ -406,13 +456,15 @@ flowchart LR
         Skills[Skill loader]
         Sessions[SessionStore]
         GitCtx[Git thread context]
+        JiraCtx[JIRA context + assignees]
     end
 
     subgraph exec [Execution]
-        Direct[Direct paths PR/git]
+        Direct[Direct paths PR/git/jira]
         Agent[ReAct loop]
         Tools[Tool registry]
         Mirrors[Repo mirrors]
+        Graphify[Graphify graphs]
     end
 
     subgraph ai [AI]
@@ -423,9 +475,10 @@ flowchart LR
 
     Slack --> Sanitize --> Processor
     CLI --> Processor
-    Processor --> Playbooks & Skills & Sessions & GitCtx
+    GitHub --> Processor
+    Processor --> Playbooks & Skills & Sessions & GitCtx & JiraCtx
     Processor --> Direct & Agent
-    Agent --> Tools --> Mirrors
+    Agent --> Tools --> Mirrors & Graphify
     Processor --> Router --> Providers
     Router --> Obs
 ```
@@ -513,9 +566,19 @@ ai:
 git:
   enabled: true
   default_org: YourOrg
+  graphify_enabled: false
+jira:
+  enabled: true
+  base_url: https://yourorg.atlassian.net
+  email: dev@yourorg.io
+  default_project: ENG
 observability:
   user_labels:
     U0522NX5GG0: "Amit"   # optional fallback if Slack users:read unavailable
+  model_pricing:           # optional — override est. cost per model in Usage UI
+    kimi-k2.6:
+      input_per_million: 0.60
+      output_per_million: 2.40
 ```
 
 ### Environment variables
@@ -547,10 +610,10 @@ Install all: `pip install alfred-agent[ai]`
 | **Home** | Overview, Ollama get-started |
 | **Chat** | Test Alfred without Slack |
 | **AI** | Providers, models, default + routing |
-| **Secrets** | Slack, Git, AWS, API keys (encrypted) |
-| **Integrations** | Toggle services, channel allowlists |
+| **Secrets** | Slack, Git, **JIRA**, AWS, API keys (encrypted) |
+| **Integrations** | Toggle services, channel allowlists, **JIRA site/project** |
 | **Repo mirrors** | Sync status, shared cache, workspaces |
-| **Usage** | AI tokens, tool calls, users — filters and charts |
+| **Usage** | AI tokens (input/output split), **est. cost**, tool calls, users — filters and charts |
 | **Health** | Slack, AI, Git connectivity |
 
 Dev: `cd frontend && npm run dev`. Production: static bundle served by FastAPI on `:8080`.
@@ -565,15 +628,17 @@ alfred/
 │   ├── agent/              # ReAct loop
 │   ├── ai/                 # LLM adapters + instrumentation
 │   ├── api/                # FastAPI routes
+│   ├── context/            # Graphify graph build + query
 │   ├── git/                # Mirrors, sandbox, API client
-│   ├── ingress/            # Processor, playbooks, PR analysis, git context
-│   ├── observability/      # Usage tracking + Slack user labels
+│   ├── ingress/            # Processor, playbooks, PR analysis, git/jira context, identity map
+│   ├── jira/               # JIRA Cloud REST client
+│   ├── observability/      # Usage tracking, pricing, Slack user labels
 │   ├── slack/              # Socket Mode listener
 │   ├── storage/            # SQLite sessions + slack user cache
-│   ├── tools/              # Tool registry, git_local, git_api
+│   ├── tools/              # Tool registry, git_local, git_api, jira_tool, graphify
 │   └── cli.py
 ├── frontend/               # React admin UI
-├── skills/                 # Generic skills (committed)
+├── skills/                 # Generic skills (committed) — git, JIRA, investigate, …
 ├── docs/
 │   ├── playbooks/          # Example playbooks (copy to .alfred/playbooks/)
 │   └── build-reference/    # Architecture + building_phase_v0.md
@@ -616,6 +681,8 @@ Production wheel: `./scripts/build-release.sh`
 @alfred what are my open PRs?
 @alfred review https://github.com/YourOrg/backend/pull/42
 @alfred where is duplicate order handled in backend?
+@alfred list open TECH tickets assigned to @Jane
+@alfred map all slack users to jira and github
 @alfred summarize what happened in this channel last week
 ```
 
@@ -630,17 +697,17 @@ alfred git sync && alfred exec "grep for OrderValidator in backend"
 
 ## Roadmap (summary)
 
-| Phase | Goal |
-|-------|------|
-| ✅ 0–1 | Foundation, config, pluggable AI |
-| ✅ 3 | Slack ingress + thread replies |
-| 🟡 2–4 | Skills (partial), context (partial), git hints |
-| 🟡 5 | ReAct loop + read-only git investigation |
-| 🟡 7–8 | Admin UI + Usage; Docker/docs |
-| ❌ 6 | Write git, governance, confirmation |
-| ❌ 7 | AWS tools |
+| Phase | Goal | Status |
+|-------|------|--------|
+| ✅ 0–1 | Foundation, config, pluggable AI | Done |
+| ✅ 3 | Slack ingress + thread replies | Done |
+| 🟡 2–4 | Skills (partial), context (partial), git/JIRA hints | In progress |
+| 🟡 5 | ReAct loop + read-only git + **JIRA read/write tools** | In progress |
+| 🟡 7–8 | Admin UI + Usage (incl. cost); Docker/docs; **JIRA + Graphify** | In progress |
+| ❌ 6 | Write git, governance, confirmation | Not started |
+| ❌ 7 | AWS tools | Not started |
 
-Full gap list: [`building_phase_v0.md`](docs/build-reference/building_phase_v0.md)
+Full gap list and layer-by-layer status: [`building_phase_v0.md`](docs/build-reference/building_phase_v0.md)
 
 ---
 
