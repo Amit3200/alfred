@@ -17,11 +17,21 @@ Planning and reference materials for Alfred.
 
 ## Current status (2026-06-21)
 
-**Shipped:** Slack ingress, session memory, git mirrors + PR review, JIRA tools, identity mapping, Graphify, observability/cost, **AWS Athena + CloudWatch + grade_events**, structured UI for query results, custom Slack thinking status, `alfred slack emojis`.
+**Shipped (v0):** Slack channel `@mentions`, git mirrors + PR review, JIRA, AWS (Athena/CloudWatch/grade_events), Graphify, observability, GitHub PR bot (with public URL), custom Slack thinking status.
 
-**Pending:** Git write ops, Slack DMs (App Home Chat), ECS/S3 tools, BM25 skill matcher, thread relevancy, unified intent router, durable task queue, full governance.
+**Next (v0.1):** Unified intent router, thread relevancy, skill/playbook matcher upgrade.
 
-Full tracker: [`building_phase_v0.md`](build-reference/building_phase_v0.md)
+**Later:** v1 — task queue, HTTP enqueue, governance · v2 — git writes, ECS/S3 tools · **Won't do:** Slack DMs.
+
+Roadmap detail: [`building_phase_v0.md`](build-reference/building_phase_v0.md)
+
+### What to commit vs keep local
+
+| Commit | Don't commit |
+|--------|----------------|
+| `building_phase_v0.md`, `v0.md`, `idea.md`, `README.md` | `building_phase_v0.html` and other `**/*.html` in build-reference |
+| Example playbooks in `docs/playbooks/` | `.alfred/` (secrets, company playbooks, mirrors) |
+| | `docs/build-reference/scratch/`, scratch `building_phase_*` files |
 
 ## Playbooks
 

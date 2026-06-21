@@ -35,7 +35,7 @@ Config and encrypted secrets live in `.alfred/` (not a SaaS). Optional Ollama on
 
 | Area | What works |
 |------|------------|
-| **Slack `@alfred`** | Socket Mode — no public URL for Slack. Replies in thread; native Assistant thinking status. Custom workspace emoji status lines via `slack.loading_messages`. |
+| **Slack `@alfred`** | Socket Mode in **channels** only (not app DM window). Thinking status + custom emoji lines. |
 | **Session memory** | SQLite per `(channel, thread)` — follow-ups, active PR, last git action. |
 | **Slack context** | Channel + thread history (~30 days), reaction display names, Slack Lists parsing. |
 | **Git investigation** | Mirror repos; `grep_repo`, `read_file`, `git_log`, `git_blame`, `git_show`. |
@@ -67,16 +67,12 @@ Company-specific Athena tables (e.g. event dumps) → **`.alfred/playbooks/`** w
 
 ## Not built yet
 
-| Item | Notes |
-|------|--------|
-| Git write ops | checkout, cherry-pick, open PR |
-| Slack app DM / Chat tab | Only `app_mention` in channels today; App Home Chat needs `message.im` |
-| ECS / S3 tools | `allowed_services` includes them; only Athena + CloudWatch are implemented |
-| BM25 skill matcher | Keyword triggers on skills + playbooks only |
-| Thread relevancy ranking | Full history dump; git/JIRA hints only |
-| Unified intent router | Growing set of `detect_*` direct routes |
-| Durable task queue | Per-mention threads; GitHub webhook is synchronous |
-| Full governance | Confirmation UX for writes, audit export |
+| Item | Target | Notes |
+|------|--------|--------|
+| Intent router, thread relevancy, skill matcher | **v0.1** | Upgrade from keywords + direct paths |
+| HTTP enqueue queue, durable task queue, governance | **v1** | Confirmation UX, audit export |
+| Git write ops, ECS/S3 tools | **v2** | |
+| Slack app DMs | **Won't do** | Use `@alfred` in channels |
 
 Details: [`building_phase_v0.md`](docs/build-reference/building_phase_v0.md)
 
@@ -154,7 +150,7 @@ Env fallbacks: [`.env.example`](.env.example)
 
 See [Slack app](#slack-app). Then `/invite @alfred` in a channel and `@alfred hello`.
 
-> **Note:** Alfred responds to **`@alfred` in channels**, not the app's own Chat tab (DM support not implemented yet).
+> **Note:** Alfred responds to **`@alfred` in channels**, not the app's Chat/DM tab (out of scope).
 
 ### 5 — AI (Admin → AI)
 
@@ -383,7 +379,7 @@ Environment: [`.env.example`](.env.example) — `ALFRED_DATA_DIR`, `ALFRED_HOST`
 
 ### Optional — GitHub PR comment bot
 
-Requires a **public HTTPS URL** (Cloudflare tunnel or EC2/nginx). Create a GitHub App with webhook → `/api/v1/github/webhook`, subscribe to `Issue comment`, install on org repos. Configure in Admin → Integrations → GitHub App + Secrets (`github_webhook_secret`, `git_token`). Comment `@alfred review` on a PR. See git history or [`docs/build-reference/v0.md`](docs/build-reference/v0.md) for full webhook checklist.
+Requires a **public HTTPS URL** on your company subdomain (e.g. `alfred.flexype.dev` via Cloudflare tunnel or ALB). Configure GitHub App webhook → `/api/v1/github/webhook`, subscribe to `Issue comment`, install on org repos. Admin → Integrations → GitHub App + Secrets. Comment `@alfred review` on a PR.
 
 ### Optional — Public URL (Cloudflare Tunnel)
 
@@ -574,15 +570,13 @@ Release wheel: `./scripts/build-release.sh`
 
 ## Roadmap
 
-| Phase | Focus | Status |
-|-------|--------|--------|
-| 0–1 | Scaffold, config, pluggable AI | Done |
-| 3 | Slack ingress + thread replies | Done |
-| 5 | ReAct + git read + JIRA tools | Mostly done |
-| 7 | Admin UI + **AWS read tools** + health | Mostly done |
-| 2–4 | Skills matcher, context relevancy | Partial |
-| 6 | Git write, governance, confirmation | Not started |
-| — | Slack DMs, ECS/S3 tools, task queue | Not started |
+| Target | Focus | Status |
+|--------|--------|--------|
+| **v0** | Slack channels, git/JIRA/AWS read, GitHub PR bot, admin UI | Mostly done |
+| **v0.1** | Intent router, thread relevancy, skill matcher | Next |
+| **v1** | Task queue, HTTP enqueue, governance | Planned |
+| **v2** | Git writes, ECS/S3 tools | Planned |
+| — | Slack DMs | **Won't do** |
 
 Full tracker: [`building_phase_v0.md`](docs/build-reference/building_phase_v0.md)
 

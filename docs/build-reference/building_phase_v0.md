@@ -14,26 +14,41 @@ Alfred is **directionally aligned** with the v0 architecture: local-first, plugg
 |--------------------|--------|
 | `alfred init → configure AI → @alfred in Slack → read-only git investigation in a thread` | **Done** |
 | `@alfred` JIRA ticket queries in thread | **Mostly done** |
-| AWS read tools (Athena, CloudWatch, domain event tables) | **Done** — generic skill + playbook-driven `grade_events_query` |
-| Small-company distributable product | **Partial** — Docker, admin UI, docs; git write ops still missing |
+| AWS read tools (Athena, CloudWatch, domain event tables) | **Done** |
+| GitHub App PR comment bot (`@alfred review` on PRs) | **Done** when company configures a public host (e.g. `alfred.yourcompany.dev`) |
+| Small-company distributable product | **Partial** — Docker, admin UI, docs; git write ops deferred to **v2** |
+
+---
+
+## Roadmap labels
+
+Use these when reading gaps below:
+
+| Label | Meaning |
+|-------|---------|
+| **v0** | Shipped or in scope for current alpha |
+| **v0.1** | Next polish pass — pick soon |
+| **v1** | Next major increment (queue, governance) |
+| **v2** | Later — write git, extra AWS surface |
+| **Won't do** | Explicitly out of scope |
 
 ---
 
 ## Phase map (from v0 §7)
 
-| Phase | Focus | Status | Notes |
-|-------|--------|--------|-------|
-| **0** | Scaffold, ABCs, config, `alfred init` | ✅ Done | Package, Pydantic config, encrypted secrets, `.alfred/` |
-| **1** | AI plug layer | ✅ Done | Ollama, Anthropic, Gemini, Kimi; `LLMRouter`; per-task routing |
-| **2** | Skills engine | 🟡 Partial | Bundled `skills/*.md`; playbooks; **no BM25 matcher** |
-| **3** | Slack ingress | ✅ Mostly done | Socket Mode + `app_mention`; thinking status; custom `loading_messages`; **`alfred slack emojis`** |
-| **4** | Thread context | 🟡 Partial | 30-day history, user names, git + JIRA blocks; **no relevancy ranking** |
-| **5** | Investigation + ReAct + read tools | 🟡 Partial | Agent loop, git read, JIRA, Graphify, **AWS tools**; direct routes |
-| **6** | Workflow skills (write git, governance) | ❌ Not started | JIRA update/create exist; no confirmation UX |
-| **7** | AWS + admin UI | 🟡 Mostly done | Admin UI; **AWS Athena/CloudWatch/grade_events**; STS health check |
-| **8** | Distribution | 🟡 Partial | Dockerfile + compose; README; ECS/EC2 patterns |
+| Phase | Focus | Status | Target |
+|-------|--------|--------|--------|
+| **0** | Scaffold, config, `alfred init` | ✅ Done | v0 |
+| **1** | AI plug layer | ✅ Done | v0 |
+| **2** | Skills engine | 🟡 Partial | **v0.1** — better skill/playbook matching |
+| **3** | Slack ingress | ✅ Done | v0 — channel `@mentions` only; **Slack DMs: Won't do** |
+| **4** | Thread context | 🟡 Partial | **v0.1** — relevancy heuristics |
+| **5** | Investigation + ReAct + read tools | 🟡 Partial | v0 read paths done; **v0.1** intent router |
+| **6** | Workflow skills (write git, governance) | 🟡 Partial | JIRA writes exist; git writes **v2**; governance **v1** |
+| **7** | AWS + admin UI | ✅ Mostly done | v0 — Athena/CloudWatch/grade_events; ECS/S3 tools **v2** |
+| **8** | Distribution | 🟡 Partial | v0 — Docker, README, ECS/EC2 patterns |
 
-**Legend:** ✅ Done · 🟡 Partial · ❌ Not started
+**Legend:** ✅ Done · 🟡 Partial
 
 ---
 
@@ -41,75 +56,75 @@ Alfred is **directionally aligned** with the v0 architecture: local-first, plugg
 
 ### Layer 1 — Ingress
 
-| Component | Status | Location |
-|-----------|--------|----------|
-| `Task` model | ✅ | `backend/models/task.py` |
-| Event sanitizer | ✅ | `backend/ingress/sanitize.py` |
-| CLI `alfred exec` | ✅ | `backend/cli.py` |
-| Slack `app_mention` | ✅ | `backend/slack/listener.py` |
-| Slack DM / App Home Chat | ❌ | Needs `message.im` handler |
-| GitHub App webhook | 🟡 | `backend/github/handler.py` — optional, needs public URL |
-| HTTP enqueue queue | ❌ | Socket Mode for Slack |
+| Component | Status | Target | Notes |
+|-----------|--------|--------|-------|
+| `Task` model | ✅ | v0 | `backend/models/task.py` |
+| Event sanitizer | ✅ | v0 | `backend/ingress/sanitize.py` |
+| CLI `alfred exec` | ✅ | v0 | `backend/cli.py` |
+| Slack `app_mention` | ✅ | v0 | `backend/slack/listener.py` — **supported ingress** |
+| Slack DM / App Home Chat | ⛔ Won't do | — | Use `@alfred` in channels |
+| GitHub App webhook | ✅ | v0 | Works when `github.callback_base_url` points at a public host (e.g. `alfred.flexype.dev`); each company uses their subdomain + tunnel/ALB |
+| HTTP enqueue queue (fast ack + worker) | ❌ | **v1** | Socket Mode handles Slack today; queue for webhooks + recovery |
 
 ### Layer 2 — Config & Admin
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| `alfred init` | ✅ | Seeds config, secrets, example playbook |
-| Encrypted secrets | ✅ | `ConfigManager` |
-| Admin UI | ✅ | Chat, AI, Secrets, Integrations, Mirrors, Usage, Health |
-| Health checks | 🟡 | Slack, Ollama, Git, JIRA, **AWS STS** |
-| Observability | ✅ | Tokens, est. cost, tools, users |
+| Component | Status | Target | Notes |
+|-----------|--------|--------|-------|
+| `alfred init` | ✅ | v0 | |
+| Encrypted secrets | ✅ | v0 | |
+| Admin UI | ✅ | v0 | |
+| Health checks | 🟡 | v0 | Slack, Ollama, Git, JIRA, AWS STS |
+| Observability | ✅ | v0 | Tokens, est. cost, tools, users |
 
 ### Layer 3 — Orchestration
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| Task queue | ❌ | ABC only |
-| Session store | ✅ | SQLite `(channel, thread_ts)` |
-| Intent router | 🟡 | Keyword skill pick + direct paths (git, PR, JIRA, AWS investigation) |
-| Git / JIRA session context | ✅ | `git_context.py`, `jira_context.py` |
-| Identity map | ✅ | Slack ↔ JIRA ↔ GitHub bulk map |
+| Component | Status | Target | Notes |
+|-----------|--------|--------|-------|
+| Task queue (durable) | ❌ | **v1** | ABC exists; not wired |
+| Session store | ✅ | v0 | SQLite `(channel, thread_ts)` |
+| Intent router | 🟡 | **v0.1** | Keyword + direct paths today — **pick soon** |
+| Git / JIRA session context | ✅ | v0 | |
+| Identity map | ✅ | v0 | |
 
 ### Layer 4 — Context engine
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| Skill / playbook matcher | 🟡 | Keyword triggers |
-| Slack thread + channel fetch | ✅ | 30-day default |
-| Relevancy heuristics | ❌ | Full text dump |
-| Repo context + Graphify | ✅ | Mirrors + optional graphs |
-| Context policy | ✅ | `context_policy.py` |
+| Component | Status | Target | Notes |
+|-----------|--------|--------|-------|
+| Skill / playbook matcher | 🟡 | **v0.1** | Keywords only today |
+| Slack thread + channel fetch | ✅ | v0 | 30-day default |
+| Relevancy heuristics | ❌ | **v0.1** | Full history dump today |
+| Repo context + Graphify | ✅ | v0 | |
+| Context policy | ✅ | v0 | |
 
 ### Layer 5 — AI layer
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| LLM adapters | ✅ | OpenAI-compat, Anthropic, Gemini, Kimi |
-| Per-task routing | ✅ | `skill_matching`, `investigation`, `workflow_execution` |
-| Instrumentation | ✅ | Input/output tokens + est. USD |
-| Synthesis on max steps | ✅ | `_synthesize_final_answer` |
+| Component | Status | Target | Notes |
+|-----------|--------|--------|-------|
+| LLM adapters | ✅ | v0 | |
+| Per-task routing | ✅ | v0 | |
+| Instrumentation | ✅ | v0 | |
+| Synthesis on max steps | ✅ | v0 | |
 
 ### Layer 6 — Execution (tools)
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| ReAct agent loop | ✅ | `backend/agent/loop.py` |
-| Git API + read tools | ✅ | `git_api.py`, `git_local.py` |
-| JIRA tools | ✅ | `jira_tool.py` |
-| **AWS tools** | ✅ | `athena_query`, `cloudwatch_query`, `list_cloudwatch_log_groups`, `grade_events_query` |
-| Graphify `query_graph` | 🟡 | When `graphify_enabled` |
-| Git write tools | ❌ | |
-| ECS / S3 direct tools | ❌ | Listed in `allowed_services` only |
-| Structured UI payloads | ✅ | `grade_events_query`, `athena_query`, `jira_list`, `code_grep`, … |
+| Component | Status | Target | Notes |
+|-----------|--------|--------|-------|
+| ReAct agent loop | ✅ | v0 | |
+| Git read tools | ✅ | v0 | |
+| JIRA tools | ✅ | v0 | |
+| AWS tools (Athena, CloudWatch, grade_events) | ✅ | v0 | |
+| Graphify `query_graph` | 🟡 | v0 | Optional, `graphify_enabled` |
+| Git write tools | ❌ | **v2** | checkout, cherry-pick, open PR |
+| ECS / S3 direct tools | ❌ | **v2** | In `allowed_services` config only |
+| Structured UI payloads | ✅ | v0 | |
 
 ### Layer 7 — Governance
 
-| Component | Status | Notes |
-|-----------|--------|-------|
-| Skills + playbooks | ✅ | Generic skills in repo; company playbooks local |
-| AWS guardrails | ✅ | grade_events LIMIT, partition windows, IAM error display |
-| Policies / audit | ❌ | Observability events only |
+| Component | Status | Target | Notes |
+|-----------|--------|--------|-------|
+| Skills + playbooks | ✅ | v0 | |
+| AWS guardrails | ✅ | v0 | |
+| Policies, confirmation UX, audit log | ❌ | **v1** | Observability events only today |
 
 ---
 
@@ -123,40 +138,61 @@ Alfred is **directionally aligned** with the v0 architecture: local-first, plugg
 | `summarize_bugs.md` | conversational | Slack alert summaries |
 | `jira_management.md` | investigation | JIRA CRUD + identity map |
 | `jira_ticket.md` | investigation | Link PRs to JIRA |
-| **`aws_query.md`** | investigation | athena_query, cloudwatch_query, list_cloudwatch_log_groups |
+| `aws_query.md` | investigation | athena_query, cloudwatch_query, list_cloudwatch_log_groups |
 
-Company **investigation playbooks** (e.g. `grade_events`) → `.alfred/playbooks/` with `allowed_tools: [grade_events_query]`.
+Company investigation playbooks (e.g. event dumps) → `.alfred/playbooks/` with `allowed_tools`.
 
 ---
 
 ## What works today (user-visible)
 
-- `@alfred` in Slack channels → in-thread reply with session memory
-- Thinking status (Assistant API) with built-in + custom workspace emoji lines
-- `alfred slack emojis` — list custom emoji shortcodes (needs `emoji:read`)
+- `@alfred` in **Slack channels** (not app DM window)
+- Thinking status + custom workspace emoji lines; `alfred slack emojis`
 - Channel + thread history (30-day window)
 - Domain playbooks from `.alfred/playbooks/`
 - Git: PRs, review, grep/read/blame in mirrored repos
 - JIRA: search/get/update/comment/create, assignee map, identity map
-- **AWS: Athena SQL, CloudWatch Logs Insights, grade_events with guardrails**
-- Structured Slack/UI rendering for AWS and grade_events results
+- AWS: Athena, CloudWatch Logs, grade_events (guardrailed)
+- Structured Slack/UI rendering for AWS and grade_events
 - Graphify optional on sync
-- Admin UI: Chat, Usage (cost), Health (incl. AWS STS)
-- CLI: `exec`, `git sync`, `slack emojis`, `up` / `stop`, Ollama helpers
-- GitHub App PR comment bot (optional)
+- Admin UI: Chat, Usage, Health
+- GitHub App: `@alfred review` on PR comments when public URL is configured
 
 ---
 
-## Known gaps (priority order)
+## Known gaps by target release
 
-1. **Slack DM / App Home Chat** — `message.im` handler + scopes
-2. **Unified intent router** — replace growing `detect_*` direct routes
-3. **Thread relevancy** — rank/filter messages before LLM
-4. **Skill matcher** — BM25 or strict single-skill selection
-5. **Git write ops** — checkout, cherry-pick, PR create (with confirmation)
-6. **ECS / S3 tools** — beyond Athena/CloudWatch
-7. **Task queue** — durable queue for crash recovery
-8. **Full governance** — confirmation UX, audit export
+### v0.1 — pick soon
+
+1. **Unified intent router** — replace growing `detect_*` direct routes
+2. **Thread relevancy** — rank/filter Slack messages before LLM
+3. **Skill / playbook matcher** — BM25 or strict single-skill selection (upgrade from keywords)
+
+### v1
+
+4. **HTTP enqueue queue** — fast ack + background worker (webhooks, recovery)
+5. **Durable task queue** — wire existing ABC; crash-safe processing
+6. **Governance** — policies, confirmation UX for writes, audit export
+
+### v2
+
+7. **Git write tools** — checkout, cherry-pick, PR create
+8. **ECS / S3 direct tools** — beyond Athena/CloudWatch
+
+### Won't do
+
+- **Slack DM / App Home Chat** — channel `@mentions` remain the supported path
+
+---
+
+## Recommended next build steps (v0.1)
+
+1. **Intent router** — single structured path; entity cache per thread
+2. **Thread relevancy** — stack traces, URLs, recency before LLM
+3. **Skill matcher upgrade** — reduce keyword false positives
+4. **Operational polish** — `users:read.email`, identity map, investigation on Kimi/Claude
+
+Defer until v1: queue, governance. Defer until v2: git writes, ECS/S3.
 
 ---
 
@@ -164,34 +200,27 @@ Company **investigation playbooks** (e.g. `grade_events`) → `.alfred/playbooks
 
 | Decision | Rationale |
 |----------|-----------|
-| Playbooks local, skills in repo | Generic tools ship with Alfred; company tables/rules stay private |
-| Socket Mode | No public URL for Slack |
-| Repo mirrors | Shared cache + per-session workspaces |
-| Direct processor paths | PR/git/JIRA/AWS bypass weak models — temporary until unified router |
-| AWS profile on host | Prefer IAM role/profile over static keys on EC2 |
-| grade_events in playbooks | Table semantics are company-specific; tool enforces guardrails |
-| Structured responses for AWS | UI card layout + LLM analysis text |
+| Channel `@mentions` only | No Slack app DM support — simpler ingress, matches team usage |
+| Public URL per company for GitHub App | Webhook needs HTTPS; e.g. `alfred.flexype.dev` + Cloudflare tunnel or ALB |
+| Playbooks local, skills in repo | Company tables/rules stay private |
+| Socket Mode for Slack | No public URL required for Slack |
+| Direct processor paths (temporary) | Until v0.1 unified intent router |
+| grade_events in playbooks | Company table semantics; tool enforces guardrails |
 
 ---
 
-## Recommended next build steps
+## Doc hygiene — what is committable?
 
-1. **Slack DMs** — `message.im` + document App Home Messages tab
-2. **Entity cache** — persist resolved users/repos/issues per thread
-3. **Thread relevancy** — v0 Phase 4 ranking pass
-4. **Operational polish** — `users:read.email`, identity map, investigation routing to Kimi/Claude
-5. Defer: Git 3 writes, ECS/S3 tools, BM25 matcher, task queue
+| Path | Commit? | Notes |
+|------|---------|-------|
+| **`building_phase_v0.md`** (this file) | **Yes** | Shared implementation tracker |
+| `docs/build-reference/v0.md`, `idea.md` | **Yes** | Architecture references |
+| `docs/build-reference/**/*.html` | **No** | Gitignored — local browser exports (e.g. `building_phase_v0.html`) |
+| `docs/build-reference/building_phase_*` except `v0.md` | **No** | Gitignored — personal scratch trackers |
+| `docs/build-reference/scratch/` | **No** | Gitignored |
+| `.alfred/` | **No** | Gitignored — secrets, playbooks, mirrors |
 
----
-
-## Doc hygiene
-
-| Item | Action |
-|------|--------|
-| This file | Update when a phase/layer ships |
-| [`README.md`](../../README.md) | User-facing setup — keep in sync |
-| [`docs/playbooks/`](../playbooks/) | Example playbooks only; company playbooks local |
-| `docs/playbooks/example-grade-events.md` | **Removed** — use local `.alfred/playbooks/` templates |
+Regenerate HTML locally for reading; do not commit HTML exports.
 
 ---
 
@@ -199,5 +228,5 @@ Company **investigation playbooks** (e.g. `grade_events`) → `.alfred/playbooks
 
 - [`v0.md`](v0.md) — layer architecture
 - [`idea.md`](idea.md) — original blueprint
-- [`skills/`](../../skills/) — shipped skills
-- Code: `backend/slack/listener.py`, `backend/ingress/processor.py`, `backend/tools/aws_tool.py`, `backend/aws/grade_events.py`
+- [`README.md`](../../README.md) — user-facing setup
+- Code: `backend/slack/listener.py`, `backend/ingress/processor.py`, `backend/github/handler.py`, `backend/tools/aws_tool.py`
