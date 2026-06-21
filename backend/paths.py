@@ -64,6 +64,32 @@ def exports_dir(data_dir: Path | None = None) -> Path:
     return path
 
 
+def run_dir(data_dir: Path | None = None) -> Path:
+    """Runtime PID/state files for background `alfred up`."""
+    path = get_data_dir(data_dir) / "run"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def repos_dir(data_dir: Path | None = None) -> Path:
+    """Root for git mirrors (shared + per-session workspaces)."""
+    path = get_data_dir(data_dir) / "repos"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def shared_repos_dir(data_dir: Path | None = None) -> Path:
+    path = repos_dir(data_dir) / "shared"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def workspace_repos_root(data_dir: Path | None = None) -> Path:
+    path = repos_dir(data_dir) / "workspaces"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def bundled_web_dist() -> Path | None:
     """Return path to bundled admin UI static assets, if present."""
     package_root = Path(__file__).resolve().parent

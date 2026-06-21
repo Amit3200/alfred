@@ -59,7 +59,7 @@ def test_playbook_parses_investigation_skill_fields(tmp_path: Path):
 name: git-test
 mode: investigation
 triggers:
-  - pr
+  - show my prs
 allowed_tools:
   - list_my_prs
 requires_thread_context: false
@@ -70,7 +70,7 @@ Use tools.
         encoding="utf-8",
     )
     store = PlaybookStore(tmp_path)
-    skill = store.pick_investigation("show my prs")
+    skill = store.pick_investigation("show my prs please")
     assert skill is not None
     assert skill.mode == "investigation"
     assert skill.allowed_tools == ["list_my_prs"]

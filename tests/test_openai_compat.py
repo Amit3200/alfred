@@ -40,3 +40,18 @@ def test_ollama_client_uses_placeholder_key(monkeypatch) -> None:
     provider._get_client()
     assert captured.get("api_key") == "ollama"
     assert captured.get("base_url") == "http://127.0.0.1:11434/v1"
+
+
+def test_kimi_requires_api_key() -> None:
+    cfg = AIProviderConfig(
+        enabled=True,
+        api_key="",
+        base_url="https://api.moonshot.ai/v1",
+        model="kimi-k2.6",
+    )
+    provider = OpenAICompatProvider("kimi", cfg)
+    assert provider.is_available() is False
+    assert provider._is_local() is False
+
+    cfg.api_key = "sk-test"
+    assert provider.is_available() is True

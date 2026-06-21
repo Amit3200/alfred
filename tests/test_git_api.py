@@ -105,3 +105,31 @@ def test_github_get_pr(mock_session_cls):
 
     assert data["number"] == 3
     assert data["head"] == "feature"
+
+
+@patch("backend.git.api.requests.Session")
+def test_github_get_pr_files(mock_session_cls):
+    session = MagicMock()
+    mock_session_cls.return_value = session
+    session.get.return_value = MagicMock(
+        status_code=200,
+        json=lambda: [
+            {
+                "filename": "src/consumer.py",
+                "status": "added",
+                "additions": 42,
+                "deletions": 0,
+                "changes": 42,
+                "patch": "@@ -0,0 +1,3 @@\n+line",
+            }
+        ],
+    )
+
+    config = GitConfig(enabled=True, provider="github", token="ghp_test")
+    client = GitApiClient(config)
+    files = client.get_pr_files("myorg/backend", 3)
+
+    assert len(files) == 1
+    assert files[0]["filename"] == "src/consumer.py"
+    assert files[0]["status"] == "added"
+    assert "line" in files[0]["patch"]

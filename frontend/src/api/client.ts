@@ -21,6 +21,10 @@ export type AlfredConfig = {
     token: string;
     default_org: string;
     repos: string[];
+    mirror_ttl_hours?: number;
+    mirror_refresh_minutes?: number;
+    mirror_max_workspaces?: number;
+    mirror_shallow_depth?: number;
   };
   aws: {
     enabled: boolean;
@@ -204,6 +208,32 @@ export const api = {
       true,
     ),
   chatExportDownloadUrl: (filename: string) => `/api/chat/exports/${encodeURIComponent(filename)}`,
+
+  getGitMirrors: () => request<GitMirrorsResponse>("/api/git/mirrors", {}, true),
+  cleanupGitMirrors: (scope: GitMirrorCleanupScope) =>
+    request<GitMirrorCleanupResult>(
+      "/api/git/mirrors/cleanup",
+      { method: "POST", body: JSON.stringify({ scope }) },
+      true,
+    ),
+  deleteGitWorkspace: (workspaceId: string) =>
+    request<{ ok: boolean; removed: string }>(
+      `/api/git/mirrors/workspaces/${encodeURIComponent(workspaceId)}`,
+      { method: "DELETE" },
+      true,
+    ),
+  deleteGitSharedMirror: (sharedId: string) =>
+    request<{ ok: boolean; removed: string }>(
+      `/api/git/mirrors/shared/${encodeURIComponent(sharedId)}`,
+      { method: "DELETE" },
+      true,
+    ),
+  syncGitSharedMirrors: (repos?: string[]) =>
+    request<GitMirrorSyncResult>(
+      "/api/git/mirrors/sync",
+      { method: "POST", body: JSON.stringify({ repos: repos ?? [] }) },
+      true,
+    ),
 };
 
 export type ChatSessionSummary = {
@@ -240,4 +270,60 @@ export type ChatExportResult = {
   filename: string;
   path: string;
   download_url: string;
+};
+
+export type GitMirrorCleanupScope = "expired" | "workspaces" | "shared" | "all";
+
+export type GitMirrorSummary = {
+  workspaces_count: number;
+  shared_count: number;
+  workspaces_bytes: number;
+  shared_bytes: number;
+  total_bytes: number;
+  mirror_ttl_hours: number;
+  mirror_max_workspaces: number;
+  mirror_refresh_minutes: number;
+};
+
+export type GitMirrorWorkspace = {
+  id: string;
+  session_key?: string;
+  last_used_at?: string;
+  repos: string[];
+  repos_detail?: Array<{
+    slug: string;
+    ref?: string;
+    head_sha?: string;
+    last_pulled_at?: string;
+  }>;
+  size_bytes: number;
+};
+
+export type GitMirrorShared = {
+  id: string;
+  repo: string;
+  size_bytes: number;
+  head_sha?: string | null;
+};
+
+export type GitMirrorsResponse = {
+  enabled: boolean;
+  summary: GitMirrorSummary;
+  workspaces: GitMirrorWorkspace[];
+  shared: GitMirrorShared[];
+};
+
+export type GitMirrorCleanupResult = {
+  ok: boolean;
+  scope: GitMirrorCleanupScope;
+  removed_workspaces: string[];
+  removed_shared: string[];
+  summary: GitMirrorSummary;
+};
+
+export type GitMirrorSyncResult = {
+  ok: boolean;
+  results: Array<{ repo: string; ok: boolean; action?: string; error?: string }>;
+  shared: GitMirrorShared[];
+  summary: GitMirrorSummary;
 };

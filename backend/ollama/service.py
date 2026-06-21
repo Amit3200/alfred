@@ -172,6 +172,31 @@ def start_ollama() -> dict[str, Any]:
     }
 
 
+def stop_ollama() -> dict[str, Any]:
+    """Stop local Ollama server processes started via CLI (`ollama serve`)."""
+    if not shutil.which("ollama"):
+        return {"ok": True, "message": "Ollama is not installed.", "stopped": False}
+
+    if not get_status()["running"]:
+        return {"ok": True, "message": "Ollama is not running.", "stopped": False}
+
+    result = _run(["pkill", "-f", "ollama serve"])
+    if result.returncode not in (0, 1):
+        detail = (result.stderr or result.stdout or "stop failed").strip()
+        return {"ok": False, "message": detail[:500], "stopped": False}
+
+    for _ in range(5):
+        time.sleep(0.5)
+        if not get_status()["running"]:
+            return {"ok": True, "message": "Ollama stopped.", "stopped": True}
+
+    return {
+        "ok": False,
+        "message": "Ollama is still running. Quit the Ollama menu bar app on macOS if needed.",
+        "stopped": False,
+    }
+
+
 def pull_model(model: str | None = None) -> dict[str, Any]:
     """Pull a model via ollama CLI."""
     name = model or DEFAULT_MODEL

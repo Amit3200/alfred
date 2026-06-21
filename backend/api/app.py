@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from backend.__version__ import __version__
 from backend.api.routes import chat as chat_routes
 from backend.api.routes import config as config_routes
+from backend.api.routes import git_mirrors as git_mirrors_routes
 from backend.api.routes import health as health_routes
 from backend.api.routes import ollama as ollama_routes
 from backend.config_manager import ConfigManager
@@ -34,6 +35,18 @@ async def _lifespan(app: FastAPI):
         logger.info("Slack ingress: %s", message)
     else:
         logger.info("Slack ingress not started: %s", message)
+
+    try:
+        config, _ = manager.load_merged()
+        if config.git.enabled:
+            from backend.git.mirror import WorkspaceMirrorManager
+
+            removed = WorkspaceMirrorManager(config.git, manager.data_dir).cleanup_expired()
+            if removed:
+                logger.info("Cleaned up %d expired repo mirror workspace(s)", len(removed))
+    except Exception:
+        logger.exception("Mirror workspace cleanup failed")
+
     yield
     slack_runner.stop()
 
@@ -62,6 +75,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     app.include_router(config_routes.router, prefix="/api")
     app.include_router(ollama_routes.router, prefix="/api")
     app.include_router(chat_routes.router, prefix="/api")
+    app.include_router(git_mirrors_routes.router, prefix="/api")
 
     static_dir = bundled_web_dist()
     if static_dir:

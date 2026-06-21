@@ -19,14 +19,26 @@ from backend.ingress.response_clean import clean_response_scaffold
 from backend.ingress.slack_context import SlackContextBundle
 from backend.models.config import AlfredConfig
 from backend.models.response import AssistantResponse, ResponsePayload
-from backend.models.session import ConversationSession, task_session_key
+from backend.models.session import ConversationSession, mirror_workspace_key, task_session_key
 from backend.models.task import Task
+from backend.paths import get_data_dir
 from backend.storage.session_store import SessionStore
 from backend.tools.result import ToolResult
 
 logger = logging.getLogger(__name__)
 
-STRUCTURED_TOOL_KINDS = frozenset({"pr_list", "pr_detail", "repo_list"})
+STRUCTURED_TOOL_KINDS = frozenset(
+    {
+        "pr_list",
+        "pr_detail",
+        "repo_list",
+        "code_grep",
+        "file_content",
+        "git_log",
+        "git_blame",
+        "git_show",
+    }
+)
 
 
 class TaskProcessor:
@@ -47,6 +59,7 @@ class TaskProcessor:
             data_dir,
             disabled_skills=config.skills.disabled,
         )
+        self._data_dir = data_dir
 
     def process(self, task: Task) -> AssistantResponse:
         logger.debug("Processing task %s source=%s", task.id, task.source)
@@ -88,6 +101,12 @@ class TaskProcessor:
             channel_id=task.channel_id,
         )
         prompt_playbooks = [investigation] if investigation else matched_playbooks
+        git_context_prompt = ""
+        if investigation and session and self.config.git.enabled:
+            from backend.ingress.git_context import format_session_git_context
+
+            git_context_prompt = format_session_git_context(session, task.cleaned_intent)
+
         messages = self._build_messages(
             task,
             session=session,
@@ -95,11 +114,25 @@ class TaskProcessor:
             history_window_label=history_window_label if include_context else "",
             omit_assistant_turns=omit_assistant,
             playbook_prompt=self._playbooks.format_for_prompt(prompt_playbooks),
+            extra_system=git_context_prompt,
         )
 
         response: AssistantResponse | None = None
-        if investigation and investigation.allowed_tools and self.config.git.enabled:
-            response = self._try_direct_git(investigation, task)
+        metadata_patch: dict[str, Any] | None = None
+        if self.config.git.enabled:
+            response, pr_patch = self._try_direct_pr_analysis(task, session=session)
+            if pr_patch:
+                metadata_patch = {"active_pr": pr_patch}
+
+            if response is None and investigation:
+                response, inv_patch = self._try_direct_investigate(investigation, task, session)
+                if inv_patch:
+                    metadata_patch = {**(metadata_patch or {}), **inv_patch}
+
+            if response is None and investigation and investigation.allowed_tools:
+                response, git_patch = self._try_direct_git(investigation, task, session)
+                if git_patch:
+                    metadata_patch = {**(metadata_patch or {}), **git_patch}
 
         if response is None:
             provider_name, provider, model_name = self._select_provider(investigation)
@@ -115,13 +148,16 @@ class TaskProcessor:
             )
 
             if investigation and investigation.allowed_tools and self.config.git.enabled:
-                response = self._run_investigation(
+                response, inv_patch = self._run_investigation(
                     investigation,
                     messages,
                     provider=provider,
                     model=model_name,
                     task=task,
+                    session=session,
                 )
+                if inv_patch:
+                    metadata_patch = {**(metadata_patch or {}), **inv_patch}
             else:
                 llm_response = provider.chat(messages, model=model_name or None)
                 content = clean_response_scaffold((llm_response.content or "").strip())
@@ -145,6 +181,7 @@ class TaskProcessor:
                 assistant_content=rendered,
                 assistant_payload=response.payload,
                 context_snapshot=slack_context if include_context else None,
+                metadata_patch=metadata_patch,
             )
             logger.info("Session updated: %s", session_key)
 
@@ -163,43 +200,170 @@ class TaskProcessor:
         cfg = self.config.ai.providers[name]
         return name, provider, cfg.model or ""
 
-    def _try_direct_git(self, skill: Playbook, task: Task) -> AssistantResponse | None:
+    def _try_direct_pr_analysis(
+        self,
+        task: Task,
+        *,
+        session: ConversationSession | None = None,
+    ) -> tuple[AssistantResponse | None, dict[str, Any] | None]:
+        """Fetch PR diffs, checkout head branch, and produce a code-level review."""
+        from backend.ingress.git_direct import (
+            pr_analysis_focus,
+            resolve_pr_for_analysis,
+            should_run_pr_analysis,
+        )
+        from backend.ingress.pr_analysis import analyze_pull_request
+
+        if not should_run_pr_analysis(task.cleaned_intent, session):
+            return None, None
+        ref = resolve_pr_for_analysis(task.cleaned_intent, session)
+        if not ref:
+            return None, None
+
+        repo, number = ref
+        focus = pr_analysis_focus(task.cleaned_intent)
+        logger.info("Direct PR code analysis: %s #%s (focus=%s)", repo, number, focus)
+        inv_skill = Playbook(
+            name="review_pr",
+            path=Path("review_pr.md"),
+            body="",
+            mode="investigation",
+            allowed_tools=["get_pr"],
+        )
+        _, provider, model = self._select_provider(inv_skill)
+        try:
+            analysis, context = analyze_pull_request(
+                self.config,
+                data_dir=self._data_dir_path(),
+                workspace_id=mirror_workspace_key(task),
+                repo=repo,
+                number=number,
+                provider=provider,
+                model=model or None,
+                focus=focus,
+            )
+        except RuntimeError as exc:
+            return AssistantResponse.error(str(exc)), None
+        except Exception as exc:
+            logger.exception("PR analysis failed")
+            return AssistantResponse.error(f"PR analysis failed: {exc}"), None
+
+        if analysis:
+            return (
+                AssistantResponse.from_text(clean_response_scaffold(analysis.strip())),
+                context or None,
+            )
+        return (
+            AssistantResponse.from_text(
+                "I fetched the PR but couldn't generate a review. "
+                "Check that your Git token has access and the AI provider is running."
+            ),
+            context or None,
+        )
+
+    def _try_direct_investigate(
+        self,
+        skill: Playbook,
+        task: Task,
+        session: ConversationSession | None,
+    ) -> tuple[AssistantResponse | None, dict[str, Any] | None]:
+        """Run local git tools directly for code investigation intents."""
+        from backend.ingress.git_context import (
+            detect_investigate_direct_action,
+            metadata_patch_for_tool_result,
+        )
+        from backend.tools.git_api import build_git_tool_registry
+
+        direct = detect_investigate_direct_action(
+            task.cleaned_intent,
+            skill.name,
+            self.config.git,
+            session,
+        )
+        if not direct:
+            return None, None
+        tool_name, tool_args = direct
+        if tool_name not in skill.allowed_tools:
+            return None, None
+
+        logger.info("Direct investigate tool: %s", tool_name)
+        registry = build_git_tool_registry(
+            self.config,
+            workspace_id=mirror_workspace_key(task),
+            data_dir=self._data_dir_path(),
+        )
+        result = registry.run_normalized(
+            tool_name,
+            tool_args,
+            allowed=skill.allowed_tools,
+            git=self.config.git,
+            session=session,
+        )
+        if result.kind == "error":
+            return AssistantResponse.error(result.data.get("message", "Git tool failed.")), None
+
+        patch = metadata_patch_for_tool_result(tool_name, tool_args, result)
+        structured = _tool_result_to_response(result)
+        if structured is not None:
+            return structured, patch
+        return None, patch
+
+    def _try_direct_git(
+        self,
+        skill: Playbook,
+        task: Task,
+        session: ConversationSession | None,
+    ) -> tuple[AssistantResponse | None, dict[str, Any] | None]:
         """Run a Git API tool directly when the question is unambiguous (no LLM)."""
         from backend.ingress.git_direct import detect_git_direct_action, wants_pr_summary
         from backend.tools.git_api import build_git_tool_registry
 
         direct = detect_git_direct_action(task.cleaned_intent, skill, self.config.git)
         if not direct:
-            return None
+            return None, None
         tool_name, tool_args = direct
         if tool_name not in skill.allowed_tools:
-            return None
+            return None, None
 
         logger.info("Direct git tool: %s", tool_name)
-        registry = build_git_tool_registry(self.config)
+        registry = build_git_tool_registry(
+            self.config,
+            workspace_id=mirror_workspace_key(task),
+            data_dir=self._data_dir_path(),
+        )
         result = registry.run_normalized(
             tool_name,
             tool_args,
             allowed=skill.allowed_tools,
             git=self.config.git,
+            session=session,
         )
         if result.kind == "error":
-            return AssistantResponse.error(result.data.get("message", "Git tool failed."))
+            return AssistantResponse.error(result.data.get("message", "Git tool failed.")), None
+
+        from backend.ingress.git_context import metadata_patch_for_tool_result
+
+        patch = metadata_patch_for_tool_result(tool_name, tool_args, result)
 
         if tool_name == "get_pr" and wants_pr_summary(task.cleaned_intent):
+            from backend.ingress.git_direct import wants_pr_code_analysis
+
             detail = result.data.get("pr")
-            if detail:
+            if detail and not wants_pr_code_analysis(task.cleaned_intent):
                 summary = self._summarize_pr(detail, task)
                 if summary:
-                    return AssistantResponse.from_text(clean_response_scaffold(summary.strip()))
+                    return AssistantResponse.from_text(clean_response_scaffold(summary.strip())), patch
 
         structured = _tool_result_to_response(result)
         if structured is not None:
-            return structured
+            return structured, patch
 
-        return AssistantResponse.from_text(
-            "I couldn't fetch PR data from Git. "
-            "Check Admin → Secrets (Git token) and Integrations (Git enabled)."
+        return (
+            AssistantResponse.from_text(
+                "I couldn't fetch PR data from Git. "
+                "Check Admin → Secrets (Git token) and Integrations (Git enabled)."
+            ),
+            patch,
         )
 
     def _run_investigation(
@@ -210,12 +374,18 @@ class TaskProcessor:
         provider: Any,
         model: str,
         task: Task,
-    ) -> AssistantResponse:
+        session: ConversationSession | None,
+    ) -> tuple[AssistantResponse, dict[str, Any] | None]:
         from backend.agent.loop import run_agent_loop
         from backend.ingress.git_direct import looks_like_tool_json
+        from backend.ingress.git_context import metadata_patch_for_tool_result
         from backend.tools.git_api import build_git_tool_registry
 
-        registry = build_git_tool_registry(self.config)
+        registry = build_git_tool_registry(
+            self.config,
+            workspace_id=mirror_workspace_key(task),
+            data_dir=self._data_dir_path(),
+        )
 
         try:
             raw = run_agent_loop(
@@ -224,25 +394,41 @@ class TaskProcessor:
                 registry,
                 skill.allowed_tools,
                 model=model or None,
+                session=session,
+                git=self.config.git,
             )
         except Exception as exc:
             logger.exception("Investigation loop failed")
-            return AssistantResponse.from_text(
-                f"I couldn't complete the Git investigation: {exc}. "
-                "Check that Git is enabled and your token is valid in Admin → Secrets."
+            return (
+                AssistantResponse.from_text(
+                    f"I couldn't complete the Git investigation: {exc}. "
+                    "Check that Git is enabled and your token is valid in Admin → Secrets."
+                ),
+                None,
+            )
+
+        patch: dict[str, Any] | None = None
+        if registry.last_result and registry.last_tool_name:
+            patch = metadata_patch_for_tool_result(
+                registry.last_tool_name,
+                registry.last_tool_args or {},
+                registry.last_result,
             )
 
         if registry.last_result and registry.last_result.kind in STRUCTURED_TOOL_KINDS:
             structured = _tool_result_to_response(registry.last_result)
             if structured is not None:
-                return structured
+                return structured, patch
 
         if looks_like_tool_json(raw):
-            return AssistantResponse.from_text(
-                "I couldn't fetch your PRs — the AI model failed to run the Git lookup. "
-                "Try asking again with: *what are my open PRs?*"
+            return (
+                AssistantResponse.from_text(
+                    "I couldn't complete the Git lookup — the AI model failed to run tools. "
+                    "Try a direct question like: *where is X handled in org/repo?*"
+                ),
+                patch,
             )
-        return AssistantResponse.from_text(clean_response_scaffold(raw.strip()))
+        return AssistantResponse.from_text(clean_response_scaffold(raw.strip())), patch
 
     def _summarize_pr(self, detail: dict[str, Any], task: Task) -> str | None:
         """One-shot LLM summary of a fetched PR (after get_pr)."""
@@ -275,6 +461,9 @@ class TaskProcessor:
             return None
         return self.session_store.load(session_key)
 
+    def _data_dir_path(self) -> Path:
+        return get_data_dir(self._data_dir)
+
     def _build_messages(
         self,
         task: Task,
@@ -284,10 +473,13 @@ class TaskProcessor:
         history_window_label: str = "",
         omit_assistant_turns: bool = False,
         playbook_prompt: str = "",
+        extra_system: str = "",
     ) -> list[Message]:
         system_parts = [ALFRED_SYSTEM_PROMPT]
         if playbook_prompt:
             system_parts.append(playbook_prompt)
+        if extra_system:
+            system_parts.append(extra_system)
         messages: list[Message] = [Message(role="system", content="\n\n".join(system_parts))]
 
         if session:

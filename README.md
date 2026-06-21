@@ -259,6 +259,7 @@ Switch in Admin UI or `config.yaml` — no code changes.
 | OpenAI / Groq / Together / etc. | `openai` | same (OpenAI-compatible API) |
 | Anthropic Claude | `anthropic` | `pip install alfred-agent[ai-anthropic]` |
 | Google Gemini | `gemini` | `pip install alfred-agent[ai-gemini]` |
+| **Kimi** (Moonshot AI) | `kimi` | `pip install alfred-agent[ai-openai]` |
 
 All providers: `pip install alfred-agent[ai]`
 

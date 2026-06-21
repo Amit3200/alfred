@@ -104,6 +104,9 @@ export function IntegrationsPanel() {
             />
           </Col>
         </Row>
+        <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0 }}>
+          Manage local repo checkouts under Configure → Repo mirrors.
+        </Typography.Paragraph>
       </IntegrationBlock>
 
       <IntegrationBlock

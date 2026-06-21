@@ -96,6 +96,9 @@ class GitApiClient:
     def get_pr(self, repo: str, number: int) -> dict[str, Any]:
         return self._impl.get_pr(repo, number)
 
+    def get_pr_files(self, repo: str, number: int) -> list[dict[str, Any]]:
+        return self._impl.get_pr_files(repo, number)
+
     def list_repos(self) -> list[str]:
         configured = list(self.config.repos)
         if configured:
@@ -195,6 +198,24 @@ class _GitHubClient:
             "base": (data.get("base") or {}).get("ref"),
         }
 
+    def get_pr_files(self, repo: str, number: int) -> list[dict[str, Any]]:
+        owner, name = split_repo_slug(repo)
+        data = self._get(f"/repos/{owner}/{name}/pulls/{number}/files", params={"per_page": 100})
+        results: list[dict[str, Any]] = []
+        for item in data:
+            results.append(
+                {
+                    "filename": str(item.get("filename") or ""),
+                    "status": str(item.get("status") or ""),
+                    "additions": int(item.get("additions") or 0),
+                    "deletions": int(item.get("deletions") or 0),
+                    "changes": int(item.get("changes") or 0),
+                    "patch": str(item.get("patch") or ""),
+                    "previous_filename": item.get("previous_filename"),
+                }
+            )
+        return results
+
     def list_accessible_repos(self) -> list[str]:
         if self.config.default_org:
             data = self._get(f"/orgs/{self.config.default_org}/repos", params={"per_page": 100})
@@ -293,6 +314,34 @@ class _GitLabClient:
             "head": (data.get("source_branch")),
             "base": (data.get("target_branch")),
         }
+
+    def get_pr_files(self, repo: str, number: int) -> list[dict[str, Any]]:
+        project = quote(repo, safe="")
+        data = self._get(f"/projects/{project}/merge_requests/{number}/changes")
+        results: list[dict[str, Any]] = []
+        for item in data.get("changes") or []:
+            old_path = str(item.get("old_path") or "")
+            new_path = str(item.get("new_path") or "")
+            if old_path and new_path and old_path != new_path:
+                status = "renamed"
+            elif new_path and not old_path:
+                status = "added"
+            elif old_path and not new_path:
+                status = "removed"
+            else:
+                status = "modified"
+            results.append(
+                {
+                    "filename": new_path or old_path,
+                    "status": status,
+                    "additions": 0,
+                    "deletions": 0,
+                    "changes": 0,
+                    "patch": str(item.get("diff") or ""),
+                    "previous_filename": old_path if old_path != new_path else None,
+                }
+            )
+        return results
 
     def list_accessible_repos(self) -> list[str]:
         if self.config.default_org:

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from pathlib import Path
+
 import requests
 
 from backend.ai.registry import LLMRouter
@@ -50,7 +52,7 @@ def check_slack(config: AlfredConfig) -> dict:
         return {"ok": False, "message": str(exc)}
 
 
-def check_git(config: AlfredConfig) -> dict:
+def check_git(config: AlfredConfig, *, data_dir: Path | None = None) -> dict:
     if not config.git.enabled:
         return {"ok": False, "skipped": True, "message": "Git disabled"}
     if not config.git.token:
@@ -66,13 +68,45 @@ def check_git(config: AlfredConfig) -> dict:
             url = "https://gitlab.com/api/v4/user"
             headers = {"PRIVATE-TOKEN": config.git.token}
         resp = requests.get(url, headers=headers, timeout=10)
-        if resp.status_code == 200:
-            user = resp.json()
-            login = user.get("login") or user.get("username") or user.get("name")
-            return {"ok": True, "message": f"Authenticated as {login}"}
-        return {"ok": False, "message": f"HTTP {resp.status_code}"}
+        if resp.status_code != 200:
+            return {"ok": False, "message": f"HTTP {resp.status_code}"}
+        user = resp.json()
+        login = user.get("login") or user.get("username") or user.get("name")
+        message = f"Authenticated as {login}"
+        mirror_info = check_git_mirrors(config, data_dir=data_dir)
+        if mirror_info.get("mirror_message"):
+            message = f"{message} · {mirror_info['mirror_message']}"
+        result: dict = {"ok": True, "message": message}
+        if mirror_info.get("mirrors"):
+            result["mirrors"] = mirror_info["mirrors"]
+        return result
     except requests.RequestException as exc:
         return {"ok": False, "message": str(exc)}
+
+
+def check_git_mirrors(config: AlfredConfig, *, data_dir: Path | None = None) -> dict:
+    """Local mirror storage summary for admin health."""
+    if not config.git.enabled:
+        return {}
+    try:
+        from backend.git.mirror import RepoMirrorManager
+        from backend.paths import get_data_dir
+
+        root = get_data_dir(data_dir)
+        manager = RepoMirrorManager(config.git, data_dir=root)
+        summary = manager.storage_summary()
+        configured = len(config.git.repos) if config.git.repos else None
+        synced = int(summary.get("shared_count") or 0)
+        if configured is not None:
+            mirror_message = f"Shared mirrors: {synced}/{configured} repos"
+        else:
+            mirror_message = f"Shared mirrors: {synced} cached"
+        return {
+            "mirrors": summary,
+            "mirror_message": mirror_message,
+        }
+    except Exception as exc:
+        return {"mirror_message": f"Mirror check failed: {exc}"}
 
 
 def check_aws(config: AlfredConfig) -> dict:
@@ -114,10 +148,10 @@ def check_ai(config: AlfredConfig, provider: str | None = None) -> dict:
         return {"ok": False, "message": str(exc), "provider": name}
 
 
-def run_all_checks(config: AlfredConfig) -> dict:
+def run_all_checks(config: AlfredConfig, *, data_dir: Path | None = None) -> dict:
     return {
         "slack": check_slack(config),
-        "git": check_git(config),
+        "git": check_git(config, data_dir=data_dir),
         "aws": check_aws(config),
         "ai": check_ai(config),
     }

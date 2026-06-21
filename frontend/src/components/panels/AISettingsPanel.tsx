@@ -11,7 +11,7 @@ import {
 } from "../ui/AddableSection";
 import { OllamaGetStarted } from "../OllamaGetStarted";
 
-const ALL_PROVIDERS = ["ollama", "openai", "anthropic", "gemini"] as const;
+const ALL_PROVIDERS = ["ollama", "openai", "anthropic", "gemini", "kimi"] as const;
 
 export function AISettingsPanel() {
   const { config, updateConfig, saveConfig, testProvider } = useApp();
@@ -144,7 +144,7 @@ export function AISettingsPanel() {
                     }
                   />
                 </Col>
-                {(name === "ollama" || name === "openai") && (
+                {(name === "ollama" || name === "openai" || name === "kimi") && (
                   <Col xs={24} md={12}>
                     <label className="alfred-field-label">Base URL</label>
                     <Input

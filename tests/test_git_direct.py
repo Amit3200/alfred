@@ -75,6 +75,15 @@ def test_wants_pr_summary():
     assert not wants_pr_summary("list my open prs")
 
 
+def test_wants_pr_code_analysis():
+    from backend.ingress.git_direct import wants_pr_code_analysis
+
+    assert wants_pr_code_analysis(
+        "review https://github.com/FlexyPe/flexype-adhocs/pull/91"
+    )
+    assert not wants_pr_code_analysis("summarize my open prs")
+
+
 def test_resolve_repo_slug_with_default_org():
     from backend.models.config import GitConfig
     from backend.git.api import resolve_repo_slug

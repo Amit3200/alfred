@@ -82,6 +82,19 @@ export const AI_KEY_HELP: Record<string, HelpGuide> = {
     ],
     links: [{ label: "Google AI Studio", href: "https://aistudio.google.com/apikey" }],
   },
+  kimi: {
+    title: "Kimi (Moonshot AI)",
+    summary: "API key from the Kimi Open Platform — OpenAI-compatible chat API.",
+    steps: [
+      "platform.kimi.ai → create an API key.",
+      "Paste the key here. Default model: kimi-k2.6 (configurable on AI providers page).",
+      "Use https://api.moonshot.cn/v1 as base URL if you are in mainland China.",
+    ],
+    links: [
+      { label: "Kimi API platform", href: "https://platform.kimi.ai/docs/api/quickstart" },
+      { label: "Kimi", href: "https://www.kimi.com/en" },
+    ],
+  },
 };
 
 export const AI_PROVIDER_HELP: Record<string, HelpGuide> = {
@@ -122,6 +135,20 @@ export const AI_PROVIDER_HELP: Record<string, HelpGuide> = {
       "Set model to gemini-2.0-flash or similar.",
     ],
     links: [{ label: "Gemini models", href: "https://ai.google.dev/gemini-api/docs/models/gemini" }],
+  },
+  kimi: {
+    title: "Kimi (Moonshot AI)",
+    summary: "Kimi K2 models via the Moonshot Open Platform — strong for coding and agent tasks.",
+    steps: [
+      "Add API key in Secrets → AI keys.",
+      "Default base URL: https://api.moonshot.ai/v1",
+      "Default model: kimi-k2.6 — good for investigation routing.",
+      "China region: set base URL to https://api.moonshot.cn/v1",
+    ],
+    links: [
+      { label: "Kimi API docs", href: "https://platform.kimi.ai/docs/api/overview" },
+      { label: "Kimi", href: "https://www.kimi.com/en" },
+    ],
   },
 };
 

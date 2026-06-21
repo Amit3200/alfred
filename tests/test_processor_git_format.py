@@ -36,7 +36,7 @@ def test_processor_uses_structured_pr_payload():
     registry.last_result = ToolResult.pr_list(prs, state="open")
 
     with patch("backend.agent.loop.run_agent_loop", return_value="verbose llm output"):
-        with patch.object(processor, "_try_direct_git", return_value=None):
+        with patch.object(processor, "_try_direct_git", return_value=(None, None)):
             with patch(
                 "backend.tools.git_api.build_git_tool_registry",
                 return_value=registry,

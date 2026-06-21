@@ -27,6 +27,11 @@ class GitConfig(BaseModel):
     token: str = ""
     default_org: str = ""
     repos: list[str] = Field(default_factory=list)
+    # Repo mirror — per-conversation workspaces under .alfred/repos/workspaces/
+    mirror_ttl_hours: int = 24
+    mirror_refresh_minutes: int = 30
+    mirror_max_workspaces: int = 32
+    mirror_shallow_depth: int = 1
 
 
 class AWSConfig(BaseModel):
@@ -109,6 +114,11 @@ def default_ai_providers() -> dict[str, AIProviderConfig]:
         "gemini": AIProviderConfig(
             enabled=False,
             model="gemini-2.0-flash",
+        ),
+        "kimi": AIProviderConfig(
+            enabled=False,
+            base_url="https://api.moonshot.ai/v1",
+            model="kimi-k2.6",
         ),
     }
 

@@ -11,9 +11,11 @@ if [ ! -f .venv/bin/alfred ]; then
   exit 1
 fi
 
-echo "Alfred API → http://${ALFRED_HOST}:${ALFRED_PORT}  (data: $ALFRED_DATA_DIR)"
-exec .venv/bin/alfred serve \
+echo "Starting Alfred dev stack (API + Vite + optional Ollama)…"
+exec .venv/bin/alfred up \
+  --data-dir "$ALFRED_DATA_DIR" \
   --host "$ALFRED_HOST" \
   --port "$ALFRED_PORT" \
-  --data-dir "$ALFRED_DATA_DIR" \
-  --reload
+  --frontend-port "$ALFRED_FRONTEND_PORT" \
+  --with-frontend \
+  "$@"

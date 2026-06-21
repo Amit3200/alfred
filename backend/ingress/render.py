@@ -29,6 +29,16 @@ def render_for_channel(response: AssistantResponse, channel: Channel) -> str:
         return _render_pr_detail(payload, channel)
     if payload.kind == "repo_list":
         return _render_repo_list(payload, channel)
+    if payload.kind == "code_grep":
+        return _render_code_grep(payload, channel)
+    if payload.kind == "file_content":
+        return _render_file_content(payload, channel)
+    if payload.kind == "git_log":
+        return _render_git_log(payload, channel)
+    if payload.kind == "git_blame":
+        return _render_git_blame(payload, channel)
+    if payload.kind == "git_show":
+        return _render_git_show(payload, channel)
     return _format_text(response.text or "", channel)
 
 
@@ -61,6 +71,60 @@ def _render_repo_list(payload: ResponsePayload, channel: Channel) -> str:
     if channel == "slack":
         return "\n".join(f"• `{repo}`" for repo in repos)
     return "\n".join(f"- `{repo}`" for repo in repos)
+
+
+def _render_code_grep(payload: ResponsePayload, channel: Channel) -> str:
+    repo = str(payload.data.get("repo") or "")
+    pattern = str(payload.data.get("pattern") or "")
+    matches = payload.data.get("matches") or []
+    if not matches:
+        return f"No matches for `{pattern}` in `{repo}`."
+    lines = [f"**Matches in `{repo}`**" if channel == "ui" else f"*Matches in `{repo}`*"]
+    for item in matches:
+        path = item.get("path", "")
+        line_no = item.get("line", "")
+        text = item.get("text", "")
+        if channel == "slack":
+            lines.append(f"• `{path}:{line_no}` — {text}")
+        else:
+            lines.append(f"- `{path}:{line_no}` — {text}")
+    return "\n".join(lines)
+
+
+def _render_file_content(payload: ResponsePayload, channel: Channel) -> str:
+    repo = str(payload.data.get("repo") or "")
+    path = str(payload.data.get("path") or "")
+    start = int(payload.data.get("start_line") or 1)
+    content = str(payload.data.get("content") or "")
+    header = f"```{path}\n" if channel != "slack" else f"`{repo}/{path}` (from line {start}):\n```\n"
+    return f"{header}{content}\n```".strip()
+
+
+def _render_git_log(payload: ResponsePayload, channel: Channel) -> str:
+    repo = str(payload.data.get("repo") or "")
+    commits = payload.data.get("commits") or []
+    if not commits:
+        return f"No commits found in `{repo}`."
+    title = f"Recent commits in `{repo}`"
+    body = "\n".join(f"- {line}" for line in commits)
+    return f"{title}\n{body}"
+
+
+def _render_git_blame(payload: ResponsePayload, channel: Channel) -> str:
+    repo = str(payload.data.get("repo") or "")
+    path = str(payload.data.get("path") or "")
+    lines = payload.data.get("lines") or []
+    header = f"Blame `{repo}/{path}`"
+    body = "\n".join(lines[:40])
+    return f"{header}\n```\n{body}\n```"
+
+
+def _render_git_show(payload: ResponsePayload, channel: Channel) -> str:
+    repo = str(payload.data.get("repo") or "")
+    ref = str(payload.data.get("ref") or "")
+    output = str(payload.data.get("output") or "")
+    header = f"Commit `{ref}` in `{repo}`"
+    return f"{header}\n```\n{output.strip()}\n```"
 
 
 def _format_text(text: str, channel: Channel) -> str:

@@ -3,6 +3,7 @@
 from pathlib import Path
 
 import pytest
+import yaml
 
 from backend.config_manager import ConfigManager
 from backend.models.config import AlfredConfig, AlfredSecrets, default_config
@@ -57,7 +58,20 @@ def test_default_ai_providers() -> None:
     config = default_config()
     assert "ollama" in config.ai.providers
     assert "anthropic" in config.ai.providers
+    assert "kimi" in config.ai.providers
+    assert config.ai.providers["kimi"].base_url == "https://api.moonshot.ai/v1"
     assert config.ai.default_provider == "ollama"
+
+
+def test_load_config_merges_new_providers(data_dir: Path) -> None:
+    manager = ConfigManager(data_dir)
+    manager.init()
+    raw = yaml.safe_load((data_dir / "config.yaml").read_text())
+    del raw["ai"]["providers"]["kimi"]
+    (data_dir / "config.yaml").write_text(yaml.safe_dump(raw, sort_keys=False))
+
+    config = manager.load_config()
+    assert "kimi" in config.ai.providers
 
 
 def test_secrets_update_replaces_existing_token(data_dir: Path) -> None:

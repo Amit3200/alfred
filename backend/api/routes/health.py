@@ -28,7 +28,7 @@ def health(request: Request) -> dict:
 def health_checks(request: Request) -> dict:
     manager = request.app.state.config_manager
     config, _ = manager.load_merged()
-    checks = run_all_checks(config)
+    checks = run_all_checks(config, data_dir=manager.data_dir)
     runner = getattr(request.app.state, "slack_runner", None)
     if runner is not None:
         checks["slack_ingress"] = runner.status()

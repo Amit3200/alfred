@@ -66,11 +66,19 @@ class PlaybookStore:
         return matched
 
     def pick_investigation(self, intent: str, *, channel_id: str = "") -> Playbook | None:
-        """Return the first investigation skill with tools that matches the intent."""
+        """Return the best-matching investigation skill (longest trigger wins)."""
+        lower = intent.lower()
+        best: Playbook | None = None
+        best_len = 0
         for playbook in self.match(intent, channel_id=channel_id):
-            if playbook.mode == "investigation" and playbook.allowed_tools:
-                return playbook
-        return None
+            if playbook.mode != "investigation" or not playbook.allowed_tools:
+                continue
+            for trigger in playbook.triggers:
+                token = trigger.lower()
+                if token in lower and len(token) > best_len:
+                    best = playbook
+                    best_len = len(token)
+        return best
 
     def format_for_prompt(self, playbooks: list[Playbook]) -> str:
         if not playbooks:

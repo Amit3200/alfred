@@ -6,6 +6,7 @@ import json
 import logging
 from datetime import datetime, timezone
 from pathlib import Path
+from typing import Any
 
 from sqlalchemy import DateTime, String, Text, create_engine, select
 from sqlalchemy.orm import DeclarativeBase, Mapped, mapped_column, sessionmaker
@@ -85,6 +86,7 @@ class SessionStore:
         assistant_content: str,
         context_snapshot: str | None = None,
         assistant_payload: ResponsePayload | None = None,
+        metadata_patch: dict[str, Any] | None = None,
     ) -> ConversationSession:
         session = self.load(key) or ConversationSession(
             key=key,
@@ -92,6 +94,8 @@ class SessionStore:
             scope_id=scope_id,
             thread_id=thread_id,
         )
+        if metadata_patch:
+            session.metadata.update(metadata_patch)
         session.turns.append(ConversationTurn(role="user", content=user_content))
         session.turns.append(
             ConversationTurn(

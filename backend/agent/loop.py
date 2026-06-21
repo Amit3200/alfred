@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import logging
+from typing import Any
 
 from backend.ai.base import LLMProvider, LLMResponse, Message
 from backend.ingress.git_direct import parse_text_tool_call
@@ -22,6 +23,8 @@ def run_agent_loop(
     *,
     model: str | None = None,
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
+    session: Any | None = None,
+    git: Any | None = None,
 ) -> str:
     """Run tool-augmented chat until the model returns text or limits are hit."""
     tool_schemas = registry.get_schemas(allowed_tools)
@@ -42,6 +45,8 @@ def run_agent_loop(
                     tool_call.name,
                     tool_call.arguments,
                     allowed=allowed_tools,
+                    session=session,
+                    git=git,
                 )
                 conversation.append(
                     Message(
@@ -60,7 +65,14 @@ def run_agent_loop(
                 name, arguments = parsed
                 if name in allowed_tools:
                     logger.info("Executing text-emitted tool call: %s", name)
-                    _execute_tool(registry, name, arguments, allowed=allowed_tools)
+                    _execute_tool(
+                        registry,
+                        name,
+                        arguments,
+                        allowed=allowed_tools,
+                        session=session,
+                        git=git,
+                    )
                     return content
             return content
 
@@ -97,10 +109,18 @@ def _execute_tool(
     arguments: dict,
     *,
     allowed: list[str],
+    session: Any | None = None,
+    git: Any | None = None,
 ) -> str:
-    git = getattr(registry, "git_config", None)
-    if git is not None:
-        result = registry.run_normalized(name, arguments, allowed=allowed, git=git)
+    git_cfg = git or getattr(registry, "git_config", None)
+    if git_cfg is not None:
+        result = registry.run_normalized(
+            name,
+            arguments,
+            allowed=allowed,
+            git=git_cfg,
+            session=session,
+        )
     else:
         result = registry.run(name, arguments, allowed=allowed)
     return result.to_json()

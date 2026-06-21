@@ -13,10 +13,10 @@ import {
 } from "../ui/AddableSection";
 
 
-const AI_KEY_IDS = ["openai", "anthropic", "gemini"] as const;
+const AI_KEY_IDS = ["openai", "anthropic", "gemini", "kimi"] as const;
 
 export function SecretsPanel() {
-  const { config, secrets, setSecrets, saveSecrets, tokenInput, setTokenInput, dataDir } =
+  const { config, secrets, setSecrets, saveSecrets, tokenInput, setTokenInput, saveToken, dataDir } =
     useApp();
 
   const integrations = useSectionVisibility("secrets-integrations");
@@ -51,7 +51,7 @@ export function SecretsPanel() {
       <div className="alfred-panel" style={{ marginBottom: 20 }}>
         <div className="alfred-section-title">Admin token</div>
         <Typography.Paragraph type="secondary" style={{ marginBottom: 12, fontSize: 14 }}>
-          Required to save secrets. From the project directory run:{" "}
+          Required for Chat and saving secrets. From the project directory run:{" "}
           <Typography.Text code>alfred token</Typography.Text>
           {dataDir && (
             <>
@@ -60,11 +60,17 @@ export function SecretsPanel() {
             </>
           )}
         </Typography.Paragraph>
-        <Input.Password
-          placeholder="Admin token from alfred init"
-          value={tokenInput}
-          onChange={(e) => setTokenInput(e.target.value)}
-        />
+        <div style={{ display: "flex", gap: 10, flexWrap: "wrap" }}>
+          <Input.Password
+            placeholder="Admin token from alfred init"
+            value={tokenInput}
+            onChange={(e) => setTokenInput(e.target.value)}
+            style={{ flex: 1, minWidth: 220 }}
+          />
+          <Button type="primary" onClick={saveToken}>
+            Save token
+          </Button>
+        </div>
       </div>
 
       <ActiveSections>

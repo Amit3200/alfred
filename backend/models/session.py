@@ -44,3 +44,12 @@ def task_session_key(task: Any) -> str | None:
     if not task.channel_id or not task.thread_ts:
         return None
     return session_key_for_task(task.source, task.channel_id, task.thread_ts)
+
+
+def mirror_workspace_key(task: Any) -> str:
+    """Stable workspace id for repo mirrors — one checkout copy per conversation."""
+    key = task_session_key(task)
+    if key:
+        return key
+    user = getattr(task, "user_id", None) or "anonymous"
+    return session_key_for_task(task.source, str(user), "ephemeral")

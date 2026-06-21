@@ -1,23 +1,51 @@
 ---
 name: investigate_bug
-description: Analyze bugs from Slack threads using git and logs
+description: Search and read code in mirrored repositories to answer where/how questions
 mode: investigation
-trigger_keywords: ["bug", "wrong", "broken", "error", "why", "issue"]
-allowed_channels: ["*"]
+trigger_keywords:
+  - where is
+  - where does
+  - how is
+  - find in code
+  - grep
+  - stack trace
+  - investigate
+  - duplicate order
+  - handled in
+  - which file
+allowed_channels:
+  - "*"
 allowed_tools:
-  - git_log
-  - git_blame
   - grep_repo
   - read_file
-  - slack_reply
+  - git_log
+  - git_blame
+  - git_show
+  - get_pr
+  - list_repos
 requires_thread_context: true
 ---
 
 # Objective
 
-Analyze the bug described in the Slack thread. Use git history and code search to identify the root cause.
+Investigate code in configured Git repositories using local mirror tools.
+Each Slack thread or UI chat has its **own mirror workspace** — do not assume another conversation's checkout.
 
-# Governance Rules
+# Execution steps
 
-- READ-ONLY: Do not modify any code or infrastructure.
-- Always cite file paths and line numbers when referencing code.
+1. Identify the repository from the question, thread context, or `list_repos`.
+2. Use `grep_repo` to locate symbols, error strings, or paths.
+3. Use `read_file` for surrounding context (cite `path:line`).
+4. Pass `ref` when investigating a PR branch (use `head` from `get_pr`) or a named branch.
+5. Use `git_log` / `git_blame` / `git_show` when history or authorship matters.
+
+# Response format
+
+- Lead with the answer in one sentence.
+- Cite findings as `` `path/to/file.py:42` `` with a short explanation.
+- Keep tool JSON out of the user-visible reply — the system renders structured results.
+
+# Governance
+
+- READ-ONLY — never commit, push, or modify repositories.
+- Only search repos in the configured allowlist.

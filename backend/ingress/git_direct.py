@@ -56,6 +56,47 @@ _SUMMARY_HINTS = (
     "tell me about",
 )
 
+_CODE_ANALYSIS_HINTS = (
+    "review",
+    "code review",
+    "what does",
+    "what do ",
+    "navigate",
+    "explore",
+    "understand",
+    "walk through",
+    "walk me through",
+    "look at the code",
+    "see what",
+    "how does",
+    "explain this pr",
+    "explain the pr",
+    "what changed",
+    "what it does",
+    "what this pr",
+    "investigate this pr",
+    "analyze",
+    "analyse",
+)
+
+_PR_FOLLOWUP_HINTS = (
+    "business impact",
+    "what does",
+    "what do ",
+    "what is it",
+    "what's it",
+    "what is this",
+    "explain",
+    "tell me more",
+    "how does it work",
+    "what it does",
+    "what is this pr",
+    "what's this pr",
+    "all about",
+    "why",
+    "purpose",
+)
+
 _TEXT_TOOL_CALL_RE = re.compile(
     r'\{\s*"name"\s*:\s*"([a-z_]+)"\s*,\s*"parameters"\s*:?\s*(\{.*?\})\s*\}',
     re.I | re.DOTALL,
@@ -74,6 +115,63 @@ def extract_pr_reference(text: str) -> tuple[str, int] | None:
 def wants_pr_summary(intent: str) -> bool:
     lower = intent.lower()
     return any(hint in lower for hint in _SUMMARY_HINTS)
+
+
+def wants_pr_code_analysis(intent: str) -> bool:
+    """True when the user wants a code-level PR review or exploration."""
+    lower = intent.lower()
+    if not extract_pr_reference(intent):
+        return False
+    if any(hint in lower for hint in _CODE_ANALYSIS_HINTS):
+        return True
+    # "summarize and review" — review wins over metadata-only summary
+    return "review" in lower and wants_pr_summary(lower)
+
+
+def wants_pr_followup(intent: str) -> bool:
+    """Follow-up questions in a thread that already discussed a PR."""
+    lower = intent.lower()
+    return any(hint in lower for hint in _PR_FOLLOWUP_HINTS)
+
+
+def extract_pr_from_session(session: Any) -> tuple[str, int] | None:
+    """Recover PR repo/number from session metadata or prior turns."""
+    active = (session.metadata or {}).get("active_pr") if session else None
+    if isinstance(active, dict) and active.get("repo") and active.get("number"):
+        return str(active["repo"]), int(active["number"])
+
+    if not session:
+        return None
+    for turn in reversed(session.turns):
+        if ref := extract_pr_reference(turn.content):
+            return ref
+    return None
+
+
+def resolve_pr_for_analysis(intent: str, session: Any | None) -> tuple[str, int] | None:
+    """PR reference from the current message or conversation session."""
+    if ref := extract_pr_reference(intent):
+        return ref
+    if session:
+        return extract_pr_from_session(session)
+    return None
+
+
+def should_run_pr_analysis(intent: str, session: Any | None) -> bool:
+    """Whether to run the direct PR fetch + diff analysis path."""
+    if extract_pr_reference(intent):
+        return wants_pr_code_analysis(intent)
+    if session and extract_pr_from_session(session):
+        return wants_pr_followup(intent)
+    return False
+
+
+def pr_analysis_focus(intent: str) -> str:
+    """Prompt focus: technical review vs business impact."""
+    lower = intent.lower()
+    if any(h in lower for h in ("business impact", "business", "all about", "why", "purpose")):
+        return "business"
+    return "review"
 
 
 def detect_git_direct_action(
@@ -117,7 +215,8 @@ def normalize_tool_arguments(
     from backend.git.api import resolve_repo_slug
 
     args = dict(arguments)
-    if tool_name in ("get_pr", "list_prs") and args.get("repo"):
+    repo_tools = ("get_pr", "get_pr_changes", "list_prs", "grep_repo", "read_file", "git_log", "git_blame", "git_show")
+    if tool_name in repo_tools and args.get("repo"):
         repo = str(args["repo"]).strip()
         try:
             args["repo"] = resolve_repo_slug(repo, git)

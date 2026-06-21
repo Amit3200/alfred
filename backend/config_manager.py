@@ -10,6 +10,7 @@ import yaml
 from backend.models.config import (
     AlfredConfig,
     AlfredSecrets,
+    default_ai_providers,
     default_config,
 )
 from backend.paths import config_path, get_data_dir, key_path, playbooks_dir, secrets_path
@@ -61,7 +62,16 @@ class ConfigManager:
         if not self._config_path.exists():
             return default_config()
         raw = yaml.safe_load(self._config_path.read_text()) or {}
-        return AlfredConfig.model_validate(raw)
+        config = AlfredConfig.model_validate(raw)
+        self._merge_default_providers(config)
+        return config
+
+    @staticmethod
+    def _merge_default_providers(config: AlfredConfig) -> None:
+        """Backfill newly added providers into existing config.yaml files."""
+        for name, provider in default_ai_providers().items():
+            if name not in config.ai.providers:
+                config.ai.providers[name] = provider
 
     def save_config(self, config: AlfredConfig) -> None:
         payload = config.model_dump(mode="json")

@@ -9,7 +9,7 @@ from backend.ai.openai_compat import OpenAICompatProvider
 from backend.models.config import AIConfig, AIProviderConfig, AlfredConfig
 
 
-OPENAI_COMPAT_NAMES = {"ollama", "openai", "groq", "together", "mistral"}
+OPENAI_COMPAT_NAMES = {"ollama", "openai", "groq", "together", "mistral", "kimi"}
 
 
 def build_provider(name: str, config: AIProviderConfig) -> LLMProvider:
