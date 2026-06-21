@@ -5,12 +5,12 @@ build-backend = "hatchling.build"
 [project]
 name = "alfred-agent"
 version = "0.1.0"
-description = "Distributable DevOps agent for small companies — Slack, Git, AWS with skill-based governance"
+description = "Personalizable self-hosted AI agent — Markdown skills and local playbooks adapt Alfred to engineering, project management, or any team workflow. Slack @alfred, git/JIRA integrations, thread memory, and pluggable LLMs"
 readme = "README.md"
 license = "MIT"
 requires-python = ">=3.10"
 authors = [{ name = "Alfred Contributors" }]
-keywords = ["agent", "devops", "slack", "ai"]
+keywords = ["agent", "slack", "ai", "self-hosted", "playbooks", "jira", "github", "project-management", "llm"]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
