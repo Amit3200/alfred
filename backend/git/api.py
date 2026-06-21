@@ -112,6 +112,14 @@ class GitApiClient:
             return configured
         return self._impl.list_accessible_repos()
 
+    def list_org_members(self, org: str | None = None) -> list[dict[str, Any]]:
+        org = (org or self.config.default_org or "").strip().strip("/")
+        if not org:
+            raise ValueError("GitHub org is required — set git.default_org in config.")
+        if self.config.provider != "github":
+            raise RuntimeError("Org member listing is only supported for GitHub.")
+        return self._impl.list_org_members(org)
+
     def list_available_repos(self) -> dict[str, Any]:
         """Merge configured allowlist with remote org/user repos for admin UI."""
         configured = [r.strip() for r in self.config.repos if r.strip()]
@@ -198,6 +206,23 @@ class _GitHubClient:
         if not login:
             raise RuntimeError("GitHub /user did not return login")
         return str(login)
+
+    def list_org_members(self, org: str) -> list[dict[str, Any]]:
+        org = org.strip().strip("/")
+        members: list[dict[str, Any]] = []
+        page = 1
+        while True:
+            batch = self._get(
+                f"/orgs/{quote(org, safe='')}/members",
+                params={"per_page": 100, "page": page},
+            )
+            if not isinstance(batch, list) or not batch:
+                break
+            members.extend(batch)
+            if len(batch) < 100:
+                break
+            page += 1
+        return members
 
     def list_my_prs(self, *, state: str = "open") -> list[PullRequestSummary]:
         login = self.current_user_login()

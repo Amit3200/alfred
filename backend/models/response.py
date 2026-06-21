@@ -17,6 +17,9 @@ PayloadKind = Literal[
     "git_log",
     "git_blame",
     "git_show",
+    "jira_list",
+    "jira_detail",
+    "jira_action",
 ]
 
 

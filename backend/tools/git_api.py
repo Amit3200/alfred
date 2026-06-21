@@ -92,80 +92,86 @@ def build_git_tool_registry(
     workspace_id: str | None = None,
     data_dir: Path | None = None,
 ) -> ToolRegistry:
-    client = GitApiClient.from_alfred_config(config)
     registry = ToolRegistry()
     registry.clear_results()
     registry.git_config = config.git
     registry.workspace_id = workspace_id
     registry.data_dir = data_dir
 
-    def list_my_prs_handler(args: dict[str, Any]) -> ToolResult:
-        state = str(args.get("state") or "open")
-        prs = client.list_my_prs(state=state)
-        return ToolResult.pr_list(prs, state=state)
+    if config.git.enabled:
+        client = GitApiClient.from_alfred_config(config)
 
-    def list_prs_handler(args: dict[str, Any]) -> ToolResult:
-        repo = str(args.get("repo") or "").strip()
-        if not repo:
-            return ToolResult.error("repo is required (owner/name).")
-        try:
-            repo = resolve_repo_slug(repo, config.git)
-        except ValueError as exc:
-            return ToolResult.error(str(exc))
-        state = str(args.get("state") or "open")
-        prs = client.list_prs(repo, state=state)
-        return ToolResult.pr_list(prs, state=state)
+        def list_my_prs_handler(args: dict[str, Any]) -> ToolResult:
+            state = str(args.get("state") or "open")
+            prs = client.list_my_prs(state=state)
+            return ToolResult.pr_list(prs, state=state)
 
-    def get_pr_handler(args: dict[str, Any]) -> ToolResult:
-        repo = str(args.get("repo") or "").strip()
-        number = args.get("number")
-        if not repo or number is None:
-            return ToolResult.error("repo and number are required.")
-        try:
-            repo = resolve_repo_slug(repo, config.git)
-        except ValueError as exc:
-            return ToolResult.error(str(exc))
-        data = client.get_pr(repo, int(number))
-        return ToolResult.pr_detail(data)
+        def list_prs_handler(args: dict[str, Any]) -> ToolResult:
+            repo = str(args.get("repo") or "").strip()
+            if not repo:
+                return ToolResult.error("repo is required (owner/name).")
+            try:
+                repo = resolve_repo_slug(repo, config.git)
+            except ValueError as exc:
+                return ToolResult.error(str(exc))
+            state = str(args.get("state") or "open")
+            prs = client.list_prs(repo, state=state)
+            return ToolResult.pr_list(prs, state=state)
 
-    def get_pr_changes_handler(args: dict[str, Any]) -> ToolResult:
-        repo = str(args.get("repo") or "").strip()
-        number = args.get("number")
-        if not repo or number is None:
-            return ToolResult.error("repo and number are required.")
-        try:
-            repo = resolve_repo_slug(repo, config.git)
-        except ValueError as exc:
-            return ToolResult.error(str(exc))
-        detail = client.get_pr(repo, int(number))
-        files = client.get_pr_files(repo, int(number))
-        return ToolResult(
-            kind="pr_changes",
-            data={
-                "repo": repo,
-                "number": int(number),
-                "head": detail.get("head"),
-                "base": detail.get("base"),
-                "files": files,
-            },
-        )
+        def get_pr_handler(args: dict[str, Any]) -> ToolResult:
+            repo = str(args.get("repo") or "").strip()
+            number = args.get("number")
+            if not repo or number is None:
+                return ToolResult.error("repo and number are required.")
+            try:
+                repo = resolve_repo_slug(repo, config.git)
+            except ValueError as exc:
+                return ToolResult.error(str(exc))
+            data = client.get_pr(repo, int(number))
+            return ToolResult.pr_detail(data)
 
-    def list_repos_handler(_args: dict[str, Any]) -> ToolResult:
-        repos = client.list_repos()
-        return ToolResult.repo_list(repos)
+        def get_pr_changes_handler(args: dict[str, Any]) -> ToolResult:
+            repo = str(args.get("repo") or "").strip()
+            number = args.get("number")
+            if not repo or number is None:
+                return ToolResult.error("repo and number are required.")
+            try:
+                repo = resolve_repo_slug(repo, config.git)
+            except ValueError as exc:
+                return ToolResult.error(str(exc))
+            detail = client.get_pr(repo, int(number))
+            files = client.get_pr_files(repo, int(number))
+            return ToolResult(
+                kind="pr_changes",
+                data={
+                    "repo": repo,
+                    "number": int(number),
+                    "head": detail.get("head"),
+                    "base": detail.get("base"),
+                    "files": files,
+                },
+            )
 
-    registry.register(LIST_MY_PRS, list_my_prs_handler)
-    registry.register(LIST_PRS, list_prs_handler)
-    registry.register(GET_PR, get_pr_handler)
-    registry.register(GET_PR_CHANGES, get_pr_changes_handler)
-    registry.register(LIST_REPOS, list_repos_handler)
+        def list_repos_handler(_args: dict[str, Any]) -> ToolResult:
+            repos = client.list_repos()
+            return ToolResult.repo_list(repos)
 
-    if data_dir is not None:
-        from backend.tools.git_local import register_local_git_tools
+        registry.register(LIST_MY_PRS, list_my_prs_handler)
+        registry.register(LIST_PRS, list_prs_handler)
+        registry.register(GET_PR, get_pr_handler)
+        registry.register(GET_PR_CHANGES, get_pr_changes_handler)
+        registry.register(LIST_REPOS, list_repos_handler)
 
-        register_local_git_tools(registry, config=config, data_dir=Path(data_dir))
-        from backend.tools.graphify_tool import register_graphify_tools
+        if data_dir is not None:
+            from backend.tools.git_local import register_local_git_tools
 
-        register_graphify_tools(registry, config=config, data_dir=Path(data_dir))
+            register_local_git_tools(registry, config=config, data_dir=Path(data_dir))
+            from backend.tools.graphify_tool import register_graphify_tools
+
+            register_graphify_tools(registry, config=config, data_dir=Path(data_dir))
+
+    from backend.tools.jira_tool import register_jira_tools
+
+    register_jira_tools(registry, config)
 
     return registry

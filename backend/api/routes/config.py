@@ -9,7 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Request
 from backend.api.deps import get_manager, require_admin, restart_slack_listener
 from backend.ai.registry import LLMRouter
 from backend.config_manager import ConfigManager
-from backend.health import check_ai, check_aws, check_git, check_slack
+from backend.health import check_ai, check_aws, check_git, check_jira, check_slack
 from backend.models.config import AlfredConfig, AlfredSecrets
 
 router = APIRouter(prefix="/config", tags=["config"])
@@ -54,6 +54,7 @@ def update_secrets(
         "github_client_secret",
         "aws_access_key_id",
         "aws_secret_access_key",
+        "jira_api_token",
         "server_admin_token",
     ):
         value = getattr(incoming, field)
@@ -102,6 +103,7 @@ def test_integration(
         "slack": check_slack,
         "git": check_git,
         "aws": check_aws,
+        "jira": check_jira,
     }
     if name not in checks:
         raise HTTPException(status_code=404, detail=f"Unknown integration: {name}")

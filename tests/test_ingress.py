@@ -7,7 +7,12 @@ from unittest.mock import MagicMock
 import pytest
 
 from backend.ingress.processor import TaskProcessor
-from backend.ingress.sanitize import channel_allowed, clean_slack_text, sanitize_slack_mention
+from backend.ingress.sanitize import (
+    channel_allowed,
+    clean_slack_text,
+    extract_slack_mention_labels,
+    sanitize_slack_mention,
+)
 from backend.models.config import SlackConfig, default_config
 from backend.models.task import Task
 
@@ -15,6 +20,12 @@ from backend.models.task import Task
 def test_clean_slack_text_strips_mention_and_alfred_prefix():
     assert clean_slack_text("<@U123ABC> @alfred why is this broken?") == "why is this broken?"
     assert clean_slack_text("<@U123ABC> hello") == "hello"
+    assert clean_slack_text("<@U123ABC|Om Sinkar> open tickets assigned to") == "open tickets assigned to"
+
+
+def test_extract_slack_mention_labels():
+    labels = extract_slack_mention_labels("<@UOM|Om Sinkar> list tickets")
+    assert labels == {"UOM": "Om Sinkar"}
 
 
 def test_channel_allowed_wildcard():

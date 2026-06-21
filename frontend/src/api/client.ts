@@ -44,6 +44,14 @@ export type AlfredConfig = {
     secret_access_key: string;
     allowed_services: string[];
   };
+  jira: {
+    enabled: boolean;
+    base_url: string;
+    email: string;
+    api_token: string;
+    default_project: string;
+    allowed_projects: string[];
+  };
   ai: {
     default_provider: string;
     routing: {
@@ -69,6 +77,7 @@ export type AlfredConfig = {
     github_client_secret: boolean;
     aws_access_key_id: boolean;
     aws_secret_access_key: boolean;
+    jira_api_token: boolean;
     server_admin_token: boolean;
     ai_api_keys: Record<string, boolean>;
   };
@@ -83,6 +92,7 @@ export type SecretsPayload = {
   github_client_secret?: string;
   aws_access_key_id?: string;
   aws_secret_access_key?: string;
+  jira_api_token?: string;
   server_admin_token?: string;
   ai_api_keys?: Record<string, string>;
 };
@@ -390,7 +400,10 @@ export type ResponsePayload = {
     | "file_content"
     | "git_log"
     | "git_blame"
-    | "git_show";
+    | "git_show"
+    | "jira_list"
+    | "jira_detail"
+    | "jira_action";
   data: Record<string, unknown>;
 };
 

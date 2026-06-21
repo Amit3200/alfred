@@ -72,6 +72,34 @@ class AWSConfig(BaseModel):
     )
 
 
+class JiraConfig(BaseModel):
+    enabled: bool = False
+    base_url: str = Field(
+        default="",
+        description="JIRA Cloud site URL, e.g. https://yourorg.atlassian.net",
+    )
+    email: str = Field(
+        default="",
+        description="Atlassian account email for API token auth.",
+    )
+    api_token: str = ""
+    default_project: str = Field(
+        default="",
+        description="Default project key for searches, e.g. ENG.",
+    )
+    allowed_projects: list[str] = Field(
+        default_factory=list,
+        description="If set, only these project keys may be read or updated.",
+    )
+    assignee_map: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Map Slack display names or user IDs to JIRA assignee emails/accountIds, "
+            "e.g. 'Om Sinkar': 'om@flexype.io'."
+        ),
+    )
+
+
 class AIProviderConfig(BaseModel):
     enabled: bool = True
     api_key: str = ""
@@ -138,6 +166,7 @@ class AlfredConfig(BaseModel):
     github: GitHubAppConfig = Field(default_factory=GitHubAppConfig)
     git: GitConfig = Field(default_factory=GitConfig)
     aws: AWSConfig = Field(default_factory=AWSConfig)
+    jira: JiraConfig = Field(default_factory=JiraConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
     skills: SkillsConfig = Field(default_factory=SkillsConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
@@ -154,6 +183,7 @@ class AlfredSecrets(BaseModel):
     github_client_secret: str = ""
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
+    jira_api_token: str = ""
     ai_api_keys: dict[str, str] = Field(default_factory=dict)
     server_admin_token: str = ""
 

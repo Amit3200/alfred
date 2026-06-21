@@ -7,8 +7,24 @@ import re
 from backend.models.config import SlackConfig
 from backend.models.task import Task
 
-_MENTION_RE = re.compile(r"<@[A-Z0-9]+>\s*")
+_MENTION_RE = re.compile(r"<@([A-Z0-9]+)(?:\|([^>]+))?>\s*")
 _ALFRED_PREFIX_RE = re.compile(r"^@?alfred[,:]?\s+", re.IGNORECASE)
+
+
+def extract_slack_user_ids(raw_text: str) -> list[str]:
+    """Return Slack user IDs from `<@U…>` mentions in message text."""
+    return list(dict.fromkeys(m.group(1) for m in _MENTION_RE.finditer(raw_text or "")))
+
+
+def extract_slack_mention_labels(raw_text: str) -> dict[str, str]:
+    """Map Slack user ID → display label from `<@U123|Name>` when present."""
+    labels: dict[str, str] = {}
+    for match in _MENTION_RE.finditer(raw_text or ""):
+        user_id = match.group(1)
+        label = (match.group(2) or "").strip()
+        if label:
+            labels[user_id] = label
+    return labels
 
 
 def channel_allowed(channel_id: str, slack_config: SlackConfig) -> bool:

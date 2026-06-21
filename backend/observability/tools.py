@@ -20,7 +20,19 @@ GIT_TOOLS = frozenset(
 
 AWS_TOOLS = frozenset()
 SLACK_TOOLS = frozenset()
-JIRA_TOOLS = frozenset()
+JIRA_TOOLS = frozenset(
+    {
+        "list_jira_issues",
+        "get_jira_issue",
+        "transition_jira_issue",
+        "add_jira_comment",
+        "link_jira_issue",
+        "jira_search",
+        "jira_update_issue",
+        "jira_add_comment",
+        "jira_create_issue",
+    }
+)
 UI_TOOLS = frozenset()
 
 

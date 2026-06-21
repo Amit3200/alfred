@@ -65,6 +65,22 @@ export const SECRETS_HELP: Record<string, HelpGuide> = {
     ],
     links: [{ label: "IAM best practices", href: "https://docs.aws.amazon.com/IAM/latest/UserGuide/best-practices.html" }],
   },
+  jira: {
+    title: "JIRA",
+    summary:
+      "Atlassian API token lets Alfred read and update tickets, add comments, and link GitHub pull requests.",
+    steps: [
+      "Go to id.atlassian.com → Security → API tokens → Create API token.",
+      "Use the same email you sign in to JIRA with (Integrations → Account email).",
+      "Paste the token here — it is encrypted and never written to config.yaml.",
+      "Enable JIRA in Integrations, set your site URL (https://yourorg.atlassian.net) and default project key.",
+      "Optional: restrict allowed_projects to limit which ticket keys Alfred may touch.",
+    ],
+    links: [
+      { label: "Manage API tokens", href: "https://id.atlassian.com/manage-profile/security/api-tokens" },
+      { label: "JIRA REST API", href: "https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/" },
+    ],
+  },
 };
 
 export const AI_KEY_HELP: Record<string, HelpGuide> = {

@@ -37,6 +37,9 @@ STRUCTURED_TOOL_KINDS = frozenset(
         "git_log",
         "git_blame",
         "git_show",
+        "jira_list",
+        "jira_detail",
+        "jira_action",
     }
 )
 
@@ -112,6 +115,19 @@ class TaskProcessor:
 
             if looks_like_code_investigation(task.cleaned_intent):
                 investigation = self._playbooks.get_by_name("investigate_bug")
+        if investigation is None and self.config.jira.enabled:
+            from backend.ingress.jira_direct import looks_like_jira_question
+
+            if looks_like_jira_question(task.cleaned_intent):
+                investigation = (
+                    self._playbooks.get_by_name("jira_management")
+                    or self._playbooks.get_by_name("jira_ticket")
+                )
+        if investigation is None and self.config.slack.enabled:
+            from backend.ingress.user_identity import is_user_identity_lookup
+
+            if is_user_identity_lookup(task.cleaned_intent):
+                investigation = self._playbooks.get_by_name("jira_management")
         review_skill = self._resolve_pr_review_skill(investigation, task, session)
         omit_assistant = omit_assistant_session_history(
             task.cleaned_intent,
@@ -126,6 +142,21 @@ class TaskProcessor:
             from backend.ingress.git_context import format_session_git_context
 
             git_context_prompt = format_session_git_context(session, task.cleaned_intent)
+
+        jira_context_prompt = ""
+        if (
+            active_skill
+            and active_skill.name in ("jira_management", "jira_ticket")
+            and self.config.jira.enabled
+        ):
+            from backend.ingress.jira_context import format_jira_context_for_prompt
+
+            jira_context_prompt = format_jira_context_for_prompt(
+                self.config,
+                task,
+                session,
+                data_dir=self._data_dir_path(),
+            )
 
         pr_context_prompt = ""
         pr_metadata: dict[str, Any] | None = None
@@ -150,7 +181,7 @@ class TaskProcessor:
 
         extra_system = "\n\n".join(
             part
-            for part in (repo_context_prompt, git_context_prompt, pr_context_prompt)
+            for part in (repo_context_prompt, git_context_prompt, jira_context_prompt, pr_context_prompt)
             if part
         )
         messages = self._build_messages(
@@ -193,8 +224,18 @@ class TaskProcessor:
             )
             if inv_patch:
                 metadata_patch = {**(metadata_patch or {}), **inv_patch}
-        elif self.config.git.enabled:
-            if investigation:
+        elif self.config.git.enabled or self.config.jira.enabled or self.config.slack.enabled:
+            from backend.ingress.user_identity import is_user_identity_lookup
+
+            if investigation and investigation.name in ("jira_ticket", "jira_management") and (
+                self.config.jira.enabled or is_user_identity_lookup(task.cleaned_intent)
+            ):
+                set_call_kind("investigation")
+                response, inv_patch = self._try_direct_jira(investigation, task, session)
+                if inv_patch:
+                    metadata_patch = {**(metadata_patch or {}), **inv_patch}
+
+            if response is None and investigation:
                 set_call_kind("investigation")
                 response, inv_patch = self._try_direct_investigate(investigation, task, session)
                 if inv_patch:
@@ -219,7 +260,9 @@ class TaskProcessor:
                 bool(investigation),
             )
 
-            if investigation and investigation.allowed_tools and self.config.git.enabled:
+            if investigation and investigation.allowed_tools and (
+                self.config.git.enabled or self.config.jira.enabled
+            ):
                 set_call_kind("investigation")
                 response, inv_patch = self._run_investigation(
                     investigation,
@@ -394,6 +437,78 @@ class TaskProcessor:
         if structured is not None:
             return structured, patch
         return None, patch
+
+    def _try_direct_jira(
+        self,
+        skill: Playbook,
+        task: Task,
+        session: ConversationSession | None = None,
+    ) -> tuple[AssistantResponse | None, dict[str, Any] | None]:
+        from backend.ingress.jira_direct import detect_jira_direct_action
+        from backend.tools.git_api import build_git_tool_registry
+
+        direct = detect_jira_direct_action(
+            task.cleaned_intent,
+            self.config,
+            task,
+            data_dir=self._data_dir_path(),
+            session=session,
+        )
+        if not direct:
+            return None, None
+        tool_name, tool_args = direct
+        if tool_name not in skill.allowed_tools:
+            return None, None
+
+        logger.info("Direct JIRA tool: %s", tool_name)
+        if tool_name == "lookup_user_identity":
+            from backend.ingress.user_identity import format_user_identity_result, lookup_user_identity
+
+            data = lookup_user_identity(
+                self.config,
+                task=task,
+                data_dir=self._data_dir_path(),
+                slack_user_id=str(tool_args.get("slack_user_id") or ""),
+                query=str(tool_args.get("query") or ""),
+                targets=tool_args.get("targets"),
+            )
+            if data.get("error"):
+                return AssistantResponse.error(str(data["error"])), None
+            return AssistantResponse.from_text(format_user_identity_result(data)), None
+
+        if tool_name == "build_workspace_identity_map":
+            from backend.ingress.user_identity import (
+                build_workspace_identity_map,
+                format_user_identity_result,
+            )
+
+            data = build_workspace_identity_map(
+                self.config,
+                data_dir=self._data_dir_path(),
+                include_github=bool(tool_args.get("include_github", True)),
+            )
+            if data.get("error"):
+                return AssistantResponse.error(str(data["error"])), None
+            return AssistantResponse.from_text(format_user_identity_result(data)), None
+
+        registry = build_git_tool_registry(
+            self.config,
+            workspace_id=mirror_workspace_key(task),
+            data_dir=self._data_dir_path(),
+        )
+        result = registry.run_normalized(
+            tool_name,
+            tool_args,
+            allowed=skill.allowed_tools,
+            git=self.config.git,
+        )
+        if result.kind == "error":
+            return AssistantResponse.error(result.data.get("message", "JIRA tool failed.")), None
+
+        structured = _tool_result_to_response(result)
+        if structured is not None:
+            return structured, None
+        return None, None
 
     def _try_direct_git(
         self,
@@ -601,6 +716,10 @@ class TaskProcessor:
 
 
 def _tool_result_to_response(result: ToolResult) -> AssistantResponse | None:
+    if result.kind == "user_identity":
+        from backend.ingress.user_identity import format_user_identity_result
+
+        return AssistantResponse.from_text(format_user_identity_result(result.data))
     if result.kind in STRUCTURED_TOOL_KINDS:
         return AssistantResponse.structured(result.kind, result.data)
     if result.kind == "error":

@@ -11,7 +11,10 @@ export type ResponsePayload = {
     | "file_content"
     | "git_log"
     | "git_blame"
-    | "git_show";
+    | "git_show"
+    | "jira_list"
+    | "jira_detail"
+    | "jira_action";
   data: Record<string, unknown>;
 };
 

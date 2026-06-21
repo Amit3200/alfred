@@ -137,6 +137,27 @@ def check_aws(config: AlfredConfig) -> dict:
         return {"ok": False, "message": str(exc)}
 
 
+def check_jira(config: AlfredConfig) -> dict:
+    if not config.jira.enabled:
+        return {"ok": False, "skipped": True, "message": "JIRA disabled"}
+    if not config.jira.api_token:
+        return {"ok": False, "message": "JIRA API token not configured"}
+    if not config.jira.email:
+        return {"ok": False, "message": "JIRA email not configured"}
+    if not config.jira.base_url:
+        return {"ok": False, "message": "JIRA base URL not configured"}
+    try:
+        from backend.jira.api import JiraApiClient
+
+        client = JiraApiClient.from_alfred_config(config)
+        user = client.ping()
+        display = user.get("displayName") or user.get("emailAddress") or user.get("accountId")
+        site = config.jira.base_url.rstrip("/")
+        return {"ok": True, "message": f"Connected as {display} · {site}"}
+    except Exception as exc:
+        return {"ok": False, "message": str(exc)}
+
+
 def check_ai(config: AlfredConfig, provider: str | None = None, *, data_dir=None) -> dict:
     from backend.observability.context import (
         InteractionContext,
@@ -164,5 +185,6 @@ def run_all_checks(config: AlfredConfig, *, data_dir: Path | None = None) -> dic
         "slack": check_slack(config),
         "git": check_git(config, data_dir=data_dir),
         "aws": check_aws(config),
+        "jira": check_jira(config),
         "ai": check_ai(config, data_dir=data_dir),
     }

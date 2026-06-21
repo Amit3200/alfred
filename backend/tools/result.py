@@ -7,6 +7,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 from backend.git.api import PullRequestSummary
+from backend.jira.api import JiraIssueSummary
 
 
 @dataclass
@@ -36,6 +37,21 @@ class ToolResult:
     def repo_list(cls, repos: list[str]) -> ToolResult:
         return cls(kind="repo_list", data={"repos": repos})
 
+    @classmethod
+    def jira_list(cls, issues: list[JiraIssueSummary]) -> ToolResult:
+        return cls(
+            kind="jira_list",
+            data={"issues": [jira_summary_to_dict(issue) for issue in issues]},
+        )
+
+    @classmethod
+    def jira_detail(cls, detail: dict[str, Any]) -> ToolResult:
+        return cls(kind="jira_detail", data={"issue": detail})
+
+    @classmethod
+    def jira_action(cls, action: str, data: dict[str, Any]) -> ToolResult:
+        return cls(kind="jira_action", data={"action": action, **data})
+
 
 def pr_summary_to_dict(pr: PullRequestSummary) -> dict[str, Any]:
     return {
@@ -58,4 +74,28 @@ def pr_summary_from_dict(data: dict[str, Any]) -> PullRequestSummary:
         author=str(data.get("author") or ""),
         url=str(data.get("url") or ""),
         draft=bool(data.get("draft")),
+    )
+
+
+def jira_summary_to_dict(issue: JiraIssueSummary) -> dict[str, Any]:
+    return {
+        "key": issue.key,
+        "summary": issue.summary,
+        "status": issue.status,
+        "issue_type": issue.issue_type,
+        "assignee": issue.assignee,
+        "priority": issue.priority,
+        "url": issue.url,
+    }
+
+
+def jira_summary_from_dict(data: dict[str, Any]) -> JiraIssueSummary:
+    return JiraIssueSummary(
+        key=str(data.get("key") or ""),
+        summary=str(data.get("summary") or ""),
+        status=str(data.get("status") or ""),
+        issue_type=str(data.get("issue_type") or ""),
+        assignee=str(data.get("assignee") or ""),
+        priority=str(data.get("priority") or ""),
+        url=str(data.get("url") or ""),
     )

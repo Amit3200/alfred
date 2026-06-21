@@ -123,7 +123,7 @@ export function IntegrationsPanel() {
         Integrations
       </Typography.Title>
       <Typography.Paragraph className="alfred-page-desc">
-        Connect Slack, Git, GitHub App, and AWS. Toggle each service and verify credentials.
+        Connect Slack, Git, GitHub App, JIRA, and AWS. Toggle each service and verify credentials.
       </Typography.Paragraph>
 
       <IntegrationBlock
@@ -386,6 +386,106 @@ export function IntegrationsPanel() {
             />
           </Col>
         </Row>
+      </IntegrationBlock>
+
+      <IntegrationBlock
+        title="JIRA"
+        enabled={config.jira?.enabled ?? false}
+        onToggle={(v) =>
+          updateConfig({
+            jira: {
+              enabled: v,
+              base_url: config.jira?.base_url ?? "",
+              email: config.jira?.email ?? "",
+              api_token: "",
+              default_project: config.jira?.default_project ?? "",
+              allowed_projects: config.jira?.allowed_projects ?? [],
+            },
+          })
+        }
+        onTest={() => testIntegration("jira")}
+      >
+        <Row gutter={[12, 12]}>
+          <Col xs={24} md={12}>
+            <label className="alfred-field-label">Site URL</label>
+            <Input
+              placeholder="https://yourorg.atlassian.net"
+              value={config.jira?.base_url ?? ""}
+              onChange={(e) =>
+                updateConfig({
+                  jira: {
+                    enabled: config.jira?.enabled ?? false,
+                    base_url: e.target.value,
+                    email: config.jira?.email ?? "",
+                    api_token: "",
+                    default_project: config.jira?.default_project ?? "",
+                    allowed_projects: config.jira?.allowed_projects ?? [],
+                  },
+                })
+              }
+            />
+          </Col>
+          <Col xs={24} md={12}>
+            <label className="alfred-field-label">Account email</label>
+            <Input
+              placeholder="you@company.com"
+              value={config.jira?.email ?? ""}
+              onChange={(e) =>
+                updateConfig({
+                  jira: {
+                    enabled: config.jira?.enabled ?? false,
+                    base_url: config.jira?.base_url ?? "",
+                    email: e.target.value,
+                    api_token: "",
+                    default_project: config.jira?.default_project ?? "",
+                    allowed_projects: config.jira?.allowed_projects ?? [],
+                  },
+                })
+              }
+            />
+          </Col>
+          <Col xs={24} md={8}>
+            <label className="alfred-field-label">Default project</label>
+            <Input
+              placeholder="ENG"
+              value={config.jira?.default_project ?? ""}
+              onChange={(e) =>
+                updateConfig({
+                  jira: {
+                    enabled: config.jira?.enabled ?? false,
+                    base_url: config.jira?.base_url ?? "",
+                    email: config.jira?.email ?? "",
+                    api_token: "",
+                    default_project: e.target.value,
+                    allowed_projects: config.jira?.allowed_projects ?? [],
+                  },
+                })
+              }
+            />
+          </Col>
+          <Col xs={24} md={16}>
+            <label className="alfred-field-label">Allowed projects</label>
+            <Input
+              placeholder="ENG, OPS (empty = all accessible)"
+              value={(config.jira?.allowed_projects ?? []).join(", ")}
+              onChange={(e) =>
+                updateConfig({
+                  jira: {
+                    enabled: config.jira?.enabled ?? false,
+                    base_url: config.jira?.base_url ?? "",
+                    email: config.jira?.email ?? "",
+                    api_token: "",
+                    default_project: config.jira?.default_project ?? "",
+                    allowed_projects: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+                  },
+                })
+              }
+            />
+          </Col>
+        </Row>
+        <Typography.Paragraph type="secondary" style={{ marginTop: 12, marginBottom: 0, fontSize: 13 }}>
+          Alfred can list tickets, change status, comment, and link GitHub PRs. Add your API token in Secrets.
+        </Typography.Paragraph>
       </IntegrationBlock>
 
       <Button type="primary" onClick={saveConfig}>

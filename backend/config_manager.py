@@ -121,6 +121,7 @@ class ConfigManager:
         config.github.client_secret = secrets_obj.github_client_secret
         config.aws.access_key_id = secrets_obj.aws_access_key_id
         config.aws.secret_access_key = secrets_obj.aws_secret_access_key
+        config.jira.api_token = secrets_obj.jira_api_token
         for name, provider in config.ai.providers.items():
             if key := secrets_obj.ai_api_keys.get(name):
                 provider.api_key = key
@@ -148,6 +149,8 @@ class ConfigManager:
             secrets_obj.aws_access_key_id = config.aws.access_key_id
         if config.aws.secret_access_key:
             secrets_obj.aws_secret_access_key = config.aws.secret_access_key
+        if config.jira.api_token:
+            secrets_obj.jira_api_token = config.jira.api_token
         for name, provider in config.ai.providers.items():
             if provider.api_key:
                 secrets_obj.ai_api_keys[name] = provider.api_key
@@ -159,6 +162,7 @@ class ConfigManager:
         config.github.client_secret = ""
         config.aws.access_key_id = ""
         config.aws.secret_access_key = ""
+        config.jira.api_token = ""
         config.server.admin_token = ""
         for provider in config.ai.providers.values():
             provider.api_key = ""
@@ -193,6 +197,7 @@ class ConfigManager:
             "github_client_secret": bool(secrets_obj.github_client_secret),
             "aws_access_key_id": bool(secrets_obj.aws_access_key_id),
             "aws_secret_access_key": bool(secrets_obj.aws_secret_access_key),
+            "jira_api_token": bool(secrets_obj.jira_api_token),
             "server_admin_token": bool(secrets_obj.server_admin_token),
             "ai_api_keys": {
                 name: bool(key) for name, key in secrets_obj.ai_api_keys.items()

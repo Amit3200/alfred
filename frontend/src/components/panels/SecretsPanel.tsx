@@ -40,6 +40,7 @@ export function SecretsPanel() {
   const awsConfigured = !!(
     configured?.aws_access_key_id || configured?.aws_secret_access_key
   );
+  const jiraConfigured = !!configured?.jira_api_token;
 
   return (
     <div>
@@ -174,11 +175,28 @@ export function SecretsPanel() {
             />
           </AddableSection>
         )}
+
+        {integrations.isVisible("jira") && (
+          <AddableSection
+            title="JIRA"
+            info={renderHelpContent(SECRETS_HELP.jira)}
+            visible
+            configured={jiraConfigured}
+            onAdd={() => integrations.add("jira")}
+            onRemove={() => integrations.remove("jira")}
+          >
+            <SecretField
+              label="API token"
+              configured={configured?.jira_api_token}
+              onChange={(v) => setSecrets((s) => ({ ...s, jira_api_token: v }))}
+            />
+          </AddableSection>
+        )}
       </ActiveSections>
 
       <AddableSectionList
         label={
-          slackConfigured || gitConfigured || githubConfigured || awsConfigured
+          slackConfigured || gitConfigured || githubConfigured || awsConfigured || jiraConfigured
             ? "Integrations"
             : "Add integration"
         }
@@ -220,6 +238,16 @@ export function SecretsPanel() {
             visible={false}
             configured={awsConfigured}
             onAdd={() => integrations.add("aws")}
+            onRemove={() => {}}
+          />
+        )}
+        {!integrations.isVisible("jira") && (
+          <AddableSection
+            title="JIRA"
+            info={renderHelpContent(SECRETS_HELP.jira)}
+            visible={false}
+            configured={jiraConfigured}
+            onAdd={() => integrations.add("jira")}
             onRemove={() => {}}
           />
         )}

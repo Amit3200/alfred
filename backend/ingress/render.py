@@ -7,10 +7,11 @@ from typing import Literal
 from backend.git.api import PullRequestSummary
 from backend.ingress.git_format import format_pr_detail, format_prs
 from backend.ingress.github_format import format_for_github
+from backend.ingress.jira_format import format_jira_action, format_jira_detail, format_jira_issues
 from backend.ingress.slack_format import format_for_slack
 from backend.ingress.ui_format import format_for_ui
 from backend.models.response import AssistantResponse, ResponsePayload
-from backend.tools.result import pr_summary_from_dict
+from backend.tools.result import jira_summary_from_dict, pr_summary_from_dict
 
 Channel = Literal["slack", "ui", "cli", "github"]
 
@@ -40,6 +41,12 @@ def render_for_channel(response: AssistantResponse, channel: Channel) -> str:
         return _render_git_blame(payload, channel)
     if payload.kind == "git_show":
         return _render_git_show(payload, channel)
+    if payload.kind == "jira_list":
+        return _render_jira_list(payload, channel)
+    if payload.kind == "jira_detail":
+        return _render_jira_detail(payload, channel)
+    if payload.kind == "jira_action":
+        return _render_jira_action(payload, channel)
     return _format_text(response.text or "", channel)
 
 
@@ -126,6 +133,21 @@ def _render_git_show(payload: ResponsePayload, channel: Channel) -> str:
     output = str(payload.data.get("output") or "")
     header = f"Commit `{ref}` in `{repo}`"
     return f"{header}\n```\n{output.strip()}\n```"
+
+
+def _render_jira_list(payload: ResponsePayload, channel: Channel) -> str:
+    issues = [jira_summary_from_dict(item) for item in payload.data.get("issues") or []]
+    return format_jira_issues(issues, slack=channel == "slack")
+
+
+def _render_jira_detail(payload: ResponsePayload, channel: Channel) -> str:
+    detail = payload.data.get("issue") or {}
+    return format_jira_detail(detail, slack=channel == "slack")
+
+
+def _render_jira_action(payload: ResponsePayload, channel: Channel) -> str:
+    action = str(payload.data.get("action") or "")
+    return format_jira_action(action, payload.data, slack=channel == "slack")
 
 
 def _format_text(text: str, channel: Channel) -> str:
