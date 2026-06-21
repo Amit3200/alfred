@@ -23,13 +23,15 @@ def test_split_repo_slug_invalid():
 def test_github_list_my_prs(mock_session_cls):
     session = MagicMock()
     mock_session_cls.return_value = session
-    session.get.side_effect = [
+    session.request.side_effect = [
         MagicMock(
             status_code=200,
+            content=b'{"login":"alice"}',
             json=lambda: {"login": "alice"},
         ),
         MagicMock(
             status_code=200,
+            content=b"{}",
             json=lambda: {
                 "items": [
                     {
@@ -59,8 +61,9 @@ def test_github_list_my_prs(mock_session_cls):
 def test_github_list_prs(mock_session_cls):
     session = MagicMock()
     mock_session_cls.return_value = session
-    session.get.return_value = MagicMock(
+    session.request.return_value = MagicMock(
         status_code=200,
+        content=b"[]",
         json=lambda: [
             {
                 "number": 3,
@@ -85,8 +88,9 @@ def test_github_list_prs(mock_session_cls):
 def test_github_get_pr(mock_session_cls):
     session = MagicMock()
     mock_session_cls.return_value = session
-    session.get.return_value = MagicMock(
+    session.request.return_value = MagicMock(
         status_code=200,
+        content=b"{}",
         json=lambda: {
             "number": 3,
             "title": "Add metrics",
@@ -111,8 +115,9 @@ def test_github_get_pr(mock_session_cls):
 def test_github_get_pr_files(mock_session_cls):
     session = MagicMock()
     mock_session_cls.return_value = session
-    session.get.return_value = MagicMock(
+    session.request.return_value = MagicMock(
         status_code=200,
+        content=b"[]",
         json=lambda: [
             {
                 "filename": "src/consumer.py",
@@ -133,3 +138,45 @@ def test_github_get_pr_files(mock_session_cls):
     assert files[0]["filename"] == "src/consumer.py"
     assert files[0]["status"] == "added"
     assert "line" in files[0]["patch"]
+
+
+@patch("backend.git.api.requests.Session")
+def test_github_create_issue_comment(mock_session_cls):
+    session = MagicMock()
+    mock_session_cls.return_value = session
+    session.request.return_value = MagicMock(
+        status_code=201,
+        content=b'{"id":99}',
+        json=lambda: {"id": 99, "body": "Review complete"},
+    )
+
+    config = GitConfig(enabled=True, provider="github", token="ghp_test")
+    client = GitApiClient(config)
+    result = client.create_issue_comment("myorg/backend", 3, "Review complete")
+
+    assert result["id"] == 99
+    call = session.request.call_args
+    assert call.args[0] == "POST"
+    assert "/issues/3/comments" in call.args[1]
+    assert call.kwargs["json"] == {"body": "Review complete"}
+
+
+@patch("backend.git.api.requests.Session")
+def test_github_create_issue_comment_reaction(mock_session_cls):
+    session = MagicMock()
+    mock_session_cls.return_value = session
+    session.request.return_value = MagicMock(
+        status_code=201,
+        content=b'{"id":1}',
+        json=lambda: {"id": 1, "content": "eyes"},
+    )
+
+    config = GitConfig(enabled=True, provider="github", token="ghp_test")
+    client = GitApiClient(config)
+    result = client.create_issue_comment_reaction("myorg/backend", 99, "eyes")
+
+    assert result["content"] == "eyes"
+    call = session.request.call_args
+    assert call.args[0] == "POST"
+    assert "/issues/comments/99/reactions" in call.args[1]
+    assert call.kwargs["json"] == {"content": "eyes"}

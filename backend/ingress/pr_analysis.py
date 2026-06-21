@@ -1,12 +1,12 @@
-"""Pull PR diffs, mirror the head branch, and build LLM review context."""
+"""Fetch PR metadata, diffs, and mirror snippets — data for skill-guided review."""
 
 from __future__ import annotations
 
 import logging
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from backend.ai.base import Message
 from backend.git.api import GitApiClient
 from backend.git.mirror import WorkspaceMirrorManager
 from backend.git.sandbox import PathSandboxError, resolve_repo_path
@@ -31,18 +31,26 @@ _BAD_HALLUCINATION_MARKERS = (
 )
 
 
-def analyze_pull_request(
+@dataclass
+class PrContext:
+    """Factual PR data gathered before the investigation agent runs."""
+
+    detail: dict[str, Any]
+    files: list[dict[str, Any]]
+    mirror_note: str = ""
+    snippets: list[dict[str, str]] = field(default_factory=list)
+    metadata: dict[str, Any] = field(default_factory=dict)
+
+
+def gather_pr_context(
     config: AlfredConfig,
     *,
     data_dir: Path,
     workspace_id: str,
     repo: str,
     number: int,
-    provider: Any,
-    model: str | None = None,
-    focus: str = "review",
-) -> tuple[str | None, dict[str, Any]]:
-    """Fetch PR metadata + file diffs, checkout head branch, return LLM analysis."""
+) -> PrContext:
+    """Fetch PR metadata, file list, mirror checkout, and key file snippets."""
     client = GitApiClient.from_alfred_config(config)
     detail = client.get_pr(repo, number)
     files = client.get_pr_files(repo, number)
@@ -63,7 +71,7 @@ def analyze_pull_request(
             logger.warning("PR mirror checkout failed: %s", exc)
             mirror_note = f"Local checkout of `{head}` failed: {exc}"
 
-    key_snippets = _read_key_files_from_mirror(
+    snippets = _read_key_files_from_mirror(
         config,
         data_dir,
         workspace_id,
@@ -72,29 +80,7 @@ def analyze_pull_request(
         prioritized,
         mirror_state=mirror_state,
     )
-    overview = build_deterministic_pr_overview(detail, files, focus=focus)
-
-    llm_notes: str | None = None
-    if key_snippets or prioritized:
-        prompt = _build_analysis_prompt(
-            detail,
-            prioritized,
-            key_snippets,
-            mirror_note,
-            focus=focus,
-        )
-        try:
-            response = provider.chat([Message(role="user", content=prompt)], model=model)
-            candidate = (response.content or "").strip()
-            if candidate and _is_grounded_response(candidate, detail, prioritized):
-                llm_notes = candidate
-            else:
-                logger.warning("PR LLM response failed grounding check — using overview only")
-        except Exception:
-            logger.exception("PR code analysis LLM call failed")
-
-    text = overview if not llm_notes else f"{overview}\n\n**Review notes**\n{llm_notes}"
-    context = {
+    metadata = {
         "repo": detail.get("repo") or repo,
         "number": detail.get("number") or number,
         "head": head,
@@ -102,7 +88,32 @@ def analyze_pull_request(
         "title": detail.get("title"),
         "url": detail.get("url"),
     }
-    return text, context
+    return PrContext(
+        detail=detail,
+        files=files,
+        mirror_note=mirror_note,
+        snippets=snippets,
+        metadata=metadata,
+    )
+
+
+def format_pr_context_for_prompt(ctx: PrContext) -> str:
+    """Format gathered PR data for injection alongside the review_pr skill."""
+    prioritized = _prioritize_files(ctx.files)
+    sections = [
+        "## Pre-fetched PR data",
+        "Factual context only — follow the review skill for analysis and response format. "
+        "Use tools (`grep_repo`, `read_file`, etc.) when you need imports, callers, or more file context.",
+        "",
+        build_deterministic_pr_overview(ctx.detail, ctx.files),
+    ]
+    if ctx.mirror_note:
+        sections.extend(["", ctx.mirror_note])
+    sections.extend(["", _format_file_list(prioritized), "", _format_diffs(prioritized, ctx.snippets)])
+    text = "\n".join(sections)
+    if len(text) > MAX_TOTAL_CONTEXT:
+        text = text[:MAX_TOTAL_CONTEXT] + "\n\n...(truncated for context limit)"
+    return text
 
 
 def build_deterministic_pr_overview(
@@ -246,7 +257,6 @@ def _extract_purpose_from_body(body: str) -> str:
     lines = [line.strip() for line in body.splitlines() if line.strip()]
     if not lines:
         return "(no description)"
-    # First non-heading paragraph or first bullet block
     chunk: list[str] = []
     for line in lines[:12]:
         if line.startswith("#"):
@@ -259,7 +269,6 @@ def _extract_purpose_from_body(body: str) -> str:
 
 
 def _extract_business_impact(body: str) -> str:
-    lower = body.lower()
     markers = (
         "business",
         "impact",
@@ -339,78 +348,6 @@ def _read_key_files_from_mirror(
             content += f"\n... ({len(lines) - limit} more lines)"
         snippets.append({"path": path, "content": content, "status": str(item.get("status") or "")})
     return snippets
-
-
-def _file_context_from_mirror(
-    config: AlfredConfig,
-    data_dir: Path,
-    workspace_id: str,
-    repo: str,
-    head: str | None,
-    files: list[dict[str, Any]],
-) -> list[dict[str, str]]:
-    """Read changed files from the mirrored PR branch when diff patches are missing."""
-    return _read_key_files_from_mirror(
-        config, data_dir, workspace_id, repo, head, _prioritize_files(files)
-    )
-
-
-def _build_analysis_prompt(
-    detail: dict[str, Any],
-    files: list[dict[str, Any]],
-    mirror_snippets: list[dict[str, str]],
-    mirror_note: str,
-    *,
-    focus: str = "review",
-) -> str:
-    title = detail.get("title") or "Untitled"
-    number = detail.get("number")
-    repo = detail.get("repo") or ""
-    body = (detail.get("body") or "").strip()
-    head = detail.get("head")
-    base = detail.get("base")
-
-    if focus == "business":
-        response_guide = (
-            "Add brief review notes only — the overview above is already shown to the user.\n"
-            "Focus on: rollout risks, missing tests, operational concerns, migration gotchas.\n"
-            "Do NOT repeat the summary. Cite `path/to/file.ext`."
-        )
-    else:
-        response_guide = (
-            "Add brief review notes only — the overview above is already shown to the user.\n"
-            "Focus on: how the new code works, edge cases, bugs, missing tests.\n"
-            "Do NOT repeat the summary or mention unrelated frameworks. Cite `path/to/file.ext`."
-        )
-
-    sections = [
-        f"You are reviewing PR #{number} in `{repo}`: {title}.",
-        response_guide,
-        "",
-        f"Branch: {head} → {base}",
-    ]
-    if body:
-        sections.extend(["", "PR description (truncated):", body[:1500]])
-    if mirror_note:
-        sections.extend(["", mirror_note])
-
-    sections.extend(["", _format_file_list(files)])
-    if key_snippets := mirror_snippets:
-        sections.append("")
-        sections.append("Key file contents (from branch checkout):\n")
-        for snippet in key_snippets:
-            sections.append(
-                f"### `{snippet['path']}` [{snippet.get('status', '?')}]\n"
-                f"```\n{snippet['content']}\n```"
-            )
-    else:
-        sections.append("")
-        sections.append(_format_diffs(files, []))
-
-    prompt = "\n".join(sections)
-    if len(prompt) > MAX_TOTAL_CONTEXT:
-        prompt = prompt[:MAX_TOTAL_CONTEXT] + "\n\n...(truncated for context limit)"
-    return prompt
 
 
 def _format_file_list(files: list[dict[str, Any]]) -> str:

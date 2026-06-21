@@ -6,7 +6,18 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
-PayloadKind = Literal["text", "pr_list", "pr_detail", "repo_list", "error"]
+PayloadKind = Literal[
+    "text",
+    "pr_list",
+    "pr_detail",
+    "repo_list",
+    "error",
+    "code_grep",
+    "file_content",
+    "git_log",
+    "git_blame",
+    "git_show",
+]
 
 
 class ResponsePayload(BaseModel):

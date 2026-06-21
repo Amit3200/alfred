@@ -59,6 +59,18 @@ Use short, distinctive keywords (`duplicate`, `merchant`, `deploy`) rather than 
 
 Set `channels: ["C01234567"]` to limit a playbook to specific Slack channels. Omit or use `[]` for global playbooks.
 
+## Live web sources (optional)
+
+Add public HTTPS URLs to refresh dynamic company context when the playbook matches:
+
+```yaml
+fetch_urls:
+  - https://example.com
+fetch_ttl_minutes: 60   # optional; default 60
+```
+
+Alfred fetches each URL when the playbook is included in a request, caches text under `.alfred/cache/playbook_urls/`, and appends a **Live web sources** section to the prompt. Only `https://` URLs are allowed.
+
 ## Getting started
 
 1. Create `.alfred/playbooks/` if it does not exist.

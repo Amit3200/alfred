@@ -11,7 +11,7 @@ from backend.ingress.ui_format import format_for_ui
 from backend.models.response import AssistantResponse, ResponsePayload
 from backend.tools.result import pr_summary_from_dict
 
-Channel = Literal["slack", "ui", "cli"]
+Channel = Literal["slack", "ui", "cli", "github"]
 
 
 def render_for_channel(response: AssistantResponse, channel: Channel) -> str:
@@ -130,6 +130,6 @@ def _render_git_show(payload: ResponsePayload, channel: Channel) -> str:
 def _format_text(text: str, channel: Channel) -> str:
     if channel == "slack":
         return format_for_slack(text)
-    if channel == "ui":
+    if channel in ("ui", "github"):
         return format_for_ui(text)
     return text

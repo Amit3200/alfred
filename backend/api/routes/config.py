@@ -50,6 +50,8 @@ def update_secrets(
         "slack_signing_secret",
         "slack_app_token",
         "git_token",
+        "github_webhook_secret",
+        "github_client_secret",
         "aws_access_key_id",
         "aws_secret_access_key",
         "server_admin_token",

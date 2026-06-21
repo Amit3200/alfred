@@ -89,11 +89,11 @@ def check_git_mirrors(config: AlfredConfig, *, data_dir: Path | None = None) -> 
     if not config.git.enabled:
         return {}
     try:
-        from backend.git.mirror import RepoMirrorManager
+        from backend.git.mirror import WorkspaceMirrorManager
         from backend.paths import get_data_dir
 
         root = get_data_dir(data_dir)
-        manager = RepoMirrorManager(config.git, data_dir=root)
+        manager = WorkspaceMirrorManager(config.git, root)
         summary = manager.storage_summary()
         configured = len(config.git.repos) if config.git.repos else None
         synced = int(summary.get("shared_count") or 0)

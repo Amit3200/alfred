@@ -22,6 +22,14 @@ def test_omit_assistant_on_tell_me_again():
     assert omit_assistant_session_history("can you tell me this again?", include_context=True)
 
 
+def test_keep_assistant_history_during_pr_review_retry():
+    assert not omit_assistant_session_history(
+        "can you retry again?",
+        include_context=True,
+        pr_review_active=True,
+    )
+
+
 def test_processor_drops_assistant_turns_on_refresh(tmp_path):
     config = default_config()
     store = SessionStore(tmp_path)

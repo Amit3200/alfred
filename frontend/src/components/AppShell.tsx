@@ -6,6 +6,7 @@ import { AISettingsPanel } from "./panels/AISettingsPanel";
 import { HealthPanel } from "./panels/HealthPanel";
 import { IntegrationsPanel } from "./panels/IntegrationsPanel";
 import { RepoMirrorsPanel } from "./panels/RepoMirrorsPanel";
+import { PlaybooksPanel } from "./panels/PlaybooksPanel";
 import { SecretsPanel } from "./panels/SecretsPanel";
 import { UsagePanel } from "./panels/UsagePanel";
 import { useApp } from "../context/AppContext";
@@ -24,6 +25,8 @@ function SettingsContent() {
       return <IntegrationsPanel />;
     case "repos":
       return <RepoMirrorsPanel />;
+    case "playbooks":
+      return <PlaybooksPanel />;
     case "health":
       return <HealthPanel />;
     case "usage":

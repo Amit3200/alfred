@@ -76,6 +76,10 @@ class OpenAICompatProvider(LLMProvider):
                 }
                 for t in tools
             ]
+        elif self.provider_name == "kimi":
+            # Kimi K2.6 defaults to thinking mode — can return empty content with
+            # only reasoning_content, which breaks plain chat replies.
+            kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
         completion = client.chat.completions.create(**kwargs)
         choice = completion.choices[0]
         tool_calls: list[ToolCall] = []
@@ -87,8 +91,13 @@ class OpenAICompatProvider(LLMProvider):
                 tool_calls.append(
                     ToolCall(id=tc.id, name=tc.function.name, arguments=args)
                 )
+        content = choice.message.content
+        if not (content or "").strip():
+            reasoning = getattr(choice.message, "reasoning_content", None)
+            if isinstance(reasoning, str) and reasoning.strip():
+                content = reasoning.strip()
         return LLMResponse(
-            content=choice.message.content,
+            content=content,
             tool_calls=tool_calls,
             model=model_name,
             provider=self.provider_name,

@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from backend.ingress.slack_lists import wants_slack_list_enrichment
+
 # Skip channel fetch for identity / capability questions.
 _IDENTITY_MARKERS = (
     "who are you",
@@ -89,6 +91,8 @@ def wants_channel_history(intent: str, *, in_existing_thread: bool) -> bool:
     """Decide whether to include channel messages in Slack context."""
     if is_identity_question(intent):
         return False
+    if wants_slack_list_enrichment(intent):
+        return True
     if _contains_any(intent, _REFRESH_MARKERS + _CORRECTION_MARKERS):
         return True
     if _contains_any(intent, _CHANNEL_MARKERS + _SUMMARY_MARKERS + _TIME_MARKERS + _LOOKUP_MARKERS):
@@ -99,6 +103,8 @@ def wants_channel_history(intent: str, *, in_existing_thread: bool) -> bool:
 def needs_context_refresh(intent: str, *, has_session: bool) -> bool:
     """Re-attach Slack history on follow-ups that need fresh facts."""
     if not has_session:
+        return True
+    if wants_slack_list_enrichment(intent):
         return True
     if _contains_any(
         intent,
@@ -113,9 +119,16 @@ def needs_context_refresh(intent: str, *, has_session: bool) -> bool:
     return False
 
 
-def omit_assistant_session_history(intent: str, *, include_context: bool) -> bool:
+def omit_assistant_session_history(
+    intent: str,
+    *,
+    include_context: bool,
+    pr_review_active: bool = False,
+) -> bool:
     """Drop prior assistant turns when re-answering from fresh Slack facts."""
     if not include_context:
+        return False
+    if pr_review_active:
         return False
     if _contains_any(intent, _LOOKUP_MARKERS + _REFRESH_MARKERS + _CORRECTION_MARKERS):
         return True

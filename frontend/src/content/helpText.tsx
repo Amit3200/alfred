@@ -27,10 +27,10 @@ export const SECRETS_HELP: Record<string, HelpGuide> = {
   git: {
     title: "Git",
     summary:
-      "Personal access token lets Alfred read repos, blame, grep, and open PRs on your behalf.",
+      "Personal access token lets Alfred read repos, blame, grep, open PRs, and post PR review comments.",
     steps: [
       "GitHub: Settings → Developer settings → Personal access tokens → Fine-grained or classic.",
-      "Scopes: repo (read for investigation), workflow if you use Actions.",
+      "Scopes: repo (read for investigation; write if Alfred posts PR comments on GitHub).",
       "GitLab: Preferences → Access Tokens → api, read_repository, write_repository as needed.",
       "Paste the token here — it is encrypted and never written to config.yaml.",
     ],
@@ -38,6 +38,20 @@ export const SECRETS_HELP: Record<string, HelpGuide> = {
       { label: "GitHub tokens", href: "https://github.com/settings/tokens" },
       { label: "GitLab tokens", href: "https://gitlab.com/-/user_settings/personal_access_tokens" },
     ],
+  },
+  github: {
+    title: "GitHub App",
+    summary:
+      "Webhook secret and optional client secret for @alfred on pull request comments. Requires a public HTTPS URL (Cloudflare tunnel or similar).",
+    steps: [
+      "Create a GitHub App → set Webhook URL and Callback URL to your Alfred host (/api/v1/github/webhook and /callback).",
+      "Generate a webhook secret on GitHub → paste the same value here as Webhook secret.",
+      "Optional: paste Client secret from the GitHub App for OAuth callback.",
+      "Enable GitHub App in Integrations, set client_id and callback_base_url, then save config.",
+      "Install the app on your org/repos. Subscribe to Issue comment events.",
+      "Verify: GitHub App → Webhook → Recent deliveries (ping should return 200).",
+    ],
+    links: [{ label: "GitHub Apps", href: "https://github.com/settings/apps" }],
   },
   aws: {
     title: "AWS",

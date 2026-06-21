@@ -1,7 +1,17 @@
 import { ChatMarkdown } from "./ChatMarkdown";
 
 export type ResponsePayload = {
-  kind: "text" | "pr_list" | "pr_detail" | "repo_list" | "error";
+  kind:
+    | "text"
+    | "pr_list"
+    | "pr_detail"
+    | "repo_list"
+    | "error"
+    | "code_grep"
+    | "file_content"
+    | "git_log"
+    | "git_blame"
+    | "git_show";
   data: Record<string, unknown>;
 };
 

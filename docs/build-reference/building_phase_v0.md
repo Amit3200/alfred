@@ -140,6 +140,7 @@ We are past the early vertical slice — Phases 0–3, partial 4, and **partial 
 | `skills/investigate_bug.md` | investigation | grep_repo, read_file, git_log, git_blame, git_show, get_pr, list_repos |
 | `skills/review_pr.md` | investigation | get_pr, get_pr_changes, grep_repo, read_file, … |
 | `skills/git_status.md` | workflow | list_my_prs, list_prs, get_pr, list_repos |
+| `skills/summarize_bugs.md` | conversational | alerts/incidents operational report (Slack context only) |
 
 Company-specific **playbooks** live in `.alfred/playbooks/` (gitignored). Copy from `docs/playbooks/example-slack-summaries.md`.
 

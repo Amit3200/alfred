@@ -3,6 +3,7 @@ import {
   BarChartOutlined,
   CommentOutlined,
   DatabaseOutlined,
+  FileTextOutlined,
   HeartOutlined,
   HomeOutlined,
   KeyOutlined,
@@ -18,7 +19,7 @@ import type { SettingsPage } from "../types";
 
 const { Sider } = Layout;
 
-const SETTINGS_KEYS = new Set(["ai", "secrets", "integrations", "repos", "health", "usage"]);
+const SETTINGS_KEYS = new Set(["ai", "secrets", "integrations", "repos", "playbooks", "health", "usage"]);
 
 type AppSidebarProps = {
   width: number;
@@ -91,6 +92,7 @@ export function AppSidebar({ width }: AppSidebarProps) {
                 { key: "secrets", icon: <KeyOutlined />, label: "Secrets" },
                 { key: "integrations", icon: <ApiOutlined />, label: "Integrations" },
                 { key: "repos", icon: <DatabaseOutlined />, label: "Repo mirrors" },
+                { key: "playbooks", icon: <FileTextOutlined />, label: "Playbooks" },
                 { key: "usage", icon: <BarChartOutlined />, label: "Usage" },
                 { key: "health", icon: <HeartOutlined />, label: "Health" },
               ],

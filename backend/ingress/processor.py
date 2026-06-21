@@ -100,10 +100,6 @@ class TaskProcessor:
             )
         )
 
-        omit_assistant = omit_assistant_session_history(
-            task.cleaned_intent,
-            include_context=include_context,
-        )
         matched_playbooks = self._playbooks.match(
             task.cleaned_intent,
             channel_id=task.channel_id,
@@ -112,33 +108,70 @@ class TaskProcessor:
             task.cleaned_intent,
             channel_id=task.channel_id,
         )
-        set_skill_name(investigation.name if investigation else None)
-        prompt_playbooks = [investigation] if investigation else matched_playbooks
+        review_skill = self._resolve_pr_review_skill(investigation, task, session)
+        omit_assistant = omit_assistant_session_history(
+            task.cleaned_intent,
+            include_context=include_context,
+            pr_review_active=bool(review_skill),
+        )
+        active_skill = review_skill or investigation
+        set_skill_name(active_skill.name if active_skill else None)
+
         git_context_prompt = ""
-        if investigation and session and self.config.git.enabled:
+        if active_skill and session and self.config.git.enabled:
             from backend.ingress.git_context import format_session_git_context
 
             git_context_prompt = format_session_git_context(session, task.cleaned_intent)
 
+        pr_context_prompt = ""
+        pr_metadata: dict[str, Any] | None = None
+        if review_skill and self.config.git.enabled:
+            pr_context_prompt, pr_metadata = self._prefetch_pr_context(task, session=session)
+
+        prompt_playbooks = [review_skill] if review_skill else ([investigation] if investigation else matched_playbooks)
+        extra_system = "\n\n".join(
+            part for part in (git_context_prompt, pr_context_prompt) if part
+        )
         messages = self._build_messages(
             task,
             session=session,
             slack_context=slack_context if include_context else None,
             history_window_label=history_window_label if include_context else "",
             omit_assistant_turns=omit_assistant,
-            playbook_prompt=self._playbooks.format_for_prompt(prompt_playbooks),
-            extra_system=git_context_prompt,
+            playbook_prompt=self._playbooks.format_for_prompt(
+                prompt_playbooks,
+                data_dir=self._data_dir_path(),
+            ),
+            extra_system=extra_system,
         )
 
         response: AssistantResponse | None = None
         metadata_patch: dict[str, Any] | None = None
-        if self.config.git.enabled:
-            set_call_kind("pr_review")
-            response, pr_patch = self._try_direct_pr_analysis(task, session=session)
-            if pr_patch:
-                metadata_patch = {"active_pr": pr_patch}
+        if pr_metadata:
+            metadata_patch = {"active_pr": pr_metadata}
 
-            if response is None and investigation:
+        if review_skill and self.config.git.enabled:
+            set_call_kind("investigation")
+            provider_name, provider, model_name = self._select_provider(review_skill)
+            logger.info(
+                "Skill-guided PR review: %s provider=%s model=%s prefetched=%s",
+                review_skill.name,
+                provider_name,
+                model_name,
+                bool(pr_context_prompt),
+            )
+            response, inv_patch = self._run_investigation(
+                review_skill,
+                messages,
+                provider=provider,
+                model=model_name,
+                task=task,
+                session=session,
+            )
+            if inv_patch:
+                metadata_patch = {**(metadata_patch or {}), **inv_patch}
+        elif self.config.git.enabled:
+            if investigation:
                 set_call_kind("investigation")
                 response, inv_patch = self._try_direct_investigate(investigation, task, session)
                 if inv_patch:
@@ -183,8 +216,9 @@ class TaskProcessor:
                     AssistantResponse.from_text(content)
                     if content
                     else AssistantResponse.from_text(
-                        "I couldn't generate a reply from the model. "
-                        "Check AI settings and that Ollama (or your provider) is running."
+                        "I couldn't generate a reply — the model returned an empty response. "
+                        "For Kimi K2.6, try again or check Admin → AI; large Slack summaries "
+                        "may need a playbook for ticket formatting."
                     )
                 )
 
@@ -218,66 +252,53 @@ class TaskProcessor:
         cfg = self.config.ai.providers[name]
         return name, provider, cfg.model or ""
 
-    def _try_direct_pr_analysis(
+    def _resolve_pr_review_skill(
+        self,
+        investigation: Playbook | None,
+        task: Task,
+        session: ConversationSession | None,
+    ) -> Playbook | None:
+        """Return the review_pr skill when intent is a PR review or thread follow-up."""
+        from backend.ingress.git_direct import should_run_pr_analysis
+
+        if investigation and investigation.name == "review_pr":
+            return investigation
+        if should_run_pr_analysis(task.cleaned_intent, session):
+            return self._playbooks.get_by_name("review_pr")
+        return None
+
+    def _prefetch_pr_context(
         self,
         task: Task,
         *,
         session: ConversationSession | None = None,
-    ) -> tuple[AssistantResponse | None, dict[str, Any] | None]:
-        """Fetch PR diffs, checkout head branch, and produce a code-level review."""
-        from backend.ingress.git_direct import (
-            pr_analysis_focus,
-            resolve_pr_for_analysis,
-            should_run_pr_analysis,
-        )
-        from backend.ingress.pr_analysis import analyze_pull_request
+    ) -> tuple[str, dict[str, Any] | None]:
+        """Gather PR facts for injection; analysis is driven by the review_pr skill."""
+        from backend.ingress.git_direct import resolve_pr_for_analysis
+        from backend.ingress.pr_analysis import format_pr_context_for_prompt, gather_pr_context
 
-        if not should_run_pr_analysis(task.cleaned_intent, session):
-            return None, None
         ref = resolve_pr_for_analysis(task.cleaned_intent, session)
         if not ref:
-            return None, None
+            return "", None
 
         repo, number = ref
-        focus = pr_analysis_focus(task.cleaned_intent)
-        logger.info("Direct PR code analysis: %s #%s (focus=%s)", repo, number, focus)
-        inv_skill = Playbook(
-            name="review_pr",
-            path=Path("review_pr.md"),
-            body="",
-            mode="investigation",
-            allowed_tools=["get_pr"],
-        )
-        _, provider, model = self._select_provider(inv_skill)
+        logger.info("Pre-fetching PR context: %s #%s", repo, number)
         try:
-            analysis, context = analyze_pull_request(
+            ctx = gather_pr_context(
                 self.config,
                 data_dir=self._data_dir_path(),
                 workspace_id=mirror_workspace_key(task),
                 repo=repo,
                 number=number,
-                provider=provider,
-                model=model or None,
-                focus=focus,
             )
         except RuntimeError as exc:
-            return AssistantResponse.error(str(exc)), None
-        except Exception as exc:
-            logger.exception("PR analysis failed")
-            return AssistantResponse.error(f"PR analysis failed: {exc}"), None
+            logger.warning("PR context fetch failed: %s", exc)
+            return "", None
+        except Exception:
+            logger.exception("PR context fetch failed")
+            return "", None
 
-        if analysis:
-            return (
-                AssistantResponse.from_text(clean_response_scaffold(analysis.strip())),
-                context or None,
-            )
-        return (
-            AssistantResponse.from_text(
-                "I fetched the PR but couldn't generate a review. "
-                "Check that your Git token has access and the AI provider is running."
-            ),
-            context or None,
-        )
+        return format_pr_context_for_prompt(ctx), ctx.metadata
 
     def _try_direct_investigate(
         self,
@@ -433,12 +454,16 @@ class TaskProcessor:
                 registry.last_result,
             )
 
+        raw_stripped = (raw or "").strip()
+        if raw_stripped and not looks_like_tool_json(raw_stripped):
+            return AssistantResponse.from_text(clean_response_scaffold(raw_stripped)), patch
+
         if registry.last_result and registry.last_result.kind in STRUCTURED_TOOL_KINDS:
             structured = _tool_result_to_response(registry.last_result)
             if structured is not None:
                 return structured, patch
 
-        if looks_like_tool_json(raw):
+        if looks_like_tool_json(raw_stripped):
             return (
                 AssistantResponse.from_text(
                     "I couldn't complete the Git lookup — the AI model failed to run tools. "
@@ -446,7 +471,10 @@ class TaskProcessor:
                 ),
                 patch,
             )
-        return AssistantResponse.from_text(clean_response_scaffold(raw.strip())), patch
+        return AssistantResponse.from_text(
+            clean_response_scaffold(raw_stripped)
+            or "I ran the available tools but couldn't form a final answer."
+        ), patch
 
     def _summarize_pr(self, detail: dict[str, Any], task: Task) -> str | None:
         """One-shot LLM summary of a fetched PR (after get_pr)."""
@@ -537,6 +565,8 @@ def _task_channel(task: Task) -> Channel:
         return "slack"
     if task.source == "ui":
         return "ui"
+    if task.source == "git":
+        return "github"
     return "cli"
 
 

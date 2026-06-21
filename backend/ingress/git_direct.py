@@ -97,6 +97,15 @@ _PR_FOLLOWUP_HINTS = (
     "purpose",
 )
 
+_PR_RETRY_HINTS = (
+    "retry",
+    "try again",
+    "run again",
+    "do it again",
+    "one more time",
+    "again?",
+)
+
 _TEXT_TOOL_CALL_RE = re.compile(
     r'\{\s*"name"\s*:\s*"([a-z_]+)"\s*,\s*"parameters"\s*:?\s*(\{.*?\})\s*\}',
     re.I | re.DOTALL,
@@ -134,6 +143,12 @@ def wants_pr_followup(intent: str) -> bool:
     return any(hint in lower for hint in _PR_FOLLOWUP_HINTS)
 
 
+def wants_pr_retry(intent: str) -> bool:
+    """User wants Alfred to re-run a PR review in the same thread."""
+    lower = intent.lower()
+    return any(hint in lower for hint in _PR_RETRY_HINTS)
+
+
 def extract_pr_from_session(session: Any) -> tuple[str, int] | None:
     """Recover PR repo/number from session metadata or prior turns."""
     active = (session.metadata or {}).get("active_pr") if session else None
@@ -158,11 +173,11 @@ def resolve_pr_for_analysis(intent: str, session: Any | None) -> tuple[str, int]
 
 
 def should_run_pr_analysis(intent: str, session: Any | None) -> bool:
-    """Whether to run the direct PR fetch + diff analysis path."""
+    """Whether to route through the review_pr skill with Git prefetch."""
     if extract_pr_reference(intent):
         return wants_pr_code_analysis(intent)
     if session and extract_pr_from_session(session):
-        return wants_pr_followup(intent)
+        return wants_pr_followup(intent) or wants_pr_retry(intent)
     return False
 
 

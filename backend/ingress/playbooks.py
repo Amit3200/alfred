@@ -30,6 +30,8 @@ class Playbook:
     allowed_tools: list[str] = field(default_factory=list)
     requires_thread_context: bool = False
     bundled: bool = False
+    fetch_urls: list[str] = field(default_factory=list)
+    fetch_ttl_minutes: int = 60
 
 
 class PlaybookStore:
@@ -44,14 +46,29 @@ class PlaybookStore:
         self.directory = playbooks_dir(data_dir)
         self.disabled_skills = {name.strip().lower() for name in (disabled_skills or [])}
         self._playbooks: list[Playbook] | None = None
+        self._cache_mtime: float = 0.0
 
     def reload(self) -> None:
         self._playbooks = None
+        self._cache_mtime = 0.0
 
     def list_playbooks(self) -> list[Playbook]:
-        if self._playbooks is None:
+        mtime = self._directory_mtime()
+        if self._playbooks is None or mtime > self._cache_mtime:
             self._playbooks = self._load_all()
+            self._cache_mtime = mtime
         return list(self._playbooks)
+
+    def _directory_mtime(self) -> float:
+        if not self.directory.is_dir():
+            return 0.0
+        latest = 0.0
+        for path in self.directory.glob("*.md"):
+            try:
+                latest = max(latest, path.stat().st_mtime)
+            except OSError:
+                continue
+        return latest
 
     def match(self, intent: str, *, channel_id: str = "") -> list[Playbook]:
         lower = intent.lower()
@@ -80,7 +97,15 @@ class PlaybookStore:
                     best_len = len(token)
         return best
 
-    def format_for_prompt(self, playbooks: list[Playbook]) -> str:
+    def get_by_name(self, name: str) -> Playbook | None:
+        """Return a loaded playbook/skill by name, or None."""
+        target = name.strip().lower()
+        for playbook in self.list_playbooks():
+            if playbook.name.lower() == target:
+                return playbook
+        return None
+
+    def format_for_prompt(self, playbooks: list[Playbook], *, data_dir: Path | None = None) -> str:
         if not playbooks:
             return ""
         sections = [
@@ -94,6 +119,12 @@ class PlaybookStore:
             sections.append(f"### {label}: {playbook.name}")
             sections.append(playbook.body.strip())
             sections.append("")
+
+        from backend.ingress.playbook_fetch import format_playbook_dynamic_context
+
+        dynamic = format_playbook_dynamic_context(playbooks, data_dir=data_dir)
+        if dynamic:
+            sections.extend(["", dynamic, ""])
         return "\n".join(sections).strip()
 
     def _load_all(self) -> list[Playbook]:
@@ -147,6 +178,8 @@ def _parse_playbook(path: Path, *, bundled: bool) -> Playbook:
         mode = "conversational"
     allowed_tools = _normalize_str_list(meta.get("allowed_tools"))
     requires_thread_context = bool(meta.get("requires_thread_context", False))
+    fetch_urls = _normalize_str_list(meta.get("fetch_urls"))
+    fetch_ttl_minutes = int(meta.get("fetch_ttl_minutes") or 60)
 
     if channels == ["*"]:
         channels = []
@@ -161,6 +194,8 @@ def _parse_playbook(path: Path, *, bundled: bool) -> Playbook:
         allowed_tools=allowed_tools,
         requires_thread_context=requires_thread_context,
         bundled=bundled,
+        fetch_urls=fetch_urls,
+        fetch_ttl_minutes=max(1, fetch_ttl_minutes),
     )
 
 

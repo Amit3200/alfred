@@ -1348,3 +1348,48 @@ body,
   font-size: 11px;
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
 }
+
+/* ── Playbooks editor ── */
+.alfred-playbooks-layout {
+  min-height: 520px;
+}
+
+.alfred-playbooks-list {
+  width: 300px;
+  flex-shrink: 0;
+  background: var(--alfred-surface);
+  border: 1px solid var(--alfred-border-subtle);
+  border-radius: var(--alfred-radius-lg);
+  padding: 12px;
+}
+
+.alfred-playbooks-item,
+.alfred-playbooks-item-active {
+  cursor: pointer;
+  border-radius: var(--alfred-radius);
+  padding-inline: 8px !important;
+}
+
+.alfred-playbooks-item-active {
+  background: var(--alfred-accent-soft);
+}
+
+.alfred-playbooks-editor {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--alfred-surface);
+  border: 1px solid var(--alfred-border-subtle);
+  border-radius: var(--alfred-radius-lg);
+  padding: 16px;
+}
+
+.alfred-playbooks-textarea {
+  flex: 1;
+  min-height: 420px !important;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace !important;
+  font-size: 13px !important;
+  line-height: 1.55 !important;
+  resize: vertical;
+}

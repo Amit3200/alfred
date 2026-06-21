@@ -1,4 +1,4 @@
-"""Tests for PR code analysis routing and orchestration."""
+"""Tests for PR review routing and skill-guided investigation."""
 
 from __future__ import annotations
 
@@ -22,12 +22,16 @@ def test_wants_pr_code_analysis_false_for_list_prs():
     assert not wants_pr_code_analysis("what are my open prs?")
 
 
-def test_processor_direct_pr_analysis_skips_llm_agent():
+def test_processor_pr_review_uses_investigation_loop():
     config = default_config()
     config.git = GitConfig(enabled=True, provider="github", token="ghp_test")
 
     processor = TaskProcessor(config)
     processor.router = MagicMock()
+    mock_provider = MagicMock()
+    processor.router.get.return_value = mock_provider
+    cfg = config.ai.providers[config.ai.routing.investigation]
+    cfg.enabled = True
 
     task = Task(
         source="ui",
@@ -37,14 +41,16 @@ def test_processor_direct_pr_analysis_skips_llm_agent():
         cleaned_intent="review this PR https://github.com/FlexyPe/flexype-adhocs/pull/91",
     )
 
-    with patch("backend.ingress.pr_analysis.analyze_pull_request") as mock_analyze:
-        mock_analyze.return_value = ("**Summary**\nAdds SQS consumer support.", {"repo": "FlexyPe/flexype-adhocs", "number": 91})
-        with patch("backend.agent.loop.run_agent_loop") as mock_loop:
+    with patch.object(
+        processor,
+        "_prefetch_pr_context",
+        return_value=("## Pre-fetched PR data\nPR #91", {"repo": "FlexyPe/flexype-adhocs", "number": 91}),
+    ):
+        with patch("backend.agent.loop.run_agent_loop", return_value="## 1. Executive Summary\nSafe.") as mock_loop:
             response = processor.process(task)
 
-    assert "SQS consumer" in response.payload.data["text"]
-    mock_analyze.assert_called_once()
-    mock_loop.assert_not_called()
+    assert "Executive Summary" in response.payload.data["text"]
+    mock_loop.assert_called_once()
 
 
 def test_processor_metadata_summary_when_no_review_keyword():
@@ -79,9 +85,9 @@ def test_processor_metadata_summary_when_no_review_keyword():
     with patch("backend.tools.git_api.GitApiClient") as mock_client_cls:
         mock_client = mock_client_cls.from_alfred_config.return_value
         mock_client.get_pr.return_value = pr_detail
-        with patch("backend.ingress.pr_analysis.analyze_pull_request") as mock_analyze:
+        with patch("backend.agent.loop.run_agent_loop") as mock_loop:
             with patch.object(processor, "_summarize_pr", return_value="Short summary from description."):
                 response = processor.process(task)
 
-    mock_analyze.assert_not_called()
+    mock_loop.assert_not_called()
     assert "Short summary" in response.payload.data["text"]

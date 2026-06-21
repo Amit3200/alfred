@@ -26,6 +26,14 @@ export type AlfredConfig = {
     mirror_max_workspaces?: number;
     mirror_shallow_depth?: number;
   };
+  github: {
+    enabled: boolean;
+    client_id: string;
+    app_id: string;
+    bot_login: string;
+    allowed_repos: string[];
+    callback_base_url: string;
+  };
   aws: {
     enabled: boolean;
     profile: string;
@@ -55,6 +63,8 @@ export type AlfredConfig = {
     slack_signing_secret: boolean;
     slack_app_token: boolean;
     git_token: boolean;
+    github_webhook_secret: boolean;
+    github_client_secret: boolean;
     aws_access_key_id: boolean;
     aws_secret_access_key: boolean;
     server_admin_token: boolean;
@@ -67,6 +77,8 @@ export type SecretsPayload = {
   slack_signing_secret?: string;
   slack_app_token?: string;
   git_token?: string;
+  github_webhook_secret?: string;
+  github_client_secret?: string;
   aws_access_key_id?: string;
   aws_secret_access_key?: string;
   server_admin_token?: string;
@@ -259,6 +271,40 @@ export const api = {
       {},
       true,
     ),
+
+  listPlaybooks: () => request<PlaybooksListResponse>("/api/playbooks", {}, true),
+  getPlaybookExample: () => request<PlaybookExampleResponse>("/api/playbooks/example", {}, true),
+  getPlaybook: (filename: string) =>
+    request<PlaybookDetail>(`/api/playbooks/${encodeURIComponent(filename)}`, {}, true),
+  createPlaybook: (filename: string, content?: string) =>
+    request<PlaybookDetail>(
+      "/api/playbooks",
+      { method: "POST", body: JSON.stringify({ filename, content: content ?? "" }) },
+      true,
+    ),
+  savePlaybook: (filename: string, content: string) =>
+    request<PlaybookDetail>(
+      `/api/playbooks/${encodeURIComponent(filename)}`,
+      { method: "PUT", body: JSON.stringify({ content }) },
+      true,
+    ),
+  deletePlaybook: (filename: string) =>
+    request<{ ok: boolean; removed: string }>(
+      `/api/playbooks/${encodeURIComponent(filename)}`,
+      { method: "DELETE" },
+      true,
+    ),
+  uploadPlaybook: async (file: File) => {
+    const content = await file.text();
+    if (!content.trim()) throw new Error("File is empty");
+    const filename = file.name.toLowerCase().endsWith(".md") ? file.name : `${file.name}.md`;
+    try {
+      await api.getPlaybook(filename);
+      return api.savePlaybook(filename, content);
+    } catch {
+      return api.createPlaybook(filename, content);
+    }
+  },
 };
 
 export type ChatSessionSummary = {
@@ -270,7 +316,17 @@ export type ChatSessionSummary = {
 };
 
 export type ResponsePayload = {
-  kind: "text" | "pr_list" | "pr_detail" | "repo_list" | "error";
+  kind:
+    | "text"
+    | "pr_list"
+    | "pr_detail"
+    | "repo_list"
+    | "error"
+    | "code_grep"
+    | "file_content"
+    | "git_log"
+    | "git_blame"
+    | "git_show";
   data: Record<string, unknown>;
 };
 
@@ -435,6 +491,35 @@ export type ObservabilityFilterOptions = {
   models: string[];
   providers: string[];
   tool_categories: string[];
+};
+
+export type PlaybookSummary = {
+  filename: string;
+  name?: string;
+  triggers?: string[];
+  mode?: string;
+  channels?: string[];
+  fetch_urls?: string[];
+  fetch_ttl_minutes?: number;
+  size_bytes?: number;
+  updated_at?: string | null;
+  parse_error?: string;
+};
+
+export type PlaybooksListResponse = {
+  directory: string;
+  playbooks: PlaybookSummary[];
+  example_available: boolean;
+};
+
+export type PlaybookDetail = PlaybookSummary & {
+  content: string;
+  ok?: boolean;
+};
+
+export type PlaybookExampleResponse = {
+  filename: string;
+  content: string;
 };
 
 function buildObservabilityQuery(params: ObservabilityQuery & { limit?: number; offset?: number }) {

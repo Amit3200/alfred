@@ -38,11 +38,11 @@ When tool data is returned, keep replies *short*:
 ```
 *4 open PRs*
 
-`cipher`
-• <https://github.com/org/cipher/pull/1685|#1685 Thanks page>
+`service-a`
+• <https://github.com/org/service-a/pull/1685|#1685 Thanks page>
 
-`flexype-adhocs`
-• <https://github.com/org/flexype-adhocs/pull/91|#91 SQS Consumer Support Added>
+`service-b`
+• <https://github.com/org/service-b/pull/91|#91 SQS Consumer Support Added>
 ```
 
 - Group by repo short name. One bullet per PR with inline Slack link.

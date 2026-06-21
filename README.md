@@ -22,7 +22,7 @@ Built for companies that want a distributable agent (not a SaaS): config + encry
 | **PR review** | Summarize and review PRs from URLs or thread context; deterministic overview + diff analysis. |
 | **Open PRs / repo queries** | List PRs, get PR metadata — direct routing without full agent loop when intent is clear. |
 | **Domain playbooks** | `.alfred/playbooks/*.md` — YAML triggers + instructions for **your company's** formatting rules (local only). |
-| **Shipped skills** | Generic `skills/*.md` in the repo — investigate, review PR, git status (committed with Alfred). |
+| **Shipped skills** | Generic `skills/*.md` in the repo — investigate, review PR, git status, summarize bugs/alerts (committed with Alfred). |
 | **Pluggable AI** | Ollama, OpenAI-compatible APIs, Anthropic, Gemini, **Kimi** — switch via config; route investigation to a capable model. |
 | **Admin UI** | Chat, secrets, AI routing, repo mirrors, **Usage** dashboard (tokens, tools, users), health checks. |
 | **CLI** | `alfred exec`, `alfred git sync`, `alfred up` / `alfred stop`. |
@@ -33,7 +33,7 @@ Built for companies that want a distributable agent (not a SaaS): config + encry
 - AWS tools (CloudWatch, ECS, etc.)
 - BM25 skill matcher and strict single-skill selection
 - Thread relevancy ranking (beyond git session hints)
-- Durable task queue / git webhook ingress
+- Durable task queue / GitHub PR comment bot (webhook ingress — use optional Cloudflare Tunnel when available)
 
 Details: [`docs/build-reference/building_phase_v0.md`](docs/build-reference/building_phase_v0.md)
 
@@ -99,6 +99,7 @@ Save the admin token — you need it for the Admin UI.
 | Environment | Admin UI URL |
 |-------------|--------------|
 | Local dev (`./scripts/dev.sh` or `alfred up`) | http://127.0.0.1:5173 (Vite) or http://127.0.0.1:8080 (serve only) |
+| Optional public dev host (Cloudflare Tunnel) | https://alfred.yourdomain.dev — see [Optional — Public URL](#optional--public-url-cloudflare-tunnel) |
 | Docker / EC2 / ECS | http://\<host\>:8080 |
 
 Authenticate with the admin token (`alfred token`).
@@ -113,7 +114,8 @@ Save encrypted secrets via the UI (preferred over plain env vars).
 | **Slack Signing Secret** | Slack app → Basic Information | Event verification |
 | **Slack App-Level Token** (`xapp-…`) | Slack app → Socket Mode → App-Level Token with `connections:write` | Socket Mode (no public URL) |
 | **AI API key** | Provider dashboard (Anthropic, OpenAI, Moonshot for Kimi, etc.) | LLM calls |
-| **Git token** | GitHub PAT or GitLab token with `repo` read | PR API + repo clone for mirrors |
+| **Git token** | GitHub PAT or GitLab token with `repo` read/write | PR API, repo mirrors, **GitHub PR comments + reactions** (via PAT user) |
+| **GitHub webhook secret** (optional) | GitHub App → Webhook → Secret | Verify inbound PR comment webhooks |
 | **AWS keys** (optional) | IAM user — not used by tools yet | Future Phase 7 |
 
 Env var fallbacks: see [`.env.example`](.env.example) (`MOONSHOT_API_KEY` for Kimi, `GIT_TOKEN`, etc.).
@@ -125,7 +127,7 @@ In [api.slack.com/apps](https://api.slack.com/apps):
 1. Create app → enable **Socket Mode**
 2. App-Level Token: `connections:write`
 3. **OAuth & Permissions** → Bot Token Scopes:
-   `app_mentions:read`, `channels:history`, `channels:read`, `chat:write`, `groups:history`, `groups:read`, `users:read`, `assistant:write`
+   `app_mentions:read`, `channels:history`, `channels:read`, `chat:write`, `files:write`, `groups:history`, `groups:read`, `lists:read`, `users:read`, `assistant:write`
 4. Enable **Agents & AI Apps** for native thinking status
 5. **Event Subscriptions** → subscribe to `app_mention`
 6. Install app to workspace
@@ -177,6 +179,66 @@ alfred git sync
 
 Mirrors live under `.alfred/repos/shared/` (cache) and `.alfred/repos/workspaces/{session}/` (per-conversation).
 
+### Step 6b — GitHub App (PR comment bot) — optional
+
+Use this when you want **`@your-app-slug review`** on **GitHub pull request comments** (not just Slack). Requires a **public HTTPS URL** — see [Optional — Public URL](#optional--public-url-cloudflare-tunnel).
+
+1. Create a [GitHub App](https://github.com/settings/apps/new) (org or user). Example app name/slug: `alfred-flx` → users mention **`@alfred-flx`** on PRs.
+2. Set URLs (replace host with yours, e.g. `alfred.flexype.dev`):
+
+| Field | URL |
+|-------|-----|
+| **Callback URL** | `https://alfred.yourdomain.dev/api/v1/github/callback` |
+| **Webhook URL** | `https://alfred.yourdomain.dev/api/v1/github/webhook` |
+
+3. **Webhook secret** — generate on GitHub and paste the same value in Admin → **Secrets** → **GitHub App** → `github_webhook_secret`
+4. **Permissions** — Repository: **Contents** (read), **Issues** (read & write), **Pull requests** (read)
+5. **Subscribe to events** — `Issue comment`
+6. **Install the app** on your org — grant access to **All repositories** or select repos ( **No repositories** = no webhooks ). Accept updated permissions after changing app settings.
+7. Admin → **Integrations** → **GitHub App**:
+   - Enable toggle
+   - **Client ID** / **App ID** from GitHub App settings
+   - **Bot login** = app slug (e.g. `alfred-flx`) — **must match** the `@mention` in PR comments exactly
+   - **Public base URL** = `https://alfred.yourdomain.dev` (shows copyable webhook/callback URLs)
+   - Save changes
+
+Or in `config.yaml`:
+
+```yaml
+github:
+  enabled: true
+  client_id: Iv1.xxxxx
+  app_id: "123456"
+  bot_login: alfred-flx              # must match @mention slug
+  callback_base_url: https://alfred.yourdomain.dev
+  allowed_repos: []                  # optional; empty uses git.repos allowlist
+```
+
+8. Admin → **Secrets** — also ensure:
+   - `git_token` — PAT with `repo` scope (Alfred posts PR review replies and 👀/👍 reactions **as the PAT user** today)
+   - `github_client_secret` (optional, for OAuth callback only)
+
+9. Run Alfred + tunnel, then verify:
+
+```bash
+./scripts/up.sh          # terminal 1
+./scripts/tunnel.sh      # terminal 2
+curl -s https://alfred.yourdomain.dev/api/health
+```
+
+GitHub App → Webhook → **Recent deliveries**: `ping` and `issue_comment` should return **200**. In `.alfred/alfred.log` look for `status=queued` (not `ignored issue_comment`).
+
+Comment on a PR: `@alfred-flx can you review this PR?` — Alfred reacts with 👀 immediately, posts the review when done, then 👍. Same `review_pr` skill as Slack.
+
+**Troubleshooting**
+
+| Symptom | Fix |
+|---------|-----|
+| Log: `ignored issue_comment` | **Bot login** typo — must match `@mention` (e.g. `alfred-flx` not `alfred-fix`) |
+| No webhook in log | App installed with **No repositories**, tunnel down, or `Issue comment` event not subscribed |
+| Log: `signature verification failed` | Re-paste webhook secret on GitHub and in Alfred Secrets |
+| Reactions show as your user | Expected with PAT — webhook is the app; API calls use `git_token` |
+
 ### Step 7 — Company playbooks (local only)
 
 ```bash
@@ -217,6 +279,53 @@ docker compose logs -f alfred
 
 Logs: `.alfred/alfred.log` (or `docker compose logs`).
 
+**No tunnel required.** `./scripts/up.sh` alone is enough for local dev: Admin UI on `http://127.0.0.1:8080`, Slack via Socket Mode, PR review in Slack threads, git mirrors, and CLI. You do **not** need `cloudflared`, a public hostname, or `~/.cloudflared/config.yml` unless you want inbound webhooks (see optional step below).
+
+### Optional — Public URL (Cloudflare Tunnel)
+
+Use this **only** when you need Alfred reachable from the internet — for example a **GitHub App webhook** (`@alfred` on PR comments), sharing Admin UI outside your laptop, or testing HTTPS callbacks. It does **not** affect Slack (Socket Mode is outbound-only) and does **not** change how `./scripts/up.sh` works locally.
+
+| Scenario | Tunnel needed? |
+|----------|----------------|
+| Slack `@alfred`, local Admin UI, PR review in Slack | **No** |
+| GitHub PR comment bot (`@alfred-flx review`) | **Yes** |
+| Remote Admin UI without VPN | **Yes** (or EC2/nginx instead) |
+
+Each public hostname (e.g. `alfred.yourdomain.dev`) is a **separate DNS record** — adding Alfred’s subdomain does not change other dev hosts on the same domain.
+
+**One-time setup** (requires [Cloudflare](https://dash.cloudflare.com) and `brew install cloudflared`):
+
+```bash
+cloudflared tunnel login
+cloudflared tunnel create alfred-dev
+cloudflared tunnel route dns alfred-dev alfred.yourdomain.dev
+```
+
+Create `~/.cloudflared/config.yml` (use your tunnel UUID from `cloudflared tunnel list`):
+
+```yaml
+tunnel: alfred-dev
+credentials-file: /Users/you/.cloudflared/<TUNNEL-UUID>.json
+
+ingress:
+  - hostname: alfred.yourdomain.dev
+    service: http://127.0.0.1:8080
+  - service: http_status:404
+```
+
+**When you need the public URL**, run Alfred and the tunnel in two terminals:
+
+```bash
+./scripts/up.sh          # terminal 1 — same as always
+./scripts/tunnel.sh      # terminal 2 — optional; skips if config missing
+```
+
+Verify: `curl -s https://alfred.yourdomain.dev/api/health`
+
+Environment overrides for `scripts/tunnel.sh`: `ALFRED_TUNNEL_NAME`, `CLOUDFLARED_CONFIG`.
+
+If you skip tunnel setup, Alfred behaves exactly as before — only `./scripts/up.sh` (or `./scripts/dev.sh`).
+
 ### Step 9 — Verify
 
 | Check | How |
@@ -225,7 +334,8 @@ Logs: `.alfred/alfred.log` (or `docker compose logs`).
 | Chat | Admin → Chat — ask a question without Slack |
 | Slack | `@alfred what are my open PRs?` |
 | Investigate | `@alfred where is X handled in org/repo?` (after `alfred git sync`) |
-| PR review | Paste a PR URL in thread, `@alfred review this PR` |
+| PR review (Slack) | Paste a PR URL in thread, `@alfred review this PR` |
+| PR review (GitHub) | Comment `@your-app-slug review` on a PR (requires GitHub App + tunnel) |
 | Usage | Admin → Usage — tokens, tools, users over time |
 
 ---
@@ -468,7 +578,7 @@ alfred/
 │   ├── playbooks/          # Example playbooks (copy to .alfred/playbooks/)
 │   └── build-reference/    # Architecture + building_phase_v0.md
 ├── tests/
-├── scripts/                # setup.sh, up.sh, dev.sh
+├── scripts/                # setup.sh, up.sh, dev.sh, tunnel.sh (optional)
 ├── Dockerfile
 └── docker-compose.yml
 ```

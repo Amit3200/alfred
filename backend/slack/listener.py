@@ -7,6 +7,7 @@ import threading
 from typing import Any, Callable
 
 from backend.config_manager import ConfigManager
+from backend.ingress.file_exports import prepare_slack_delivery
 from backend.ingress.processor import TaskProcessor
 from backend.ingress.render import render_for_channel
 from backend.ingress.slack_context import fetch_slack_context
@@ -101,8 +102,11 @@ def _process_mention(
         if processor._data_dir is not None:
             SlackUserCache(processor._data_dir).remember(task.user_id, display_name)
         response = processor.process(task)
-        reply = render_for_channel(response, "slack")
-        indicator.finish(reply)
+        delivery = prepare_slack_delivery(
+            render_for_channel(response, "slack"),
+            task.cleaned_intent,
+        )
+        indicator.finish(delivery.text, files=delivery.files)
     except Exception as exc:
         logger.exception("Failed to process Slack mention %s", task.id)
         indicator.finish(f"Sorry, I hit an error: {exc}")

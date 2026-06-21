@@ -118,6 +118,23 @@ def fetch_slack_context(
             sections.append(f"Thread messages (oldest → newest):\n{thread_text}")
             logger.debug("Thread context loaded (%d chars) for task %s", len(thread_text), task.id)
 
+    from backend.ingress.slack_lists import enrich_channel_context_with_lists, wants_slack_list_enrichment
+
+    if wants_slack_list_enrichment(intent):
+        list_context = enrich_channel_context_with_lists(
+            client,
+            channel_messages + thread_messages,
+            intent=intent,
+        )
+        if list_context:
+            sections.append(list_context)
+            logger.info(
+                "Slack List enrichment: %d chars task=%s channel=%s",
+                len(list_context),
+                task.id,
+                task.channel_id,
+            )
+
     return SlackContextBundle(
         text="\n\n".join(sections) if sections else "",
         channel_messages=channel_messages,

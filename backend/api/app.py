@@ -14,10 +14,12 @@ from fastapi.staticfiles import StaticFiles
 from backend.__version__ import __version__
 from backend.api.routes import chat as chat_routes
 from backend.api.routes import config as config_routes
+from backend.api.routes import github as github_routes
 from backend.api.routes import git_mirrors as git_mirrors_routes
 from backend.api.routes import health as health_routes
 from backend.api.routes import observability as observability_routes
 from backend.api.routes import ollama as ollama_routes
+from backend.api.routes import playbooks as playbooks_routes
 from backend.config_manager import ConfigManager
 from backend.logging_config import setup_logging
 from backend.paths import bundled_web_dist
@@ -73,11 +75,13 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     )
 
     app.include_router(health_routes.router, prefix="/api")
+    app.include_router(github_routes.router, prefix="/api")
     app.include_router(config_routes.router, prefix="/api")
     app.include_router(ollama_routes.router, prefix="/api")
     app.include_router(chat_routes.router, prefix="/api")
     app.include_router(git_mirrors_routes.router, prefix="/api")
     app.include_router(observability_routes.router, prefix="/api")
+    app.include_router(playbooks_routes.router, prefix="/api")
 
     static_dir = bundled_web_dist()
     if static_dir:

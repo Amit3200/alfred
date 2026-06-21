@@ -34,6 +34,9 @@ export function SecretsPanel() {
     configured?.slack_app_token
   );
   const gitConfigured = !!configured?.git_token;
+  const githubConfigured = !!(
+    configured?.github_webhook_secret || configured?.github_client_secret
+  );
   const awsConfigured = !!(
     configured?.aws_access_key_id || configured?.aws_secret_access_key
   );
@@ -120,7 +123,32 @@ export function SecretsPanel() {
             <SecretField
               label="Personal access token"
               configured={configured?.git_token}
+              hint="Also used to post PR review replies on GitHub."
               onChange={(v) => setSecrets((s) => ({ ...s, git_token: v }))}
+            />
+          </AddableSection>
+        )}
+
+        {integrations.isVisible("github") && (
+          <AddableSection
+            title="GitHub App"
+            info={renderHelpContent(SECRETS_HELP.github)}
+            visible
+            configured={githubConfigured}
+            onAdd={() => integrations.add("github")}
+            onRemove={() => integrations.remove("github")}
+          >
+            <SecretField
+              label="Webhook secret"
+              configured={configured?.github_webhook_secret}
+              hint="Same value as GitHub App → Webhook → Secret."
+              onChange={(v) => setSecrets((s) => ({ ...s, github_webhook_secret: v }))}
+            />
+            <SecretField
+              label="Client secret (optional)"
+              configured={configured?.github_client_secret}
+              hint="From GitHub App settings — only needed for OAuth callback."
+              onChange={(v) => setSecrets((s) => ({ ...s, github_client_secret: v }))}
             />
           </AddableSection>
         )}
@@ -150,7 +178,9 @@ export function SecretsPanel() {
 
       <AddableSectionList
         label={
-          slackConfigured || gitConfigured || awsConfigured ? "Integrations" : "Add integration"
+          slackConfigured || gitConfigured || githubConfigured || awsConfigured
+            ? "Integrations"
+            : "Add integration"
         }
       >
         {!integrations.isVisible("slack") && (
@@ -170,6 +200,16 @@ export function SecretsPanel() {
             visible={false}
             configured={gitConfigured}
             onAdd={() => integrations.add("git")}
+            onRemove={() => {}}
+          />
+        )}
+        {!integrations.isVisible("github") && (
+          <AddableSection
+            title="GitHub App"
+            info={renderHelpContent(SECRETS_HELP.github)}
+            visible={false}
+            configured={githubConfigured}
+            onAdd={() => integrations.add("github")}
             onRemove={() => {}}
           />
         )}

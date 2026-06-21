@@ -4,11 +4,21 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from backend.ingress.git_direct import extract_pr_from_session, should_run_pr_analysis
+from backend.ingress.git_direct import (
+    extract_pr_from_session,
+    should_run_pr_analysis,
+    wants_pr_retry,
+)
 from backend.ingress.processor import TaskProcessor
 from backend.models.config import GitConfig, default_config
 from backend.models.session import ConversationSession, ConversationTurn
 from backend.models.task import Task
+
+
+def test_wants_pr_retry():
+    assert wants_pr_retry("can you retry again?")
+    assert wants_pr_retry("please try again")
+    assert not wants_pr_retry("what are my open prs?")
 
 
 def test_should_run_pr_analysis_for_followup_in_session():
@@ -30,12 +40,34 @@ def test_should_run_pr_analysis_for_followup_in_session():
     assert extract_pr_from_session(session) == ("FlexyPe/flexype-adhocs", 91)
 
 
-def test_processor_followup_reuses_session_pr():
+def test_should_run_pr_analysis_for_retry_in_session():
+    session = ConversationSession(
+        key="slack:C1:100",
+        source="slack",
+        scope_id="C1",
+        thread_id="100",
+        turns=[
+            ConversationTurn(
+                role="user",
+                content="review https://github.com/FlexyPe/cipher/pull/2040",
+            ),
+        ],
+        metadata={"active_pr": {"repo": "FlexyPe/cipher", "number": 2040}},
+    )
+    assert should_run_pr_analysis("can you retry again?", session)
+
+
+def test_processor_followup_reuses_session_pr_via_skill():
     config = default_config()
     config.git = GitConfig(enabled=True, provider="github", token="ghp_test")
 
     processor = TaskProcessor(config)
     processor.router = MagicMock()
+    mock_provider = MagicMock()
+    processor.router.get.return_value = mock_provider
+    cfg = config.ai.providers[config.ai.routing.investigation]
+    cfg.enabled = True
+
     session_key = "ui:abc:abc"
     processor.session_store = MagicMock()
     processor.session_store.load.return_value = ConversationSession(
@@ -61,15 +93,125 @@ def test_processor_followup_reuses_session_pr():
         cleaned_intent="what is the business impact?",
     )
 
-    with patch("backend.ingress.pr_analysis.analyze_pull_request") as mock_analyze:
-        mock_analyze.return_value = (
-            "**Business impact**\nMigrates consumers from RabbitMQ to SQS.",
-            {"repo": "FlexyPe/flexype-adhocs", "number": 91},
-        )
-        with patch("backend.agent.loop.run_agent_loop") as mock_loop:
+    with patch.object(
+        processor,
+        "_prefetch_pr_context",
+        return_value=("## Pre-fetched PR data\nRabbitMQ migration", {"repo": "FlexyPe/flexype-adhocs", "number": 91}),
+    ):
+        with patch(
+            "backend.agent.loop.run_agent_loop",
+            return_value="## 1. Executive Summary\n* **Business Impact:** High - RabbitMQ to SQS.",
+        ) as mock_loop:
             response = processor.process(task)
 
-    mock_analyze.assert_called_once()
-    assert mock_analyze.call_args.kwargs["focus"] == "business"
+    mock_loop.assert_called_once()
     assert "RabbitMQ" in response.payload.data["text"]
-    mock_loop.assert_not_called()
+
+
+def test_processor_retry_routes_to_review_skill():
+    config = default_config()
+    config.git = GitConfig(enabled=True, provider="github", token="ghp_test")
+
+    processor = TaskProcessor(config)
+    processor.router = MagicMock()
+    mock_provider = MagicMock()
+    processor.router.get.return_value = mock_provider
+    cfg = config.ai.providers[config.ai.routing.investigation]
+    cfg.enabled = True
+
+    session_key = "slack:C0BBJUVLQFR:1782050346.000539"
+    processor.session_store = MagicMock()
+    processor.session_store.load.return_value = ConversationSession(
+        key=session_key,
+        source="slack",
+        scope_id="C0BBJUVLQFR",
+        thread_id="1782050346.000539",
+        turns=[
+            ConversationTurn(
+                role="user",
+                content="can you review the PR - https://github.com/FlexyPe/cipher/pull/2040?",
+            ),
+            ConversationTurn(
+                role="assistant",
+                content="Prior review output",
+            ),
+        ],
+        metadata={"active_pr": {"repo": "FlexyPe/cipher", "number": 2040, "head": "webhook-email-update"}},
+    )
+
+    task = Task(
+        source="slack",
+        user_id="U1",
+        channel_id="C0BBJUVLQFR",
+        thread_ts="1782050346.000539",
+        raw_text="@alfred can you retry again?",
+        cleaned_intent="can you retry again?",
+        metadata={"in_existing_thread": True},
+    )
+
+    with patch.object(
+        processor,
+        "_prefetch_pr_context",
+        return_value=("## Pre-fetched PR data\nPR #2040", {"repo": "FlexyPe/cipher", "number": 2040}),
+    ):
+        with patch(
+            "backend.agent.loop.run_agent_loop",
+            return_value="## 1. Executive Summary\n* **PR Objective:** Email in webhook",
+        ) as mock_loop:
+            response = processor.process(task)
+
+    mock_loop.assert_called_once()
+    assert "Executive Summary" in response.payload.data["text"]
+    messages = mock_loop.call_args.args[1]
+    roles = [m.role for m in messages]
+    assert "assistant" in roles
+
+
+def test_investigation_prefers_llm_text_over_last_tool_result():
+    """PR review must return the model's analysis, not raw read_file output."""
+    from backend.ingress.processor import TaskProcessor, _tool_result_to_response
+    from backend.tools.result import ToolResult
+
+    config = default_config()
+    config.git = GitConfig(enabled=True, provider="github", token="ghp_test")
+    processor = TaskProcessor(config)
+    processor.router = MagicMock()
+    mock_provider = MagicMock()
+    processor.router.get.return_value = mock_provider
+    cfg = config.ai.providers[config.ai.routing.investigation]
+    cfg.enabled = True
+
+    review_text = "## 1. Executive Summary\n* **PR Objective:** Fix webhook email"
+    with patch("backend.agent.loop.run_agent_loop", return_value=review_text):
+        with patch("backend.tools.git_api.build_git_tool_registry") as mock_registry_cls:
+            registry = mock_registry_cls.return_value
+            registry.last_result = ToolResult(
+                kind="file_content",
+                data={"repo": "FlexyPe/cipher", "path": "utils.ts", "content": "code"},
+            )
+            registry.last_tool_name = "read_file"
+            registry.last_tool_args = {"repo": "FlexyPe/cipher", "path": "utils.ts"}
+
+            response, _ = processor._run_investigation(
+                processor._playbooks.get_by_name("review_pr"),
+                [],
+                provider=mock_provider,
+                model="test",
+                task=Task(
+                    source="ui",
+                    user_id="u1",
+                    channel_id="ui:x:x",
+                    raw_text="retry",
+                    cleaned_intent="retry",
+                ),
+                session=None,
+            )
+
+    assert response.payload.kind == "text"
+    assert "Executive Summary" in response.payload.data["text"]
+
+    structured = _tool_result_to_response(
+        ToolResult(kind="file_content", data={"repo": "r", "path": "p.ts", "content": "x"}),
+    )
+    assert structured is not None
+    assert structured.payload.kind == "file_content"

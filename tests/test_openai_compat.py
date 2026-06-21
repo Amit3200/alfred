@@ -55,3 +55,49 @@ def test_kimi_requires_api_key() -> None:
 
     cfg.api_key = "sk-test"
     assert provider.is_available() is True
+
+
+def test_kimi_chat_disables_thinking_and_falls_back_to_reasoning(monkeypatch) -> None:
+    captured: dict = {}
+
+    class FakeMessage:
+        content = None
+        tool_calls = None
+        reasoning_content = "Summarized tickets by severity."
+
+    class FakeChoice:
+        message = FakeMessage()
+
+    class FakeCompletion:
+        choices = [FakeChoice()]
+
+        @staticmethod
+        def model_dump() -> dict:
+            return {}
+
+    class FakeCompletions:
+        @staticmethod
+        def create(**kwargs):
+            captured.update(kwargs)
+            return FakeCompletion()
+
+    class FakeChat:
+        completions = FakeCompletions()
+
+    class FakeClient:
+        chat = FakeChat()
+
+    cfg = AIProviderConfig(
+        enabled=True,
+        api_key="sk-test",
+        base_url="https://api.moonshot.ai/v1",
+        model="kimi-k2.6",
+    )
+    provider = OpenAICompatProvider("kimi", cfg)
+    monkeypatch.setattr(provider, "_get_client", lambda: FakeClient())
+
+    from backend.ai.base import Message
+
+    response = provider.chat([Message(role="user", content="hello")])
+    assert captured.get("extra_body") == {"thinking": {"type": "disabled"}}
+    assert response.content == "Summarized tickets by severity."

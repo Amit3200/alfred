@@ -5,6 +5,38 @@ from __future__ import annotations
 from datetime import datetime, timezone
 
 
+def rich_text_to_plain(block: dict) -> str:
+    parts: list[str] = []
+    for element in block.get("elements") or []:
+        if not isinstance(element, dict):
+            continue
+        if element.get("type") == "rich_text_section":
+            for item in element.get("elements") or []:
+                if isinstance(item, dict) and item.get("type") == "text":
+                    parts.append(str(item.get("text") or ""))
+        elif element.get("type") == "text":
+            parts.append(str(element.get("text") or ""))
+    return "".join(parts).strip()
+
+
+def _plain_text_from_rich_text_json(raw: str) -> str:
+    import json
+
+    try:
+        payload = json.loads(raw)
+    except json.JSONDecodeError:
+        return ""
+    if not isinstance(payload, list):
+        return ""
+    parts: list[str] = []
+    for item in payload:
+        if isinstance(item, dict) and item.get("type") == "rich_text":
+            text = rich_text_to_plain(item)
+            if text:
+                parts.append(text)
+    return "\n".join(parts)
+
+
 def extract_message_text(message: dict) -> str:
     from backend.ingress.sanitize import clean_slack_text
 
@@ -12,7 +44,13 @@ def extract_message_text(message: dict) -> str:
 
     main = clean_slack_text(message.get("text") or "")
     if main:
-        parts.append(main)
+        if main.startswith("[") and main.endswith("]"):
+            parsed = _plain_text_from_rich_text_json(main)
+            if parsed:
+                parts.append(parsed)
+            # Skip dumping raw rich_text JSON into the prompt.
+        else:
+            parts.append(main)
 
     for attachment in message.get("attachments") or []:
         for key in ("pretext", "title", "text", "fallback"):
@@ -31,6 +69,10 @@ def extract_message_text(message: dict) -> str:
             text_obj = block.get("text") or {}
             if text_obj.get("text"):
                 parts.append(clean_slack_text(text_obj["text"]))
+        elif block_type == "rich_text":
+            rich = rich_text_to_plain(block)
+            if rich:
+                parts.append(clean_slack_text(rich))
         elif block_type == "context":
             for element in block.get("elements") or []:
                 if element.get("text"):

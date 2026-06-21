@@ -64,6 +64,17 @@ def test_extract_message_text_from_attachment_fields():
     assert "Severity: ERROR" in text
 
 
+def test_ticket_followup_in_thread_refreshes_context():
+    assert needs_context_refresh("are you able to read the severity now?", has_session=True)
+
+
+def test_ticket_followup_in_thread_fetches_channel():
+    assert wants_channel_history(
+        "are you able to read the severity now?",
+        in_existing_thread=True,
+    )
+
+
 def test_fetch_slack_context_includes_channel_and_thread():
     client = MagicMock()
     client.conversations_history.return_value = {

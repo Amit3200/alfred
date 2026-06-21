@@ -117,6 +117,8 @@ class ConfigManager:
         config.slack.signing_secret = secrets_obj.slack_signing_secret
         config.slack.app_token = secrets_obj.slack_app_token
         config.git.token = secrets_obj.git_token
+        config.github.webhook_secret = secrets_obj.github_webhook_secret
+        config.github.client_secret = secrets_obj.github_client_secret
         config.aws.access_key_id = secrets_obj.aws_access_key_id
         config.aws.secret_access_key = secrets_obj.aws_secret_access_key
         for name, provider in config.ai.providers.items():
@@ -138,6 +140,10 @@ class ConfigManager:
             secrets_obj.slack_app_token = config.slack.app_token
         if config.git.token:
             secrets_obj.git_token = config.git.token
+        if config.github.webhook_secret:
+            secrets_obj.github_webhook_secret = config.github.webhook_secret
+        if config.github.client_secret:
+            secrets_obj.github_client_secret = config.github.client_secret
         if config.aws.access_key_id:
             secrets_obj.aws_access_key_id = config.aws.access_key_id
         if config.aws.secret_access_key:
@@ -149,6 +155,8 @@ class ConfigManager:
         config.slack.signing_secret = ""
         config.slack.app_token = ""
         config.git.token = ""
+        config.github.webhook_secret = ""
+        config.github.client_secret = ""
         config.aws.access_key_id = ""
         config.aws.secret_access_key = ""
         config.server.admin_token = ""
@@ -181,6 +189,8 @@ class ConfigManager:
             "slack_signing_secret": bool(secrets_obj.slack_signing_secret),
             "slack_app_token": bool(secrets_obj.slack_app_token),
             "git_token": bool(secrets_obj.git_token),
+            "github_webhook_secret": bool(secrets_obj.github_webhook_secret),
+            "github_client_secret": bool(secrets_obj.github_client_secret),
             "aws_access_key_id": bool(secrets_obj.aws_access_key_id),
             "aws_secret_access_key": bool(secrets_obj.aws_secret_access_key),
             "server_admin_token": bool(secrets_obj.server_admin_token),

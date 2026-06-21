@@ -105,6 +105,14 @@ class GitApiClient:
             return configured
         return self._impl.list_accessible_repos()
 
+    def create_issue_comment(self, repo: str, number: int, body: str) -> dict[str, Any]:
+        return self._impl.create_issue_comment(repo, number, body)
+
+    def create_issue_comment_reaction(
+        self, repo: str, comment_id: int, content: str
+    ) -> dict[str, Any]:
+        return self._impl.create_issue_comment_reaction(repo, comment_id, content)
+
 
 class _GitHubClient:
     API = "https://api.github.com"
@@ -120,13 +128,28 @@ class _GitHubClient:
             }
         )
 
-    def _get(self, path: str, *, params: dict | None = None) -> Any:
+    def _request(
+        self,
+        method: str,
+        path: str,
+        *,
+        params: dict | None = None,
+        json: dict | None = None,
+    ) -> Any:
         url = path if path.startswith("http") else f"{self.API}{path}"
-        resp = self._session.get(url, params=params, timeout=30)
+        resp = self._session.request(method, url, params=params, json=json, timeout=30)
         if resp.status_code >= 400:
             detail = resp.text[:300]
             raise RuntimeError(f"GitHub API error {resp.status_code}: {detail}")
+        if resp.status_code == 204 or not resp.content:
+            return {}
         return resp.json()
+
+    def _get(self, path: str, *, params: dict | None = None) -> Any:
+        return self._request("GET", path, params=params)
+
+    def _post(self, path: str, *, json: dict | None = None) -> Any:
+        return self._request("POST", path, json=json)
 
     def current_user_login(self) -> str:
         data = self._get("/user")
@@ -223,6 +246,22 @@ class _GitHubClient:
         data = self._get("/user/repos", params={"per_page": 100, "sort": "updated"})
         return [str(item.get("full_name")) for item in data if item.get("full_name")]
 
+    def create_issue_comment(self, repo: str, number: int, body: str) -> dict[str, Any]:
+        owner, name = split_repo_slug(repo)
+        return self._post(
+            f"/repos/{owner}/{name}/issues/{number}/comments",
+            json={"body": body},
+        )
+
+    def create_issue_comment_reaction(
+        self, repo: str, comment_id: int, content: str
+    ) -> dict[str, Any]:
+        owner, name = split_repo_slug(repo)
+        return self._post(
+            f"/repos/{owner}/{name}/issues/comments/{comment_id}/reactions",
+            json={"content": content},
+        )
+
 
 class _GitLabClient:
     API = "https://gitlab.com/api/v4"
@@ -238,6 +277,16 @@ class _GitLabClient:
         if resp.status_code >= 400:
             detail = resp.text[:300]
             raise RuntimeError(f"GitLab API error {resp.status_code}: {detail}")
+        return resp.json()
+
+    def _post(self, path: str, *, json: dict | None = None) -> Any:
+        url = path if path.startswith("http") else f"{self.API}{path}"
+        resp = self._session.post(url, json=json, timeout=30)
+        if resp.status_code >= 400:
+            detail = resp.text[:300]
+            raise RuntimeError(f"GitLab API error {resp.status_code}: {detail}")
+        if resp.status_code == 204 or not resp.content:
+            return {}
         return resp.json()
 
     def current_user_login(self) -> str:
@@ -350,3 +399,15 @@ class _GitLabClient:
             return [str(item.get("path_with_namespace")) for item in data if item.get("path_with_namespace")]
         data = self._get("/projects", params={"membership": True, "per_page": 100})
         return [str(item.get("path_with_namespace")) for item in data if item.get("path_with_namespace")]
+
+    def create_issue_comment(self, repo: str, number: int, body: str) -> dict[str, Any]:
+        project = quote(repo, safe="")
+        return self._post(
+            f"/projects/{project}/merge_requests/{number}/notes",
+            json={"body": body},
+        )
+
+    def create_issue_comment_reaction(
+        self, repo: str, comment_id: int, content: str
+    ) -> dict[str, Any]:
+        raise RuntimeError("Issue comment reactions are not supported for GitLab yet")

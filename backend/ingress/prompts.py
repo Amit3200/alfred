@@ -14,7 +14,15 @@ SLACK_FORMAT_RULES = """\
 - Answer the *latest* user message first. Do not recap unrelated history unless asked.
 - Use natural Slack prose. Optional *section headers* when the answer is long.
 - Use bullet lists for short lists — *one line per item*, no repeated boilerplate phrasing.
-- For multi-column data, use a fenced code block table (see domain playbooks when attached).
+- For multi-column data (errors, tickets, PR lists), use *one* fenced code block with aligned columns:
+  ```
+  Merchant          | Error type              | Count
+  ------------------+-------------------------+------
+  thejanki.com      | Shopify API Failed      | 18
+  THE GIR FARMER    | Shopify API Failed      | 17
+  ```
+  Never put each table row in its own inline-code line (`row | row | row` × N).
+- When the user asks for CSV/TSV/JSON, still produce the full table in your reply — Alfred attaches the file automatically.
 - NEVER output internal labels such as: Lead line, Body, Context Recap, Next Steps, Note.
 - Slack bold uses single asterisks: *like this* — never **double asterisks**
 - Inline code: `like this`. No markdown pipe tables outside code blocks. No # headings.

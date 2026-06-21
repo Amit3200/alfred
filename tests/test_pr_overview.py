@@ -1,9 +1,11 @@
-"""Tests for deterministic PR overview and hallucination guard."""
+"""Tests for PR context gathering and formatting."""
 
 from backend.ingress.pr_analysis import (
+    PrContext,
     _is_grounded_response,
     _prioritize_files,
     build_deterministic_pr_overview,
+    format_pr_context_for_prompt,
 )
 
 
@@ -36,6 +38,29 @@ def test_deterministic_overview_uses_pr_body():
     assert "sqs_consumer.py" in text
     assert "RabbitMQ" in text
     assert "Magento" not in text
+
+
+def test_format_pr_context_for_prompt_includes_overview():
+    detail = {
+        "number": 91,
+        "title": "SQS Consumer",
+        "repo": "FlexyPe/flexype-adhocs",
+        "head": "feature/sqs",
+        "base": "main",
+        "body": "Adds SQS consumer.",
+    }
+    files = [{"filename": "sqs_consumer.py", "status": "added", "additions": 10, "deletions": 0}]
+    ctx = PrContext(
+        detail=detail,
+        files=files,
+        mirror_note="Branch `feature/sqs` checked out locally.",
+        snippets=[{"path": "sqs_consumer.py", "content": "def main(): pass", "status": "added"}],
+    )
+    text = format_pr_context_for_prompt(ctx)
+    assert "Pre-fetched PR data" in text
+    assert "SQS Consumer" in text
+    assert "sqs_consumer.py" in text
+    assert "review skill" in text.lower()
 
 
 def test_grounding_rejects_magento_hallucination():

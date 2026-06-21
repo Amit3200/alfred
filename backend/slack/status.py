@@ -61,16 +61,30 @@ class ThinkingIndicator:
             return
         self._start_legacy_placeholder()
 
-    def finish(self, text: str) -> None:
+    def finish(self, text: str, *, files: list[Any] | None = None) -> None:
         if self._assistant_active:
             self._clear_assistant_status()
-            self.client.chat_postMessage(
+            self._post_reply(text, files=files)
+            return
+        self._finish_legacy(text, files=files)
+
+    def _post_reply(self, text: str, *, files: list[Any] | None = None) -> None:
+        from backend.ingress.file_exports import SlackFileAttachment
+        from backend.slack.files import upload_slack_files
+
+        attachments = [item for item in (files or []) if isinstance(item, SlackFileAttachment)]
+        if attachments:
+            upload_slack_files(
+                self.client,
                 channel=self.channel,
                 thread_ts=self.thread_ts,
-                text=text,
+                files=attachments,
             )
-            return
-        self._finish_legacy(text)
+        self.client.chat_postMessage(
+            channel=self.channel,
+            thread_ts=self.thread_ts,
+            text=text,
+        )
 
     def _try_assistant_status(self) -> bool:
         if not hasattr(self.client, "assistant_threads_setStatus"):
@@ -107,7 +121,11 @@ class ThinkingIndicator:
         )
         self._legacy_message_ts = response.get("ts")
 
-    def _finish_legacy(self, text: str) -> None:
+    def _finish_legacy(self, text: str, *, files: list[Any] | None = None) -> None:
+        from backend.ingress.file_exports import SlackFileAttachment
+        from backend.slack.files import upload_slack_files
+
+        attachments = [item for item in (files or []) if isinstance(item, SlackFileAttachment)]
         if self._legacy_message_ts:
             try:
                 self.client.chat_update(
@@ -115,11 +133,14 @@ class ThinkingIndicator:
                     ts=self._legacy_message_ts,
                     text=text,
                 )
+                if attachments:
+                    upload_slack_files(
+                        self.client,
+                        channel=self.channel,
+                        thread_ts=self.thread_ts,
+                        files=attachments,
+                    )
                 return
             except Exception:
                 logger.debug("Legacy status update failed, posting new message", exc_info=True)
-        self.client.chat_postMessage(
-            channel=self.channel,
-            thread_ts=self.thread_ts,
-            text=text,
-        )
+        self._post_reply(text, files=attachments)

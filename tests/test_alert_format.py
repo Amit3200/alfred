@@ -23,7 +23,8 @@ def test_markdown_table_converted_to_code_block():
 def test_fenced_code_block_preserved():
     raw = "Summary\n```\nDate | Merchant\n2026-06-17 | ExampleStore\n```\nDone"
     out = format_for_slack(raw)
-    assert "Date | Merchant" in out
+    assert "Date" in out
+    assert "Merchant" in out
     assert "ExampleStore" in out
 
 

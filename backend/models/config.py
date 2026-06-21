@@ -21,6 +21,19 @@ class SlackConfig(BaseModel):
     allowed_channels: list[str] = Field(default_factory=lambda: ["*"])
 
 
+class GitHubAppConfig(BaseModel):
+    """GitHub App ingress (webhooks + OAuth callback). Uses git.token for API calls."""
+
+    enabled: bool = False
+    client_id: str = ""
+    app_id: str = ""
+    bot_login: str = ""
+    allowed_repos: list[str] = Field(default_factory=list)
+    callback_base_url: str = ""
+    webhook_secret: str = ""
+    client_secret: str = ""
+
+
 class GitConfig(BaseModel):
     enabled: bool = False
     provider: Literal["github", "gitlab"] = "github"
@@ -85,6 +98,7 @@ class AlfredConfig(BaseModel):
     initialized: bool = False
     server: ServerConfig = Field(default_factory=ServerConfig)
     slack: SlackConfig = Field(default_factory=SlackConfig)
+    github: GitHubAppConfig = Field(default_factory=GitHubAppConfig)
     git: GitConfig = Field(default_factory=GitConfig)
     aws: AWSConfig = Field(default_factory=AWSConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
@@ -99,6 +113,8 @@ class AlfredSecrets(BaseModel):
     slack_signing_secret: str = ""
     slack_app_token: str = ""
     git_token: str = ""
+    github_webhook_secret: str = ""
+    github_client_secret: str = ""
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
     ai_api_keys: dict[str, str] = Field(default_factory=dict)
