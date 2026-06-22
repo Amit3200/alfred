@@ -94,7 +94,7 @@ chmod +x scripts/*.sh
 | Health | http://127.0.0.1:8080/api/health |
 
 ```bash
-alfred token      # admin token for UI
+alfred token      # view admin username, password, and token for login
 alfred status     # init + Slack readiness
 ```
 
@@ -129,7 +129,7 @@ docker compose logs alfred | grep -i token   # admin token on first boot
 
 ### 2 — Admin UI
 
-Open http://127.0.0.1:5173 (dev) or http://127.0.0.1:8080 (serve). Authenticate with `alfred token`.
+Open http://127.0.0.1:5173 (dev) or http://127.0.0.1:8080 (serve). Log in using your admin username and password (run `alfred token` to retrieve them).
 
 ### 3 — Secrets (Admin → Secrets)
 
@@ -315,14 +315,14 @@ List shortcodes: `alfred slack emojis` (requires `emoji:read` scope). Custom + b
 
 | Command | Description |
 |---------|-------------|
-| `alfred init` | Create `.alfred/`, config, encrypted secrets |
-| `alfred init --force` | Re-initialize (new admin token) |
+| `alfred init` | Create `.alfred/`, config, encrypted secrets. Prompts interactively for admin credentials. |
+| `alfred init --force` | Re-initialize (allows updating admin credentials) |
 | `alfred serve` | API + admin UI + Slack listener |
 | `alfred serve --reload` | Dev auto-reload |
 | `alfred up` | Background: API + Slack (+ Vite UI, + Ollama if default) |
 | `alfred stop` / `alfred down` | Stop background processes |
 | `alfred status` | Data dir, init state, Slack readiness |
-| `alfred token` | Print admin token |
+| `alfred token` | Print admin username, password, and token |
 | `alfred exec "…"` | Run locally (no Slack post) |
 | `alfred git sync` | Clone/update shared mirrors |
 | `alfred git workspaces` | List session workspaces |
@@ -376,6 +376,29 @@ observability:
 ```
 
 Environment: [`.env.example`](.env.example) — `ALFRED_DATA_DIR`, `ALFRED_HOST`, `ALFRED_PORT`.
+
+### Security & Authentication
+
+To protect the admin UI and the API, Alfred enforces authentication across all API endpoints.
+
+#### 1. Credentials Configuration
+* **Interactive Initialization**: Running `alfred init` will prompt you for an admin username and password. If you leave the password blank, a secure password is auto-generated.
+* **Non-Interactive / CI**: Use `alfred init --non-interactive` to automatically generate random secure credentials.
+* **Custom Credentials**: You can specify custom credentials using `alfred init --username <username> --password <password>`.
+* **Legacy Backfilling**: Starting an existing Alfred deployment without credentials automatically generates a secure admin username, password, and token, saving them in the encrypted secrets store.
+
+#### 2. Authenticating API Calls
+External integrations, CLI commands, or scripts talking to the Alfred API can authenticate in three ways:
+* **HTTP Basic Auth**: Pass standard Basic Authentication using the admin username and password.
+* **HTTP Bearer Auth**: Pass the admin token in the Authorization header (`Authorization: Bearer <token>`).
+* **Custom Header**: Pass the admin token in the `X-Alfred-Token` header.
+
+#### 3. Retrieving Credentials
+To print your current admin username, password, and API token at any time, run:
+```bash
+alfred token
+```
+
 
 ### Optional — GitHub PR comment bot
 

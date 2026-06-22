@@ -11,6 +11,8 @@ class ServerConfig(BaseModel):
     host: str = "0.0.0.0"
     port: int = 8080
     admin_token: str | None = None
+    admin_username: str | None = None
+    admin_password: str | None = None
 
 
 class SlackConfig(BaseModel):
@@ -261,6 +263,8 @@ class AlfredSecrets(BaseModel):
     jira_api_token: str = ""
     ai_api_keys: dict[str, str] = Field(default_factory=dict)
     server_admin_token: str = ""
+    server_admin_username: str = ""
+    server_admin_password: str = ""
 
 
 def default_ai_providers() -> dict[str, AIProviderConfig]:

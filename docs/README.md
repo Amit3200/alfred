@@ -15,9 +15,9 @@ Planning and reference materials for Alfred.
 | **Contributors picking next work** | [`build-reference/building_phase_v0.md`](build-reference/building_phase_v0.md) |
 | **Architecture deep dive** | [`build-reference/v0.md`](build-reference/v0.md) |
 
-## Current status (2026-06-21)
+## Current status (2026-06-22)
 
-**Shipped (v0):** Slack channel `@mentions`, git mirrors + PR review, JIRA, AWS (Athena/CloudWatch/grade_events), Graphify, observability, GitHub PR bot (with public URL), custom Slack thinking status.
+**Shipped (v0):** Slack channel `@mentions`, git mirrors + PR review, JIRA, AWS (Athena/CloudWatch/grade_events), Graphify, observability, GitHub PR bot (with public URL), custom Slack thinking status, Admin UI & API authentication, modern Theme 2.0 aesthetics.
 
 **Next (v0.1):** Unified intent router, thread relevancy, skill/playbook matcher upgrade.
 

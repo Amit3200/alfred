@@ -7,14 +7,16 @@ import {
   HeartOutlined,
   HomeOutlined,
   KeyOutlined,
+  LogoutOutlined,
   RobotOutlined,
   SettingOutlined,
 } from "@ant-design/icons";
-import { Layout, Menu, Typography } from "antd";
+import { Layout, Menu, Typography, Select, Button } from "antd";
 import { useEffect, useMemo, useState } from "react";
 import { Logo } from "./Logo";
 import { ALFRED_CREDIT } from "../branding";
 import { ThemeToggle } from "../theme/ThemeToggle";
+import { useTheme } from "../theme/ThemeProvider";
 import { useApp } from "../context/AppContext";
 import type { SettingsPage } from "../types";
 
@@ -27,7 +29,7 @@ type AppSidebarProps = {
 };
 
 export function AppSidebar({ width }: AppSidebarProps) {
-  const { view, settingsPage, navigate, version } = useApp();
+  const { view, settingsPage, navigate, version, logout } = useApp();
 
   const selectedKeys = useMemo(
     () => (view === "home" ? ["home"] : view === "chat" ? ["chat"] : [settingsPage]),
@@ -60,6 +62,8 @@ export function AppSidebar({ width }: AppSidebarProps) {
       navigate("settings", key as SettingsPage);
     }
   };
+
+  const { themeVersion, setThemeVersion } = useTheme();
 
   return (
     <Sider
@@ -102,21 +106,46 @@ export function AppSidebar({ width }: AppSidebarProps) {
         />
       </div>
 
-      <div className="alfred-sider-footer">
-        <div className="alfred-sider-footer-meta">
-          <Typography.Text type="secondary" style={{ fontSize: 11 }}>
-            v{version || "0.1.0"}
-          </Typography.Text>
-          <a
-            className="alfred-sider-credit"
-            href={ALFRED_CREDIT.href}
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            {ALFRED_CREDIT.label}
-          </a>
+      <div className="alfred-sider-footer" style={{ flexDirection: "column", gap: 10, alignItems: "stretch" }}>
+        <div>
+          <Select
+            size="small"
+            value={themeVersion}
+            onChange={(v) => setThemeVersion(v as "1.0" | "2.0")}
+            options={[
+              { label: "Theme 1.0 (Classic)", value: "1.0" },
+              { label: "Theme 2.0 (Modern)", value: "2.0" }
+            ]}
+            style={{ width: "100%" }}
+            getPopupContainer={(triggerNode) => triggerNode.parentNode}
+          />
         </div>
-        <ThemeToggle />
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", borderTop: "1px solid var(--alfred-border-subtle)", paddingTop: 8 }}>
+          <div className="alfred-sider-footer-meta">
+            <Typography.Text type="secondary" style={{ fontSize: 11 }}>
+              v{version || "0.1.0"}
+            </Typography.Text>
+            <a
+              className="alfred-sider-credit"
+              href={ALFRED_CREDIT.href}
+              target="_blank"
+              rel="noopener noreferrer"
+            >
+              {ALFRED_CREDIT.label}
+            </a>
+          </div>
+          <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+            <Button
+              type="text"
+              size="small"
+              icon={<LogoutOutlined />}
+              onClick={logout}
+              title="Log out"
+              style={{ color: "var(--alfred-text-muted)", padding: "0 4px", display: "flex", alignItems: "center", justifyContent: "center" }}
+            />
+            <ThemeToggle />
+          </div>
+        </div>
       </div>
     </Sider>
   );

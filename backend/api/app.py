@@ -12,6 +12,8 @@ from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
 
 from backend.__version__ import __version__
+from backend.api.deps import require_admin
+from backend.api.routes import auth as auth_routes
 from backend.api.routes import chat as chat_routes
 from backend.api.routes import config as config_routes
 from backend.api.routes import github as github_routes
@@ -76,16 +78,19 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
-    app.include_router(health_routes.router, prefix="/api")
+    from fastapi import Depends
+    
+    app.include_router(auth_routes.router, prefix="/api")
+    app.include_router(health_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
     app.include_router(github_routes.router, prefix="/api")
-    app.include_router(config_routes.router, prefix="/api")
-    app.include_router(ollama_routes.router, prefix="/api")
-    app.include_router(chat_routes.router, prefix="/api")
-    app.include_router(git_mirrors_routes.router, prefix="/api")
-    app.include_router(repo_context_routes.router, prefix="/api")
-    app.include_router(observability_routes.router, prefix="/api")
-    app.include_router(storage_routes.router, prefix="/api")
-    app.include_router(playbooks_routes.router, prefix="/api")
+    app.include_router(config_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
+    app.include_router(ollama_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
+    app.include_router(chat_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
+    app.include_router(git_mirrors_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
+    app.include_router(repo_context_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
+    app.include_router(observability_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
+    app.include_router(storage_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
+    app.include_router(playbooks_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
 
     static_dir = bundled_web_dist()
     if static_dir:

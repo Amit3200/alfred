@@ -29,17 +29,38 @@ class ConfigManager:
     def is_initialized(self) -> bool:
         return self._config_path.exists() and self.load_config().initialized
 
-    def init(self, force: bool = False) -> AlfredConfig:
+    def init(
+        self,
+        force: bool = False,
+        username: str | None = None,
+        password: str | None = None,
+        token: str | None = None,
+    ) -> AlfredConfig:
         if self._config_path.exists() and not force:
             config = self.load_config()
             if config.initialized:
+                # Patch/ensure username & password
+                _ = self.load_secrets()
                 return config
         ensure_encryption_key(self._key_path)
         config = default_config()
         config.initialized = True
-        if not config.server.admin_token:
-            config.server.admin_token = secrets.token_urlsafe(32)
-        secrets_obj = AlfredSecrets(server_admin_token=config.server.admin_token)
+        
+        admin_username = username or "admin"
+        
+        import secrets as py_secrets
+        admin_password = password or py_secrets.token_urlsafe(16)
+        admin_token = token or py_secrets.token_urlsafe(32)
+        
+        config.server.admin_token = admin_token
+        config.server.admin_username = admin_username
+        config.server.admin_password = admin_password
+        
+        secrets_obj = AlfredSecrets(
+            server_admin_token=admin_token,
+            server_admin_username=admin_username,
+            server_admin_password=admin_password,
+        )
         self.save_merged(config, secrets_obj)
         self._seed_playbooks()
         return config
@@ -81,7 +102,26 @@ class ConfigManager:
         if not self._secrets_path.exists():
             return AlfredSecrets()
         ensure_encryption_key(self._key_path)
-        return decrypt_secrets(self._secrets_path, self._key_path)
+        secrets_obj = decrypt_secrets(self._secrets_path, self._key_path)
+        
+        # Patch for existing applications
+        modified = False
+        if not secrets_obj.server_admin_username:
+            secrets_obj.server_admin_username = "admin"
+            modified = True
+        if not secrets_obj.server_admin_password:
+            import secrets as py_secrets
+            secrets_obj.server_admin_password = py_secrets.token_urlsafe(16)
+            modified = True
+        if not secrets_obj.server_admin_token:
+            import secrets as py_secrets
+            secrets_obj.server_admin_token = py_secrets.token_urlsafe(32)
+            modified = True
+            
+        if modified:
+            self.save_secrets(secrets_obj)
+            
+        return secrets_obj
 
     def save_secrets(self, secrets_obj: AlfredSecrets) -> None:
         ensure_encryption_key(self._key_path)
@@ -113,6 +153,8 @@ class ConfigManager:
         secrets_obj: AlfredSecrets,
     ) -> None:
         config.server.admin_token = secrets_obj.server_admin_token or config.server.admin_token
+        config.server.admin_username = secrets_obj.server_admin_username or config.server.admin_username or "admin"
+        config.server.admin_password = secrets_obj.server_admin_password or config.server.admin_password
         config.slack.bot_token = secrets_obj.slack_bot_token
         config.slack.signing_secret = secrets_obj.slack_signing_secret
         config.slack.app_token = secrets_obj.slack_app_token
@@ -133,6 +175,10 @@ class ConfigManager:
     ) -> None:
         if config.server.admin_token:
             secrets_obj.server_admin_token = config.server.admin_token
+        if config.server.admin_username:
+            secrets_obj.server_admin_username = config.server.admin_username
+        if config.server.admin_password:
+            secrets_obj.server_admin_password = config.server.admin_password
         if config.slack.bot_token:
             secrets_obj.slack_bot_token = config.slack.bot_token
         if config.slack.signing_secret:
@@ -164,6 +210,8 @@ class ConfigManager:
         config.aws.secret_access_key = ""
         config.jira.api_token = ""
         config.server.admin_token = ""
+        config.server.admin_username = ""
+        config.server.admin_password = ""
         for provider in config.ai.providers.values():
             provider.api_key = ""
 
@@ -199,6 +247,8 @@ class ConfigManager:
             "aws_secret_access_key": bool(secrets_obj.aws_secret_access_key),
             "jira_api_token": bool(secrets_obj.jira_api_token),
             "server_admin_token": bool(secrets_obj.server_admin_token),
+            "server_admin_username": bool(secrets_obj.server_admin_username),
+            "server_admin_password": bool(secrets_obj.server_admin_password),
             "ai_api_keys": {
                 name: bool(key) for name, key in secrets_obj.ai_api_keys.items()
             },

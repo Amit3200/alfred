@@ -12,6 +12,7 @@ import {
   api,
   getAdminToken,
   setAdminToken,
+  ApiError,
 } from "../api/client";
 import type { AppView, SettingsPage } from "../types";
 import { showToast } from "../utils/toast";
@@ -30,6 +31,9 @@ type AppContextValue = {
   view: AppView;
   settingsPage: SettingsPage;
   navigate: (view: AppView, settingsPage?: SettingsPage) => void;
+  isAuthenticated: boolean;
+  login: (username: string, password_or_token: string) => Promise<void>;
+  logout: () => void;
   load: () => Promise<void>;
   saveToken: () => void;
   updateConfig: (patch: Partial<AlfredConfig>) => void;
@@ -53,6 +57,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [config, setConfig] = useState<AlfredConfig | null>(null);
   const [secrets, setSecrets] = useState<SecretsPayload>({ ai_api_keys: {} });
   const [tokenInput, setTokenInput] = useState(getAdminToken());
+  const [isAuthenticated, setIsAuthenticated] = useState<boolean>(!!getAdminToken());
   const [loading, setLoading] = useState(true);
   const [checks, setChecks] = useState<AppContextValue["checks"]>(null);
   const [version, setVersion] = useState("");
@@ -72,6 +77,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setVersion(health.version);
       setDataDir(health.data_dir || "");
       setInitialized(health.initialized);
+      setIsAuthenticated(true);
       if (health.initialized) {
         const cfg = await api.getConfig();
         setConfig(cfg);
@@ -79,12 +85,54 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setConfig(null);
       }
     } catch (err) {
-      notify("error", err instanceof Error ? err.message : "Failed to load");
+      if (err instanceof ApiError && err.status === 401) {
+        setIsAuthenticated(false);
+        setAdminToken("");
+        setTokenInput("");
+      } else {
+        notify("error", err instanceof Error ? err.message : "Failed to load");
+      }
       setConfig(null);
     } finally {
       setLoading(false);
     }
   }, [notify]);
+
+  const login = async (username: string, password_or_token: string) => {
+    setLoading(true);
+    try {
+      let token = "";
+      if (username.trim() && password_or_token.trim()) {
+        const res = await api.login(username, password_or_token);
+        token = res.token;
+      } else {
+        token = (password_or_token || username).trim();
+      }
+      if (!token) {
+        throw new Error("Username and password or token is required");
+      }
+      setAdminToken(token);
+      setTokenInput(token);
+      setIsAuthenticated(true);
+      await load();
+      notify("success", "Logged in successfully");
+    } catch (err) {
+      notify("error", err instanceof Error ? err.message : "Login failed");
+      setIsAuthenticated(false);
+      setAdminToken("");
+      setTokenInput("");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const logout = () => {
+    setAdminToken("");
+    setTokenInput("");
+    setIsAuthenticated(false);
+    setConfig(null);
+    notify("success", "Logged out successfully");
+  };
 
   useEffect(() => {
     load();
@@ -182,6 +230,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setSecrets,
         tokenInput,
         setTokenInput,
+        isAuthenticated,
+        login,
+        logout,
         loading,
         version,
         dataDir,

@@ -70,9 +70,10 @@ Use these when reading gaps below:
 
 | Component | Status | Target | Notes |
 |-----------|--------|--------|-------|
-| `alfred init` | ✅ | v0 | |
+| `alfred init` | ✅ | v0 | Interactive admin credentials configuration, CLI options |
 | Encrypted secrets | ✅ | v0 | |
-| Admin UI | ✅ | v0 | |
+| Admin UI | ✅ | v0 | Flat sharp Theme 2.0 aesthetics with logout |
+| Admin UI & API Auth | ✅ | v0 | Password + token auth (Basic, Bearer, X-Alfred-Token) |
 | Health checks | 🟡 | v0 | Slack, Ollama, Git, JIRA, AWS STS |
 | Observability | ✅ | v0 | Tokens, est. cost, tools, users |
 
@@ -155,7 +156,8 @@ Company investigation playbooks (e.g. event dumps) → `.alfred/playbooks/` with
 - AWS: Athena, CloudWatch Logs, grade_events (guardrailed)
 - Structured Slack/UI rendering for AWS and grade_events
 - Graphify optional on sync
-- Admin UI: Chat, Usage, Health
+- Admin UI: Chat, Usage, Health (secured behind username/password/token auth)
+- Modern Theme 2.0 aesthetics with flat minimalistic style, sharp corners, and SVG line charts
 - GitHub App: `@alfred review` on PR comments when public URL is configured
 
 ---

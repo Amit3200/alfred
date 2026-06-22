@@ -28,14 +28,66 @@ def main() -> None:
     help=f"Data directory (default: ~/.alfred or ${ENV_DATA_DIR})",
 )
 @click.option("--force", is_flag=True, help="Re-initialize even if already set up.")
-def init(data_dir: Path | None, force: bool) -> None:
+@click.option("--username", help="Admin username (default: admin).")
+@click.option("--password", help="Admin password (will prompt if not provided).")
+@click.option("--non-interactive", is_flag=True, help="Do not prompt; auto-generate password/token.")
+def init(
+    data_dir: Path | None,
+    force: bool,
+    username: str | None,
+    password: str | None,
+    non_interactive: bool,
+) -> None:
     """Initialize Alfred data directory and generate admin token."""
     manager = ConfigManager(data_dir)
-    config = manager.init(force=force)
-    _, secrets = manager.load_merged()
+
+    if manager.is_initialized() and not force:
+        secrets = manager.load_secrets()
+        click.echo(f"Alfred is already initialized at: {manager.data_dir}")
+        click.echo(f"Admin username: {secrets.server_admin_username}")
+        click.echo(f"Admin password: {secrets.server_admin_password}")
+        click.echo(f"Admin token: {secrets.server_admin_token}")
+        click.echo(f"Start the server: alfred serve --data-dir {manager.data_dir}")
+        return
+
+    import sys
+    is_tty = sys.stdin.isatty()
+
+    admin_username = username
+    admin_password = password
+
+    if not non_interactive and is_tty:
+        if not admin_username:
+            admin_username = click.prompt("Enter admin username", default="admin")
+        if not admin_password:
+            admin_password = click.prompt(
+                "Enter admin password (leave empty to auto-generate)",
+                default="",
+                hide_input=True,
+                show_default=False,
+            )
+
+    import secrets as py_secrets
+    if not admin_username:
+        admin_username = "admin"
+    if not admin_password:
+        admin_password = py_secrets.token_urlsafe(16)
+        click.echo(f"Auto-generated admin password: {admin_password}")
+
+    admin_token = py_secrets.token_urlsafe(32)
+
+    manager.init(
+        force=force,
+        username=admin_username,
+        password=admin_password,
+        token=admin_token,
+    )
+    
     click.echo(f"Alfred initialized at: {manager.data_dir}")
-    click.echo(f"Admin token: {secrets.server_admin_token}")
-    click.echo("Save this token — you'll need it to update secrets in the admin UI.")
+    click.echo(f"Admin username: {admin_username}")
+    click.echo(f"Admin password: {admin_password}")
+    click.echo(f"Admin token: {admin_token}")
+    click.echo("Save these credentials — you'll need them to log in to the dashboard.")
     click.echo(f"Start the server: alfred serve --data-dir {manager.data_dir}")
 
 
@@ -129,7 +181,9 @@ def token(data_dir: Path | None) -> None:
         click.echo("No admin token found. Run: alfred init --force")
         raise SystemExit(1)
     click.echo(f"Data dir: {manager.data_dir}", err=True)
-    click.echo(secrets.server_admin_token)
+    click.echo(f"Admin username: {secrets.server_admin_username}")
+    click.echo(f"Admin password: {secrets.server_admin_password}")
+    click.echo(f"Admin token: {secrets.server_admin_token}")
 
 
 @main.group()

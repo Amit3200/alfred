@@ -138,6 +138,15 @@ export type OllamaActionResult = {
   status?: OllamaStatus;
 };
 
+export class ApiError extends Error {
+  status: number;
+  constructor(message: string, status: number) {
+    super(message);
+    this.status = status;
+    this.name = "ApiError";
+  }
+}
+
 const TOKEN_KEY = "alfred_admin_token";
 
 export function getAdminToken(): string {
@@ -166,13 +175,14 @@ async function request<T>(
     const body = await res.json().catch(() => ({}));
     const detail = body.detail;
     if (res.status === 401) {
-      throw new Error(
-        detail === "Invalid admin token"
-          ? "Invalid admin token — run alfred token from the project directory (see data dir on Secrets page)"
+      throw new ApiError(
+        detail === "Invalid admin token" || detail === "Unauthorized"
+          ? "Invalid credentials or token"
           : detail || "Unauthorized",
+        res.status
       );
     }
-    throw new Error(detail || `Request failed: ${res.status}`);
+    throw new ApiError(detail || `Request failed: ${res.status}`, res.status);
   }
   return res.json();
 }
@@ -185,12 +195,19 @@ function encodePlaybookPath(filename: string): string {
 }
 
 export const api = {
+  login: (username: string, password_or_token: string) =>
+    request<{ token: string }>("/api/auth/login", {
+      method: "POST",
+      body: JSON.stringify({ username, password: password_or_token }),
+    }),
   health: () =>
     request<{ status: string; version: string; initialized: boolean; data_dir?: string }>(
       "/api/health",
+      {},
+      true,
     ),
-  checks: () => request<Record<string, { ok: boolean; message?: string; skipped?: boolean }>>("/api/health/checks"),
-  getConfig: () => request<AlfredConfig>("/api/config"),
+  checks: () => request<Record<string, { ok: boolean; message?: string; skipped?: boolean }>>("/api/health/checks", {}, true),
+  getConfig: () => request<AlfredConfig>("/api/config", {}, true),
   saveConfig: (config: AlfredConfig, token?: string) =>
     request<AlfredConfig>(
       "/api/config",
@@ -203,6 +220,15 @@ export const api = {
       { method: "PUT", body: JSON.stringify(secrets) },
       token || true,
     ),
+  exportConfig: async (): Promise<Blob> => {
+    const res = await fetch("/api/config/export", {
+      headers: { "X-Alfred-Token": getAdminToken() },
+    });
+    if (!res.ok) {
+      throw new Error(`Export failed: ${res.status}`);
+    }
+    return res.blob();
+  },
   testProvider: (name: string) =>
     request<{ ok: boolean; message?: string; reply?: string }>(
       `/api/config/providers/${name}/test`,
@@ -215,19 +241,19 @@ export const api = {
       { method: "POST" },
       true,
     ),
-  ollamaStatus: () => request<OllamaStatus>("/api/ollama/status"),
-  ollamaInstall: () => request<OllamaActionResult>("/api/ollama/install", { method: "POST" }),
-  ollamaStart: () => request<OllamaActionResult>("/api/ollama/start", { method: "POST" }),
+  ollamaStatus: () => request<OllamaStatus>("/api/ollama/status", {}, true),
+  ollamaInstall: () => request<OllamaActionResult>("/api/ollama/install", { method: "POST" }, true),
+  ollamaStart: () => request<OllamaActionResult>("/api/ollama/start", { method: "POST" }, true),
   ollamaPull: (model?: string) =>
     request<OllamaActionResult>("/api/ollama/pull", {
       method: "POST",
       body: JSON.stringify({ model: model || null }),
-    }),
+    }, true),
   ollamaSetup: (model?: string) =>
     request<OllamaActionResult>("/api/ollama/setup", {
       method: "POST",
       body: JSON.stringify({ model: model || null }),
-    }),
+    }, true),
 
   listChatSessions: () =>
     request<{ sessions: ChatSessionSummary[] }>("/api/chat/sessions", {}, true),

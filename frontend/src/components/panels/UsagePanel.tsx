@@ -1,4 +1,4 @@
-import { Button, Col, Row, Select, Table, Typography } from "antd";
+import { Button, Col, Row, Select, Table, Tooltip, Typography } from "antd";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   api,
@@ -60,7 +60,7 @@ function niceTicks(max: number): number[] {
   return ticks;
 }
 
-function UsageBarChart({
+function UsageLineChart({
   title,
   points,
   metric,
@@ -68,7 +68,7 @@ function UsageBarChart({
 }: {
   title: string;
   points: ObservabilityTimeseries["points"];
-  metric: "llm_calls" | "tool_calls" | "total_tokens";
+  metric: "llm_calls" | "tool_calls";
   bucket: Bucket;
 }) {
   const values = useMemo(() => points.map((point) => point[metric] ?? 0), [points, metric]);
@@ -86,9 +86,43 @@ function UsageBarChart({
     );
   }
 
+  // Calculate SVG dimensions
+  const svgWidth = 500;
+  const svgHeight = 160;
+  const paddingLeft = 45;
+  const paddingRight = 20;
+  const paddingTop = 15;
+  const paddingBottom = 25;
+  
+  const chartWidth = svgWidth - paddingLeft - paddingRight;
+  const chartHeight = svgHeight - paddingTop - paddingBottom;
+
+  // Generate points coordinates
+  const coords = points.map((point, index) => {
+    const value = point[metric] ?? 0;
+    const x = paddingLeft + (points.length > 1 ? (index / (points.length - 1)) * chartWidth : chartWidth / 2);
+    const y = paddingTop + chartHeight - (value / scaleMax) * chartHeight;
+    return { x, y, value, period: point.period };
+  });
+
+  // Generate SVG path for line
+  let linePath = "";
+  if (coords.length > 0) {
+    linePath = `M ${coords[0].x} ${coords[0].y}`;
+    for (let i = 1; i < coords.length; i++) {
+      linePath += ` L ${coords[i].x} ${coords[i].y}`;
+    }
+  }
+
+  // Generate SVG path for filled area underneath
+  let areaPath = "";
+  if (coords.length > 0) {
+    areaPath = `${linePath} L ${coords[coords.length - 1].x} ${paddingTop + chartHeight} L ${coords[0].x} ${paddingTop + chartHeight} Z`;
+  }
+
   return (
     <div className="alfred-usage-chart-panel">
-      <div className="alfred-usage-chart-header">
+      <div className="alfred-usage-chart-header" style={{ marginBottom: 16 }}>
         <Typography.Title level={5} style={{ margin: 0 }}>
           {title}
         </Typography.Title>
@@ -96,42 +130,106 @@ function UsageBarChart({
           Total {formatNumber(total)}
         </Typography.Text>
       </div>
-      <div className="alfred-usage-chart-body">
-        <div className="alfred-usage-y-axis">
-          {[...ticks].reverse().map((tick) => (
-            <span key={tick}>{formatNumber(tick)}</span>
-          ))}
-        </div>
-        <div className="alfred-usage-plot">
-          <div className="alfred-usage-grid">
-            {ticks.map((tick) => (
-              <div
-                key={tick}
-                className="alfred-usage-grid-line"
-                style={{ bottom: `${(tick / scaleMax) * 100}%` }}
+      <div className="alfred-usage-chart-body-svg" style={{ position: "relative", width: "100%" }}>
+        <svg width="100%" height={svgHeight} viewBox={`0 0 ${svgWidth} ${svgHeight}`} style={{ overflow: "visible" }}>
+          <defs>
+            <linearGradient id={`${metric}-grad`} x1="0" y1="0" x2="0" y2="1">
+              <stop offset="0%" stopColor="var(--alfred-accent)" stopOpacity="0.25" />
+              <stop offset="100%" stopColor="var(--alfred-accent)" stopOpacity="0.0" />
+            </linearGradient>
+          </defs>
+
+          {/* Grid lines & Y Axis labels */}
+          {ticks.map((tick) => {
+            const y = paddingTop + chartHeight - (tick / scaleMax) * chartHeight;
+            return (
+              <g key={tick}>
+                <text
+                  x={paddingLeft - 10}
+                  y={y + 4}
+                  textAnchor="end"
+                  fill="var(--alfred-text-muted)"
+                  style={{ fontSize: 10, fontFamily: "var(--alfred-font)" }}
+                >
+                  {formatNumber(tick)}
+                </text>
+                <line
+                  x1={paddingLeft}
+                  y1={y}
+                  x2={svgWidth - paddingRight}
+                  y2={y}
+                  stroke="var(--alfred-border-subtle)"
+                  strokeWidth="1"
+                  strokeDasharray="4 4"
+                />
+              </g>
+            );
+          })}
+
+          {/* X Axis Labels */}
+          {coords.map((c, index) => {
+            const shouldShowLabel = 
+              coords.length <= 7 || 
+              index === 0 || 
+              index === coords.length - 1 || 
+              index === Math.floor(coords.length / 2);
+
+            if (!shouldShowLabel) return null;
+            return (
+              <text
+                key={c.period}
+                x={c.x}
+                y={svgHeight - 5}
+                textAnchor="middle"
+                fill="var(--alfred-text-muted)"
+                style={{ fontSize: 9.5, fontFamily: "var(--alfred-font)" }}
+              >
+                {formatPeriod(c.period, bucket)}
+              </text>
+            );
+          })}
+
+          {/* Area Path */}
+          {areaPath && (
+            <path d={areaPath} fill={`url(#${metric}-grad)`} />
+          )}
+
+          {/* Line Path */}
+          {linePath && (
+            <path
+              d={linePath}
+              stroke="var(--alfred-accent)"
+              strokeWidth="2.5"
+              fill="none"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          )}
+
+          {/* Interactive dots */}
+          {coords.map((c) => (
+            <g key={c.period}>
+              <circle
+                cx={c.x}
+                cy={c.y}
+                r="4"
+                fill="var(--alfred-surface)"
+                stroke="var(--alfred-accent)"
+                strokeWidth="2.5"
+                style={{ cursor: "pointer" }}
               />
-            ))}
-          </div>
-          <div className="alfred-usage-bars">
-            {points.map((point) => {
-              const value = point[metric] ?? 0;
-              const height = scaleMax > 0 ? (value / scaleMax) * 100 : 0;
-              return (
-                <div key={point.period} className="alfred-usage-bar-wrap">
-                  <span className="alfred-usage-bar-value">{formatNumber(value)}</span>
-                  <div className="alfred-usage-bar-track">
-                    <div
-                      className="alfred-usage-bar"
-                      style={{ height: `${Math.max(value > 0 ? 6 : 0, height)}%` }}
-                      title={`${formatPeriod(point.period, bucket)}: ${formatNumber(value)}`}
-                    />
-                  </div>
-                  <span className="alfred-usage-bar-label">{formatPeriod(point.period, bucket)}</span>
-                </div>
-              );
-            })}
-          </div>
-        </div>
+              <Tooltip title={`${formatPeriod(c.period, bucket)}: ${formatNumber(c.value)}`}>
+                <circle
+                  cx={c.x}
+                  cy={c.y}
+                  r="12"
+                  fill="transparent"
+                  style={{ cursor: "pointer" }}
+                />
+              </Tooltip>
+            </g>
+          ))}
+        </svg>
       </div>
     </div>
   );
@@ -592,7 +690,7 @@ export function UsagePanel() {
       <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
         <Col xs={24} lg={8}>
           <div className="alfred-panel alfred-usage-chart-card">
-            <UsageBarChart
+            <UsageLineChart
               title="LLM calls"
               points={timeseries?.points ?? []}
               metric="llm_calls"
@@ -602,7 +700,7 @@ export function UsagePanel() {
         </Col>
         <Col xs={24} lg={8}>
           <div className="alfred-panel alfred-usage-chart-card">
-            <UsageBarChart
+            <UsageLineChart
               title="Tool calls"
               points={timeseries?.points ?? []}
               metric="tool_calls"

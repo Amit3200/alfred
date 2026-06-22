@@ -5,6 +5,10 @@ from __future__ import annotations
 from typing import Any
 
 from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi.responses import FileResponse
+from pathlib import Path
+import tempfile
+import zipfile
 
 from backend.api.deps import get_manager, require_admin, restart_slack_listener
 from backend.ai.registry import LLMRouter
@@ -56,6 +60,8 @@ def update_secrets(
         "aws_secret_access_key",
         "jira_api_token",
         "server_admin_token",
+        "server_admin_username",
+        "server_admin_password",
     ):
         value = getattr(incoming, field)
         if value is not None and str(value).strip():
@@ -108,3 +114,44 @@ def test_integration(
     if name not in checks:
         raise HTTPException(status_code=404, detail=f"Unknown integration: {name}")
     return checks[name](config)
+
+
+@router.get("/export")
+def export_config(manager: ConfigManager = Depends(require_admin)) -> FileResponse:
+    """Export whole settings, config, secrets, key, and playbooks as a zip file."""
+    temp_dir = tempfile.gettempdir()
+    zip_path = Path(temp_dir) / "alfred-config-export.zip"
+    
+    # Clean up old export file if exists
+    if zip_path.exists():
+        zip_path.unlink()
+        
+    data_dir = manager.data_dir
+    files_to_zip = []
+    
+    # Add config, secrets, and key files
+    for fname in ("config.yaml", "secrets.enc", ".key"):
+        fpath = data_dir / fname
+        if fpath.exists():
+            files_to_zip.append((fpath, fname))
+            
+    # Add playbooks directory
+    playbooks_path = data_dir / "playbooks"
+    if playbooks_path.exists() and playbooks_path.is_dir():
+        for f in playbooks_path.glob("**/*"):
+            if f.is_file():
+                rel_path = f.relative_to(data_dir)
+                files_to_zip.append((f, str(rel_path)))
+                
+    if not files_to_zip:
+        raise HTTPException(status_code=400, detail="No configuration files found to export")
+        
+    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zip_file:
+        for fpath, arcname in files_to_zip:
+            zip_file.write(fpath, arcname)
+            
+    return FileResponse(
+        path=zip_path,
+        filename="alfred-config.zip",
+        media_type="application/zip"
+    )

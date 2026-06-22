@@ -1,7 +1,8 @@
-import { Layout } from "antd";
+import { Layout, Spin } from "antd";
 import { AppSidebar } from "./AppSidebar";
 import { ChatPage } from "./ChatPage";
 import { HomePage } from "./HomePage";
+import { LoginPage } from "./LoginPage";
 import { AISettingsPanel } from "./panels/AISettingsPanel";
 import { HealthPanel } from "./panels/HealthPanel";
 import { IntegrationsPanel } from "./panels/IntegrationsPanel";
@@ -37,7 +38,19 @@ function SettingsContent() {
 }
 
 export function AppShell() {
-  const { view } = useApp();
+  const { view, isAuthenticated, loading } = useApp();
+
+  if (loading && !isAuthenticated) {
+    return (
+      <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh", backgroundColor: "var(--alfred-bg)" }}>
+        <Spin size="large" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return <LoginPage />;
+  }
 
   return (
     <Layout hasSider className="alfred-shell">

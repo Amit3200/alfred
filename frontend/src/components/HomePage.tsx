@@ -1,6 +1,7 @@
 import {
   ApiOutlined,
   ArrowRightOutlined,
+  DownloadOutlined,
   KeyOutlined,
   ReloadOutlined,
   RobotOutlined,
@@ -10,6 +11,7 @@ import { AlfredMark } from "./AlfredMark";
 import { HealthChecksTable } from "./HealthChecksTable";
 import { OllamaGetStarted } from "./OllamaGetStarted";
 import { useApp } from "../context/AppContext";
+import { api } from "../api/client";
 
 export function HomePage() {
   const {
@@ -24,7 +26,23 @@ export function HomePage() {
     load,
     runChecks,
     checks,
+    notify,
   } = useApp();
+
+  const onExportConfig = async () => {
+    try {
+      const blob = await api.exportConfig();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = "alfred-config.zip";
+      a.click();
+      URL.revokeObjectURL(url);
+      notify("success", "Configuration and secrets exported successfully.");
+    } catch (err) {
+      notify("error", err instanceof Error ? err.message : "Export failed");
+    }
+  };
 
   if (loading) {
     return (
@@ -137,6 +155,16 @@ export function HomePage() {
                 Save token
               </Button>
             </Flex>
+            <div style={{ marginTop: 12, borderTop: "1px solid var(--alfred-border-subtle)", paddingTop: 12 }}>
+              <Button
+                type="default"
+                icon={<DownloadOutlined />}
+                onClick={onExportConfig}
+                disabled={!tokenInput}
+              >
+                Export Config (.zip)
+              </Button>
+            </div>
           </div>
         </div>
 
