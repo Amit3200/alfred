@@ -10,7 +10,7 @@ from typing import Any
 from backend.ingress.context_policy import wants_channel_history
 from backend.ingress.slack_messages import format_slack_message
 from backend.models.task import Task
-from backend.ingress.slack_users import SlackUserResolver, collect_reaction_user_ids
+from backend.ingress.slack_users import SlackUserResolver, collect_message_user_ids
 
 logger = logging.getLogger(__name__)
 
@@ -260,7 +260,7 @@ def fetch_thread_replies(
 
 
 def _resolve_user_names(client: Any, messages: list[dict]) -> dict[str, str]:
-    user_ids = collect_reaction_user_ids(messages)
+    user_ids = collect_message_user_ids(messages)
     if not user_ids:
         return {}
     return SlackUserResolver(client).resolve_many(user_ids)

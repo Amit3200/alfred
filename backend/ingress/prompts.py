@@ -49,7 +49,12 @@ say clearly that your *context window is limited* and the query may be *outside 
 you can read. Mention the window (e.g. last 30 days).
 - Example: "I can only read channel history from the last 30 days. I don't see that event \
 in that window — it may be older than what I can fetch."
-- NEVER guess or invent dates, people, or events to fill gaps."""
+- NEVER guess or invent dates, people, or events to fill gaps.
+
+## People names
+
+- Message authors in context are shown by display name when known.
+- Always refer to people by display name in your reply — never raw Slack user IDs (U…)."""
 
 ALFRED_SYSTEM_PROMPT = f"""{ALFRED_IDENTITY}
 
@@ -62,10 +67,13 @@ def build_slack_user_message(
     slack_context: str | None,
     *,
     history_window_label: str = "",
+    user_names: dict[str, str] | None = None,
 ) -> str:
     """Wrap user intent + Slack context for a single model turn."""
     if not slack_context:
         return task_intent
+    from backend.ingress.slack_users import format_user_id_legend
+
     window_note = history_window_label or "the fetched window"
     header = (
         "[Slack context — facts only; do not invent details]\n"
@@ -73,4 +81,9 @@ def build_slack_user_message(
         "If the answer is not in the messages below, tell the user your context window "
         "is limited and the query may be outside that range — do not guess."
     )
-    return f"{task_intent}\n\n{header}\n{slack_context}"
+    legend = format_user_id_legend(user_names or {})
+    parts = [task_intent, header]
+    if legend:
+        parts.append(legend)
+    parts.append(slack_context)
+    return "\n\n".join(parts)

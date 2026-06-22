@@ -97,7 +97,7 @@ def format_slack_message(
     if not text:
         return None
 
-    author = _message_author(message)
+    author = _message_author(message, user_names=user_names)
     when = format_slack_ts(message.get("ts") or "")
     line = f"{when} | {author}: {text}"
     reactions = _format_reactions(message, user_names=user_names)
@@ -123,12 +123,15 @@ def _format_reactions(message: dict, *, user_names: dict[str, str] | None = None
     return "reactions: " + "; ".join(parts)
 
 
-def _message_author(message: dict) -> str:
+def _message_author(message: dict, *, user_names: dict[str, str] | None = None) -> str:
     if message.get("username"):
         return f"{message['username']} (app)"
     if message.get("bot_id"):
         return "bot (app)"
-    return message.get("user") or "user"
+    user_id = message.get("user")
+    if user_id and user_names:
+        return user_names.get(str(user_id), str(user_id))
+    return str(user_id) if user_id else "user"
 
 
 def format_slack_ts(ts: str) -> str:

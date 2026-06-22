@@ -3,9 +3,13 @@
 from __future__ import annotations
 
 import logging
+import re
 from typing import Any
 
 logger = logging.getLogger(__name__)
+
+_SLACK_USER_ID_RE = re.compile(r"\b(U[A-Z0-9]{8,})\b")
+_SLACK_MENTION_RE = re.compile(r"<@(U[A-Z0-9]{8,})>")
 
 
 def pick_slack_display_name(user: dict) -> str:
@@ -53,11 +57,54 @@ class SlackUserResolver:
 
 
 def collect_reaction_user_ids(messages: list[dict]) -> set[str]:
+    return collect_message_user_ids(messages)
+
+
+def collect_message_user_ids(messages: list[dict]) -> set[str]:
+    """Collect Slack user IDs from message authors and reactions."""
     user_ids: set[str] = set()
     for message in messages:
+        author = message.get("user")
+        if author:
+            user_ids.add(str(author))
         for reaction in message.get("reactions") or []:
-            user_ids.update(reaction.get("users") or [])
+            user_ids.update(str(user_id) for user_id in (reaction.get("users") or []))
     return user_ids
+
+
+def format_user_id_legend(user_names: dict[str, str]) -> str:
+    if not user_names:
+        return ""
+    lines = ["Slack user names (use these names in your reply — not raw IDs):"]
+    for user_id, name in sorted(user_names.items(), key=lambda item: item[1].lower()):
+        lines.append(f"- {name} ({user_id})")
+    return "\n".join(lines)
+
+
+def substitute_slack_user_ids(text: str, user_names: dict[str, str]) -> str:
+    if not text or not user_names:
+        return text
+
+    def mention_repl(match: re.Match[str]) -> str:
+        user_id = match.group(1)
+        return user_names.get(user_id, user_id)
+
+    def id_repl(match: re.Match[str]) -> str:
+        user_id = match.group(1)
+        return user_names.get(user_id, user_id)
+
+    text = _SLACK_MENTION_RE.sub(mention_repl, text)
+    return _SLACK_USER_ID_RE.sub(id_repl, text)
+
+
+def resolve_user_ids_in_text(text: str, resolver: SlackUserResolver) -> str:
+    if not text:
+        return text
+    user_ids = set(_SLACK_USER_ID_RE.findall(text))
+    user_ids.update(_SLACK_MENTION_RE.findall(text))
+    if not user_ids:
+        return text
+    return substitute_slack_user_ids(text, resolver.resolve_many(user_ids))
 
 
 def format_user_list(user_ids: list[str], user_names: dict[str, str] | None = None) -> str:

@@ -9,6 +9,7 @@ from backend.slack.status import (
     ASSISTANT_STATUS,
     STATUS_LINES,
     ThinkingIndicator,
+    loading_line_to_status,
     loading_messages_for_slack,
 )
 
@@ -75,6 +76,12 @@ def test_assistant_status_uses_mixed_loading_messages(monkeypatch):
     assert any("cooking" in message for message in call["loading_messages"])
 
 
+def test_loading_line_to_status():
+    assert loading_line_to_status("🍳 I am cooking…") == "is cooking…"
+    assert loading_line_to_status(":this_is_fine: Everything is fine.") == "is everything is fine."
+    assert loading_line_to_status("is thinking…") == "is thinking…"
+
+
 def test_assistant_status_on_start_and_finish():
     client = MagicMock()
     client.assistant_threads_setStatus.return_value = {"ok": True}
@@ -87,7 +94,7 @@ def test_assistant_status_on_start_and_finish():
     call = client.assistant_threads_setStatus.call_args.kwargs
     assert call["channel_id"] == "C1"
     assert call["thread_ts"] == "100.1"
-    assert call["status"] == ASSISTANT_STATUS
+    assert call["status"].startswith("is ")
     assert len(call["loading_messages"]) <= 10
 
     indicator.finish("Hello team.")
@@ -95,6 +102,27 @@ def test_assistant_status_on_start_and_finish():
     assert client.chat_postMessage.call_args.kwargs["text"] == "Hello team."
     # Cleared status then posted — at least 2 setStatus calls
     assert client.assistant_threads_setStatus.call_count >= 2
+
+
+def test_status_rotation_updates_assistant_status(monkeypatch):
+    client = MagicMock()
+    client.assistant_threads_setStatus.return_value = {"ok": True}
+
+    def fast_wait(_seconds: float) -> bool:
+        return True
+
+    indicator = ThinkingIndicator(client, channel="C1", thread_ts="100.1", rotation_seconds=0.01)
+    monkeypatch.setattr(indicator._stop_rotation, "wait", fast_wait)
+    indicator.start()
+    indicator.finish("Done.")
+
+    assert client.assistant_threads_setStatus.call_count >= 2
+    statuses = [
+        call.kwargs["status"]
+        for call in client.assistant_threads_setStatus.call_args_list
+        if call.kwargs.get("status")
+    ]
+    assert any(status.startswith("is ") for status in statuses)
 
 
 def test_legacy_fallback_when_assistant_unavailable():

@@ -99,7 +99,7 @@ def _process_mention(
     on_task_complete: Callable[[], None] | None,
 ) -> None:
     try:
-        from backend.ingress.slack_users import SlackUserResolver
+        from backend.ingress.slack_users import SlackUserResolver, resolve_user_ids_in_text
         from backend.storage.slack_user_cache import SlackUserCache
 
         display_name = SlackUserResolver(client).display_name(task.user_id)
@@ -107,8 +107,11 @@ def _process_mention(
         if processor._data_dir is not None:
             SlackUserCache(processor._data_dir).remember(task.user_id, display_name)
         response = processor.process(task)
+        rendered = render_for_channel(response, "slack")
+        resolver = SlackUserResolver(client)
+        rendered = resolve_user_ids_in_text(rendered, resolver)
         delivery = prepare_slack_delivery(
-            render_for_channel(response, "slack"),
+            rendered,
             task.cleaned_intent,
         )
         indicator.finish(delivery.text, files=delivery.files)

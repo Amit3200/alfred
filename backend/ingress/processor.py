@@ -88,12 +88,14 @@ class TaskProcessor:
 
         slack_context: str | None = None
         history_window_label = ""
+        slack_user_names: dict[str, str] = {}
         if self._context_fetcher:
             try:
                 raw_context = self._context_fetcher(task)
                 if isinstance(raw_context, SlackContextBundle):
                     slack_context = raw_context.text or None
                     history_window_label = raw_context.history_window_label
+                    slack_user_names = raw_context.user_names or {}
                 elif raw_context:
                     slack_context = raw_context
             except Exception:
@@ -193,6 +195,7 @@ class TaskProcessor:
             session=session,
             slack_context=slack_context if include_context else None,
             history_window_label=history_window_label if include_context else "",
+            slack_user_names=slack_user_names if include_context else None,
             omit_assistant_turns=omit_assistant,
             playbook_prompt=self._playbooks.format_routed_prompt(
                 routed_playbook,
@@ -692,6 +695,7 @@ class TaskProcessor:
         session: ConversationSession | None,
         slack_context: str | None,
         history_window_label: str = "",
+        slack_user_names: dict[str, str] | None = None,
         omit_assistant_turns: bool = False,
         playbook_prompt: str = "",
         extra_system: str = "",
@@ -714,6 +718,7 @@ class TaskProcessor:
                 task.cleaned_intent,
                 slack_context,
                 history_window_label=history_window_label,
+                user_names=slack_user_names,
             )
         elif slack_context:
             user_content = f"{task.cleaned_intent}\n\n[Context]\n{slack_context}"
