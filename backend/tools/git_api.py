@@ -178,4 +178,8 @@ def build_git_tool_registry(
 
     register_aws_tools(registry, config)
 
+    from backend.tools.google_tool import register_google_tools
+
+    register_google_tools(registry, config)
+
     return registry

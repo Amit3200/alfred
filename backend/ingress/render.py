@@ -21,10 +21,19 @@ from backend.tools.result import jira_summary_from_dict, pr_summary_from_dict
 
 Channel = Literal["slack", "ui", "cli", "github"]
 
+# Investigation loops may attach tool payloads while the model also wrote prose.
+# Always prefer the prose for human-facing channels (e.g. GitHub PR comments).
+_PROSE_OVERRIDES_STRUCTURED = frozenset(
+    {"file_content", "code_grep", "git_log", "git_blame", "git_show"}
+)
+
 
 def render_for_channel(response: AssistantResponse, channel: Channel) -> str:
     """Render a structured response as plain text for the given channel."""
     payload = response.payload
+    prose = (response.text or "").strip()
+    if prose and payload.kind in _PROSE_OVERRIDES_STRUCTURED:
+        return _format_text(prose, channel)
     if payload.kind == "text":
         text = str(payload.data.get("text") or response.text or "")
         return _format_text(text, channel)
@@ -61,6 +70,10 @@ def render_for_channel(response: AssistantResponse, channel: Channel) -> str:
         return _render_cloudwatch_log_groups(payload, channel)
     if payload.kind == "grade_events_query":
         return _render_grade_events_query(payload, channel)
+    if payload.kind == "google_sheet":
+        return _render_google_sheet(payload, channel)
+    if payload.kind == "google_doc":
+        return _render_google_doc(payload, channel)
     return _format_text(response.text or "", channel)
 
 
@@ -180,6 +193,50 @@ def _render_cloudwatch_log_groups(payload: ResponsePayload, channel: Channel) ->
 
 def _render_grade_events_query(payload: ResponsePayload, channel: Channel) -> str:
     return format_grade_events_query(payload.data, slack=channel == "slack")
+
+
+def _render_google_sheet(payload: ResponsePayload, channel: Channel) -> str:
+    action = str(payload.data.get("action") or "")
+    spreadsheet_id = str(payload.data.get("spreadsheet_id") or "")
+    if action == "read":
+        rows = payload.data.get("rows") or []
+        range_a1 = str(payload.data.get("range") or "")
+        header = f"Sheet `{spreadsheet_id}` · `{range_a1}` ({len(rows)} rows)"
+        if not rows:
+            return f"{header}\n(no data)"
+        preview = rows[:20]
+        lines = [header, ""]
+        for row in preview:
+            if channel == "slack":
+                lines.append("• " + " | ".join(str(cell) for cell in row))
+            else:
+                lines.append("| " + " | ".join(str(cell) for cell in row) + " |")
+        if len(rows) > 20:
+            lines.append(f"… and {len(rows) - 20} more rows")
+        return "\n".join(lines)
+    updated = payload.data.get("updated_cells") or payload.data.get("updated_rows") or 0
+    range_a1 = str(payload.data.get("range") or "")
+    verb = "Updated" if action == "write" else "Appended to"
+    return f"{verb} `{spreadsheet_id}` · `{range_a1}` ({updated} cells/rows updated)."
+
+
+def _render_google_doc(payload: ResponsePayload, channel: Channel) -> str:
+    action = str(payload.data.get("action") or "")
+    document_id = str(payload.data.get("document_id") or "")
+    if action == "read":
+        title = str(payload.data.get("title") or document_id)
+        text = str(payload.data.get("text") or "")
+        preview = text[:4000]
+        suffix = "\n… (truncated)" if len(text) > 4000 else ""
+        return f"**{title}**\n\n{preview}{suffix}".strip()
+    if action == "create":
+        title = str(payload.data.get("title") or "")
+        url = str(payload.data.get("url") or "")
+        if url:
+            return f"Created doc **{title}**: {url}"
+        return f"Created doc **{title}** (`{document_id}`)."
+    appended = payload.data.get("appended_chars") or 0
+    return f"Appended {appended} characters to doc `{document_id}`."
 
 
 def _format_text(text: str, channel: Channel) -> str:

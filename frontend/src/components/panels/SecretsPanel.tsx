@@ -11,6 +11,7 @@ import {
   AddableSection,
   AddableSectionList,
 } from "../ui/AddableSection";
+import { JsonCredentialField } from "../ui/JsonCredentialField";
 
 
 const AI_KEY_IDS = ["openai", "anthropic", "gemini", "kimi"] as const;
@@ -41,6 +42,7 @@ export function SecretsPanel() {
     configured?.aws_access_key_id || configured?.aws_secret_access_key
   );
   const jiraConfigured = !!configured?.jira_api_token;
+  const googleConfigured = !!configured?.google_credentials_json;
 
   return (
     <div>
@@ -192,11 +194,31 @@ export function SecretsPanel() {
             />
           </AddableSection>
         )}
+
+        {integrations.isVisible("google") && (
+          <AddableSection
+            title="Google Workspace"
+            info={renderHelpContent(SECRETS_HELP.google)}
+            visible
+            configured={googleConfigured}
+            onAdd={() => integrations.add("google")}
+            onRemove={() => integrations.remove("google")}
+          >
+            <JsonCredentialField
+              label="OAuth client or service account JSON"
+              configured={configured?.google_credentials_json}
+              credentialType={configured?.google_credentials_type}
+              oauthConnected={configured?.google_oauth_connected}
+              value={secrets.google_credentials_json ?? ""}
+              onChange={(v) => setSecrets((s) => ({ ...s, google_credentials_json: v }))}
+            />
+          </AddableSection>
+        )}
       </ActiveSections>
 
       <AddableSectionList
         label={
-          slackConfigured || gitConfigured || githubConfigured || awsConfigured || jiraConfigured
+          slackConfigured || gitConfigured || githubConfigured || awsConfigured || jiraConfigured || googleConfigured
             ? "Integrations"
             : "Add integration"
         }
@@ -248,6 +270,16 @@ export function SecretsPanel() {
             visible={false}
             configured={jiraConfigured}
             onAdd={() => integrations.add("jira")}
+            onRemove={() => {}}
+          />
+        )}
+        {!integrations.isVisible("google") && (
+          <AddableSection
+            title="Google Workspace"
+            info={renderHelpContent(SECRETS_HELP.google)}
+            visible={false}
+            configured={googleConfigured}
+            onAdd={() => integrations.add("google")}
             onRemove={() => {}}
           />
         )}

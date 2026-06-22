@@ -64,6 +64,10 @@ export type AlfredConfig = {
     default_project: string;
     allowed_projects: string[];
   };
+  google: {
+    enabled: boolean;
+    oauth_redirect_base_url: string;
+  };
   ai: {
     default_provider: string;
     routing: {
@@ -92,6 +96,10 @@ export type AlfredConfig = {
     aws_access_key_id: boolean;
     aws_secret_access_key: boolean;
     jira_api_token: boolean;
+    google_credentials_json: boolean;
+    google_oauth_refresh_token: boolean;
+    google_credentials_type?: string | null;
+    google_oauth_connected?: boolean;
     server_admin_token: boolean;
     ai_api_keys: Record<string, boolean>;
   };
@@ -107,8 +115,19 @@ export type SecretsPayload = {
   aws_access_key_id?: string;
   aws_secret_access_key?: string;
   jira_api_token?: string;
+  google_credentials_json?: string;
+  google_oauth_refresh_token?: string;
   server_admin_token?: string;
   ai_api_keys?: Record<string, string>;
+};
+
+export type GoogleOAuthStatus = {
+  credentials_configured: boolean;
+  credentials_type: string | null;
+  oauth_connected: boolean;
+  oauth_refresh_token_configured: boolean;
+  google_libs_installed: boolean;
+  redirect_uri: string | null;
 };
 
 export type OllamaStatus = {
@@ -238,6 +257,14 @@ export const api = {
   testIntegration: (name: string) =>
     request<{ ok: boolean; message?: string; skipped?: boolean }>(
       `/api/config/integrations/${name}/test`,
+      { method: "POST" },
+      true,
+    ),
+  getGoogleOAuthStatus: () =>
+    request<GoogleOAuthStatus>("/api/config/google/oauth/status", {}, true),
+  startGoogleOAuth: () =>
+    request<{ authorization_url: string; redirect_uri: string }>(
+      "/api/config/google/oauth/start",
       { method: "POST" },
       true,
     ),

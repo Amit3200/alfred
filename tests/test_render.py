@@ -64,3 +64,14 @@ def test_render_pr_detail_ui():
     response = AssistantResponse.structured("pr_detail", {"pr": detail})
     text = render_for_channel(response, "ui")
     assert "[#91 Feature](https://github.com/org/app/pull/91)" in text
+
+
+def test_render_prefers_prose_over_file_content_on_github():
+    response = AssistantResponse.structured(
+        "file_content",
+        {"repo": "org/app", "path": "handler.ts", "content": "export const x = 1;"},
+        text="## 1. Executive Summary\n**PR Objective:** Fix webhook logging",
+    )
+    text = render_for_channel(response, "github")
+    assert "Executive Summary" in text
+    assert "export const x = 1" not in text

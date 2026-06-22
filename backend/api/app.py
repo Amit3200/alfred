@@ -17,6 +17,7 @@ from backend.api.routes import auth as auth_routes
 from backend.api.routes import chat as chat_routes
 from backend.api.routes import config as config_routes
 from backend.api.routes import github as github_routes
+from backend.api.routes import google as google_routes
 from backend.api.routes import git_mirrors as git_mirrors_routes
 from backend.api.routes import health as health_routes
 from backend.api.routes import observability as observability_routes
@@ -81,9 +82,11 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     from fastapi import Depends
     
     app.include_router(auth_routes.router, prefix="/api")
-    app.include_router(health_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
+    app.include_router(health_routes.router, prefix="/api")
     app.include_router(github_routes.router, prefix="/api")
+    app.include_router(google_routes.public_router, prefix="/api")
     app.include_router(config_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
+    app.include_router(google_routes.admin_router, prefix="/api", dependencies=[Depends(require_admin)])
     app.include_router(ollama_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
     app.include_router(chat_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
     app.include_router(git_mirrors_routes.router, prefix="/api", dependencies=[Depends(require_admin)])

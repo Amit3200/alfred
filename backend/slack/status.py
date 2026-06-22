@@ -71,9 +71,64 @@ STATUS_LINES: list[tuple[str, str]] = [
 ]
 
 MAX_LOADING_MESSAGES = 10
+MAX_SLACK_LOADING_MESSAGE_LENGTH = 50
 ASSISTANT_STATUS = "is thinking…"
-STATUS_ROTATION_SECONDS = 2.0
-_SLACK_EMOJI_PREFIX_RE = re.compile(r"^:\w+:\s*")
+STATUS_ROTATION_SECONDS = 3.0
+_SLACK_EMOJI_PREFIX_RE = re.compile(r"^:[\w-]+:\s*")
+_ACTIVE_BY_THREAD: dict[str, Any] = {}
+_THREAD_LOCK = threading.Lock()
+
+
+def _split_loading_prefix(line: str) -> tuple[str, str]:
+    """Split a loading line into emoji prefix and body text."""
+    text = line.strip()
+    match = _SLACK_EMOJI_PREFIX_RE.match(text)
+    if match:
+        return match.group(0).rstrip(), text[match.end() :].strip()
+    index = 0
+    while index < len(text):
+        codepoint = ord(text[index])
+        if codepoint <= 0x2600 and text[index] not in "\ufe0f\u200d":
+            break
+        index += 1
+    if index == 0:
+        return "", text
+    return text[:index].strip(), text[index:].lstrip()
+
+
+def _fit_loading_message(prefix: str, body: str) -> str:
+    """Build a loading message that fits Slack's 50-character limit."""
+    if not prefix:
+        if len(body) <= MAX_SLACK_LOADING_MESSAGE_LENGTH:
+            return body
+        return body[: MAX_SLACK_LOADING_MESSAGE_LENGTH - 1].rstrip() + "…"
+    if not body:
+        return prefix[:MAX_SLACK_LOADING_MESSAGE_LENGTH]
+    message = f"{prefix} {body}"
+    if len(message) <= MAX_SLACK_LOADING_MESSAGE_LENGTH:
+        return message
+    budget = MAX_SLACK_LOADING_MESSAGE_LENGTH - len(prefix) - 2  # space + ellipsis
+    if budget < 1:
+        return prefix[:MAX_SLACK_LOADING_MESSAGE_LENGTH]
+    return f"{prefix} {body[:budget].rstrip()}…"
+
+
+def slack_shortcode_prefix(line: str) -> str | None:
+    """Return workspace emoji shortcode at the start of a line, if any."""
+    match = _SLACK_EMOJI_PREFIX_RE.match(line.strip())
+    if not match:
+        return None
+    name = match.group(0).strip().strip(":")
+    return f":{name}:" if name else None
+
+
+def pool_has_custom_shortcodes(lines: list[str]) -> bool:
+    """True when loading lines use :workspace-emoji: shortcodes."""
+    return any(slack_shortcode_prefix(line) for line in lines)
+
+
+def _thread_key(channel: str, thread_ts: str) -> str:
+    return f"{channel}:{thread_ts}"
 
 
 def _default_status_lines() -> list[str]:
@@ -88,11 +143,13 @@ def loading_messages_for_slack(
     """Build loading_messages for assistant.threads.setStatus (max 10)."""
     custom = [line.strip() for line in (custom_lines or []) if line and line.strip()]
     defaults = _default_status_lines()
-    pool = custom + defaults
 
-    if len(pool) <= count:
-        return pool
-    return random.sample(pool, count)
+    if len(custom) >= count:
+        return custom[:count]
+    remaining = count - len(custom)
+    if len(defaults) <= remaining:
+        return custom + defaults
+    return custom + random.sample(defaults, remaining)
 
 
 def loading_line_to_status(line: str) -> str:
@@ -113,6 +170,16 @@ def loading_line_to_status(line: str) -> str:
     return f"is {text[0].lower()}{text[1:]}" if text else ASSISTANT_STATUS
 
 
+def slack_loading_messages(lines: list[str]) -> list[str]:
+    """Fit loading_messages for assistant.threads.setStatus (max 50 chars, keep emojis)."""
+    sanitized: list[str] = []
+    for line in lines[:MAX_LOADING_MESSAGES]:
+        original = line.strip()
+        prefix, body = _split_loading_prefix(original)
+        sanitized.append(_fit_loading_message(prefix, body or original))
+    return sanitized
+
+
 class ThinkingIndicator:
     """Show Assistant thread status while thinking; post final reply as a new message."""
 
@@ -131,6 +198,9 @@ class ThinkingIndicator:
         self._loading_messages = loading_messages
         self._rotation_seconds = rotation_seconds
         self._status_pool: list[str] = []
+        self._slack_loading_messages: list[str] = []
+        self._status_text = ASSISTANT_STATUS
+        self._superseded = False
         self._assistant_active = False
         self._legacy_message_ts: str | None = None
         self._stop_rotation = threading.Event()
@@ -139,19 +209,59 @@ class ThinkingIndicator:
     def start(self) -> None:
         if not self.thread_ts:
             return
+        key = _thread_key(self.channel, self.thread_ts)
+        with _THREAD_LOCK:
+            previous = _ACTIVE_BY_THREAD.get(key)
+            if previous is not None and previous is not self:
+                previous._supersede()
+            _ACTIVE_BY_THREAD[key] = self
+
         self._status_pool = loading_messages_for_slack(custom_lines=self._loading_messages)
-        if self._try_assistant_status(self._status_pool[0] if self._status_pool else ASSISTANT_STATUS):
+        self._slack_loading_messages = slack_loading_messages(self._status_pool)
+        first_line = self._status_pool[0] if self._status_pool else ASSISTANT_STATUS
+        self._status_text = loading_line_to_status(first_line)
+        use_assistant = (
+            not pool_has_custom_shortcodes(self._status_pool)
+            and self._try_assistant_status()
+        )
+        if use_assistant:
             self._assistant_active = True
-            self._start_rotation()
-            logger.debug("Assistant setStatus active for channel=%s thread=%s", self.channel, self.thread_ts)
+            logger.info(
+                "Slack thinking: using assistant.threads.setStatus (channel=%s thread=%s)",
+                self.channel,
+                self.thread_ts,
+            )
             return
+        if pool_has_custom_shortcodes(self._status_pool):
+            logger.info(
+                "Slack thinking: using thread placeholder for custom emoji lines "
+                "(channel=%s thread=%s)",
+                self.channel,
+                self.thread_ts,
+            )
+        else:
+            logger.info(
+                "Slack thinking: falling back to placeholder message (channel=%s thread=%s)",
+                self.channel,
+                self.thread_ts,
+            )
         self._start_legacy_placeholder()
+
+    def _supersede(self) -> None:
+        self._superseded = True
+        self._stop_rotation_thread()
 
     def finish(self, text: str, *, files: list[Any] | None = None) -> None:
         self._stop_rotation_thread()
+        if self.thread_ts:
+            key = _thread_key(self.channel, self.thread_ts)
+            with _THREAD_LOCK:
+                if _ACTIVE_BY_THREAD.get(key) is self:
+                    del _ACTIVE_BY_THREAD[key]
         if self._assistant_active:
-            self._clear_assistant_status()
+            # Slack clears assistant status automatically when the app posts a reply.
             self._post_reply(text, files=files)
+            self._clear_assistant_status()
             return
         self._finish_legacy(text, files=files)
 
@@ -173,49 +283,86 @@ class ThinkingIndicator:
             text=text,
         )
 
-    def _try_assistant_status(self, line: str) -> bool:
+    def _set_status_kwargs(self) -> dict[str, Any]:
+        kwargs: dict[str, Any] = {
+            "channel_id": self.channel,
+            "thread_ts": self.thread_ts,
+            "status": self._status_text,
+        }
+        if self._slack_loading_messages:
+            kwargs["loading_messages"] = self._slack_loading_messages
+        return kwargs
+
+    def _try_assistant_status(self) -> bool:
         if not hasattr(self.client, "assistant_threads_setStatus"):
+            logger.info(
+                "Slack thinking: assistant.threads.setStatus not available on client — "
+                "upgrade slack-sdk (>=3.37) and slack-bolt (>=1.26)"
+            )
             return False
+        payload = self._set_status_kwargs()
+        status = payload["status"]
         try:
-            response = self.client.assistant_threads_setStatus(
+            response = self._call_set_status(**payload)
+            if response.get("ok"):
+                return True
+            error = response.get("error") or "unknown_error"
+            logger.warning(
+                "assistant.threads.setStatus rejected (%s) for channel=%s thread=%s",
+                error,
+                self.channel,
+                self.thread_ts,
+            )
+            if payload.get("loading_messages"):
+                return self._retry_set_status_without_loading_messages(status)
+            return False
+        except Exception as exc:
+            if payload.get("loading_messages") and self._is_set_status_argument_error(exc):
+                logger.warning(
+                    "assistant.threads.setStatus loading_messages rejected (%s) — retrying status only",
+                    exc,
+                )
+                return self._retry_set_status_without_loading_messages(status)
+            logger.warning(
+                "assistant.threads.setStatus unavailable (%s) — using placeholder message. "
+                "Ensure assistant:write scope, Agents & AI Apps enabled, and reinstall the app.",
+                exc,
+            )
+            return False
+
+    def _call_set_status(self, **kwargs: Any) -> dict[str, Any]:
+        return self.client.assistant_threads_setStatus(**kwargs)
+
+    @staticmethod
+    def _is_set_status_argument_error(exc: Exception) -> bool:
+        from slack_sdk.errors import SlackApiError
+
+        if isinstance(exc, SlackApiError):
+            body = getattr(exc, "response", None)
+            data = getattr(body, "data", None) if body is not None else None
+            if isinstance(data, dict) and data.get("error") == "invalid_arguments":
+                return True
+        message = str(exc).lower()
+        return "invalid_arguments" in message or "must be less than 51 characters" in message
+
+    def _retry_set_status_without_loading_messages(self, status: str) -> bool:
+        try:
+            retry = self._call_set_status(
                 channel_id=self.channel,
                 thread_ts=self.thread_ts,
-                status=loading_line_to_status(line),
-                loading_messages=self._status_pool[:MAX_LOADING_MESSAGES],
+                status=status,
             )
-            return bool(response.get("ok"))
-        except Exception:
-            logger.warning("assistant.threads.setStatus unavailable, using legacy placeholder", exc_info=True)
-            return False
-
-    def _set_assistant_status(self, line: str) -> None:
-        try:
-            self.client.assistant_threads_setStatus(
-                channel_id=self.channel,
-                thread_ts=self.thread_ts,
-                status=loading_line_to_status(line),
-                loading_messages=self._status_pool[:MAX_LOADING_MESSAGES],
+            if retry.get("ok"):
+                logger.info("assistant.threads.setStatus succeeded without loading_messages")
+                self._slack_loading_messages = []
+                return True
+            logger.warning(
+                "assistant.threads.setStatus retry failed (%s)",
+                retry.get("error") or "unknown_error",
             )
-        except Exception:
-            logger.debug("Failed to refresh assistant status", exc_info=True)
-
-    def _start_rotation(self) -> None:
-        if not self._assistant_active or len(self._status_pool) <= 1:
-            return
-        self._stop_rotation.clear()
-        self._rotation_thread = threading.Thread(
-            target=self._rotate_status,
-            daemon=True,
-            name="alfred-slack-status",
-        )
-        self._rotation_thread.start()
-
-    def _rotate_status(self) -> None:
-        pool = self._status_pool
-        index = 0
-        while not self._stop_rotation.wait(self._rotation_seconds):
-            index = (index + 1) % len(pool)
-            self._set_assistant_status(pool[index])
+        except Exception as exc:
+            logger.warning("assistant.threads.setStatus retry failed (%s)", exc)
+        return False
 
     def _stop_rotation_thread(self) -> None:
         self._stop_rotation.set()
@@ -234,15 +381,16 @@ class ThinkingIndicator:
             logger.debug("Failed to clear assistant status", exc_info=True)
 
     def _start_legacy_placeholder(self) -> None:
-        """Fallback when Assistant API is unavailable (shows edited badge on update)."""
-        line = random.choice(self._status_pool or _default_status_lines())
+        """Fallback when Assistant API is unavailable or custom :emoji: lines are configured."""
+        pool = self._status_pool or _default_status_lines()
+        line = pool[0]
         response = self.client.chat_postMessage(
             channel=self.channel,
             thread_ts=self.thread_ts,
             text=f"_{line}_",
         )
         self._legacy_message_ts = response.get("ts")
-        if len(self._status_pool) > 1:
+        if len(pool) > 1:
             self._start_legacy_rotation()
 
     def _start_legacy_rotation(self) -> None:
@@ -258,7 +406,7 @@ class ThinkingIndicator:
         pool = self._status_pool or _default_status_lines()
         index = 0
         while not self._stop_rotation.wait(self._rotation_seconds):
-            if not self._legacy_message_ts:
+            if self._superseded or not self._legacy_message_ts:
                 return
             index = (index + 1) % len(pool)
             try:
@@ -278,19 +426,8 @@ class ThinkingIndicator:
         attachments = [item for item in (files or []) if isinstance(item, SlackFileAttachment)]
         if self._legacy_message_ts:
             try:
-                self.client.chat_update(
-                    channel=self.channel,
-                    ts=self._legacy_message_ts,
-                    text=text,
-                )
-                if attachments:
-                    upload_slack_files(
-                        self.client,
-                        channel=self.channel,
-                        thread_ts=self.thread_ts,
-                        files=attachments,
-                    )
-                return
+                self.client.chat_delete(channel=self.channel, ts=self._legacy_message_ts)
             except Exception:
-                logger.debug("Legacy status update failed, posting new message", exc_info=True)
+                logger.debug("Could not delete legacy thinking placeholder", exc_info=True)
+            self._legacy_message_ts = None
         self._post_reply(text, files=attachments)

@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html>
+<head>
+<title>README.md</title>
+<meta http-equiv="Content-type" content="text/html;charset=UTF-8">
+
+<style>
+/* https://github.com/microsoft/vscode/blob/master/extensions/markdown-language-features/media/markdown.css */
+/*---------------------------------------------------------------------------------------------
+ *  Copyright (c) Microsoft Corporation. All rights reserved.
+ *  Licensed under the MIT License. See License.txt in the project root for license information.
+ *--------------------------------------------------------------------------------------------*/
+
+body {
+	font-family: var(--vscode-markdown-font-family, -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif);
+	font-size: var(--vscode-markdown-font-size, 14px);
+	padding: 0 26px;
+	line-height: var(--vscode-markdown-line-height, 22px);
+	word-wrap: break-word;
+}
+
+#code-csp-warning {
+	position: fixed;
+	top: 0;
+	right: 0;
+	color: white;
+	margin: 16px;
+	text-align: center;
+	font-size: 12px;
+	font-family: sans-serif;
+	background-color:#444444;
+	cursor: pointer;
+	padding: 6px;
+	box-shadow: 1px 1px 1px rgba(0,0,0,.25);
+}
+
+#code-csp-warning:hover {
+	text-decoration: none;
+	background-color:#007acc;
+	box-shadow: 2px 2px 2px rgba(0,0,0,.25);
+}
+
+body.scrollBeyondLastLine {
+	margin-bottom: calc(100vh - 22px);
+}
+
+body.showEditorSelection .code-line {
+	position: relative;
+}
+
+body.showEditorSelection .code-active-line:before,
+body.showEditorSelection .code-line:hover:before {
+	content: "";
+	display: block;
+	position: absolute;
+	top: 0;
+	left: -12px;
+	height: 100%;
+}
+
+body.showEditorSelection li.code-active-line:before,
+body.showEditorSelection li.code-line:hover:before {
+	left: -30px;
+}
+
+.vscode-light.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.15);
+}
+
+.vscode-light.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(0, 0, 0, 0.40);
+}
+
+.vscode-light.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-dark.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.4);
+}
+
+.vscode-dark.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 255, 255, 0.60);
+}
+
+.vscode-dark.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+.vscode-high-contrast.showEditorSelection .code-active-line:before {
+	border-left: 3px solid rgba(255, 160, 0, 0.7);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line:hover:before {
+	border-left: 3px solid rgba(255, 160, 0, 1);
+}
+
+.vscode-high-contrast.showEditorSelection .code-line .code-line:hover:before {
+	border-left: none;
+}
+
+img {
+	max-width: 100%;
+	max-height: 100%;
+}
+
+a {
+	text-decoration: none;
+}
+
+a:hover {
+	text-decoration: underline;
+}
+
+a:focus,
+input:focus,
+select:focus,
+textarea:focus {
+	outline: 1px solid -webkit-focus-ring-color;
+	outline-offset: -1px;
+}
+
+hr {
+	border: 0;
+	height: 2px;
+	border-bottom: 2px solid;
+}
+
+h1 {
+	padding-bottom: 0.3em;
+	line-height: 1.2;
+	border-bottom-width: 1px;
+	border-bottom-style: solid;
+}
+
+h1, h2, h3 {
+	font-weight: normal;
+}
+
+table {
+	border-collapse: collapse;
+}
+
+table > thead > tr > th {
+	text-align: left;
+	border-bottom: 1px solid;
+}
+
+table > thead > tr > th,
+table > thead > tr > td,
+table > tbody > tr > th,
+table > tbody > tr > td {
+	padding: 5px 10px;
+}
+
+table > tbody > tr + tr > td {
+	border-top: 1px solid;
+}
+
+blockquote {
+	margin: 0 7px 0 5px;
+	padding: 0 16px 0 10px;
+	border-left-width: 5px;
+	border-left-style: solid;
+}
+
+code {
+	font-family: Menlo, Monaco, Consolas, "Droid Sans Mono", "Courier New", monospace, "Droid Sans Fallback";
+	font-size: 1em;
+	line-height: 1.357em;
+}
+
+body.wordWrap pre {
+	white-space: pre-wrap;
+}
+
+pre:not(.hljs),
+pre.hljs code > div {
+	padding: 16px;
+	border-radius: 3px;
+	overflow: auto;
+}
+
+pre code {
+	color: var(--vscode-editor-foreground);
+	tab-size: 4;
+}
+
+/** Theming */
+
+.vscode-light pre {
+	background-color: rgba(220, 220, 220, 0.4);
+}
+
+.vscode-dark pre {
+	background-color: rgba(10, 10, 10, 0.4);
+}
+
+.vscode-high-contrast pre {
+	background-color: rgb(0, 0, 0);
+}
+
+.vscode-high-contrast h1 {
+	border-color: rgb(0, 0, 0);
+}
+
+.vscode-light table > thead > tr > th {
+	border-color: rgba(0, 0, 0, 0.69);
+}
+
+.vscode-dark table > thead > tr > th {
+	border-color: rgba(255, 255, 255, 0.69);
+}
+
+.vscode-light h1,
+.vscode-light hr,
+.vscode-light table > tbody > tr + tr > td {
+	border-color: rgba(0, 0, 0, 0.18);
+}
+
+.vscode-dark h1,
+.vscode-dark hr,
+.vscode-dark table > tbody > tr + tr > td {
+	border-color: rgba(255, 255, 255, 0.18);
+}
+
+</style>
+
+<style>
+/* Tomorrow Theme */
+/* http://jmblog.github.com/color-themes-for-google-code-highlightjs */
+/* Original theme - https://github.com/chriskempson/tomorrow-theme */
+
+/* Tomorrow Comment */
+.hljs-comment,
+.hljs-quote {
+	color: #8e908c;
+}
+
+/* Tomorrow Red */
+.hljs-variable,
+.hljs-template-variable,
+.hljs-tag,
+.hljs-name,
+.hljs-selector-id,
+.hljs-selector-class,
+.hljs-regexp,
+.hljs-deletion {
+	color: #c82829;
+}
+
+/* Tomorrow Orange */
+.hljs-number,
+.hljs-built_in,
+.hljs-builtin-name,
+.hljs-literal,
+.hljs-type,
+.hljs-params,
+.hljs-meta,
+.hljs-link {
+	color: #f5871f;
+}
+
+/* Tomorrow Yellow */
+.hljs-attribute {
+	color: #eab700;
+}
+
+/* Tomorrow Green */
+.hljs-string,
+.hljs-symbol,
+.hljs-bullet,
+.hljs-addition {
+	color: #718c00;
+}
+
+/* Tomorrow Blue */
+.hljs-title,
+.hljs-section {
+	color: #4271ae;
+}
+
+/* Tomorrow Purple */
+.hljs-keyword,
+.hljs-selector-tag {
+	color: #8959a8;
+}
+
+.hljs {
+	display: block;
+	overflow-x: auto;
+	color: #4d4d4c;
+	padding: 0.5em;
+}
+
+.hljs-emphasis {
+	font-style: italic;
+}
+
+.hljs-strong {
+	font-weight: bold;
+}
+</style>
+
+<style>
+/*
+ * Markdown PDF CSS
+ */
+
+ body {
+	font-family: -apple-system, BlinkMacSystemFont, "Segoe WPC", "Segoe UI", "Ubuntu", "Droid Sans", sans-serif, "Meiryo";
+	padding: 0 12px;
+}
+
+pre {
+	background-color: #f8f8f8;
+	border: 1px solid #cccccc;
+	border-radius: 3px;
+	overflow-x: auto;
+	white-space: pre-wrap;
+	overflow-wrap: break-word;
+}
+
+pre:not(.hljs) {
+	padding: 23px;
+	line-height: 19px;
+}
+
+blockquote {
+	background: rgba(127, 127, 127, 0.1);
+	border-color: rgba(0, 122, 204, 0.5);
+}
+
+.emoji {
+	height: 1.4em;
+}
+
+code {
+	font-size: 14px;
+	line-height: 19px;
+}
+
+/* for inline code */
+:not(pre):not(.hljs) > code {
+	color: #C9AE75; /* Change the old color so it seems less like an error */
+	font-size: inherit;
+}
+
+/* Page Break : use <div class="page"/> to insert page break
+-------------------------------------------------------- */
+.page {
+	page-break-after: always;
+}
+
+</style>
+
+<script src="https://unpkg.com/mermaid/dist/mermaid.min.js"></script>
+</head>
+<body>
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: document.body.classList.contains('vscode-dark') || document.body.classList.contains('vscode-high-contrast')
+          ? 'dark'
+          : 'default'
+    });
+  </script>
+<h1 id="alfred">Alfred</h1>
+<p><strong>Alfred</strong> is a local-first AI assistant for engineering teams. Install once, connect Slack and your stack, mirror repos, and <code>@alfred</code> answers in thread — with session memory, git investigation, PR review, JIRA, <strong>AWS (Athena + CloudWatch)</strong>, and company-specific <strong>playbooks</strong>.</p>
+<p>Config and encrypted secrets live in <code>.alfred/</code> (not a SaaS). Optional Ollama on your machine; admin UI for setup, health, and usage tracking.</p>
+<blockquote>
+<p><strong>Status:</strong> Alpha — Slack ingress, git mirrors, JIRA, AWS read tools, Graphify, observability, and pluggable AI (incl. Kimi) are working. Git write ops, Slack DMs, BM25 skill matching, and a unified intent router are still pending.<br>
+<strong>Tracker:</strong> <a href="docs/build-reference/building_phase_v0.md"><code>docs/build-reference/building_phase_v0.md</code></a> (last reviewed 2026-06-21)</p>
+</blockquote>
+<p><strong>Requires Python 3.10+.</strong> Local dev targets <strong>Python 3.13</strong> (see <code>.python-version</code>).</p>
+<hr>
+<h2 id="table-of-contents">Table of contents</h2>
+<ul>
+<li><a href="#capabilities">Capabilities</a></li>
+<li><a href="#not-built-yet">Not built yet</a></li>
+<li><a href="#quick-start">Quick start</a></li>
+<li><a href="#setup-guide">Setup guide</a></li>
+<li><a href="#aws-integration">AWS integration</a></li>
+<li><a href="#slack-app">Slack app</a></li>
+<li><a href="#cli-reference">CLI reference</a></li>
+<li><a href="#configuration">Configuration</a></li>
+<li><a href="#project-structure">Project structure</a></li>
+<li><a href="#architecture">Architecture</a></li>
+<li><a href="#skills-vs-playbooks">Skills vs playbooks</a></li>
+<li><a href="#example-interactions">Example interactions</a></li>
+<li><a href="#deploy-on-aws-hosting-alfred">Deploy on AWS</a></li>
+<li><a href="#development">Development</a></li>
+<li><a href="#documentation">Documentation</a></li>
+</ul>
+<hr>
+<h2 id="capabilities">Capabilities</h2>
+<table>
+<thead>
+<tr>
+<th>Area</th>
+<th>What works</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>Slack <code>@alfred</code></strong></td>
+<td>Socket Mode in <strong>channels</strong> only (not app DM window). Thinking status + custom emoji lines.</td>
+</tr>
+<tr>
+<td><strong>Session memory</strong></td>
+<td>SQLite per <code>(channel, thread)</code> — follow-ups, active PR, last git action.</td>
+</tr>
+<tr>
+<td><strong>Slack context</strong></td>
+<td>Channel + thread history (~30 days), reaction display names, Slack Lists parsing.</td>
+</tr>
+<tr>
+<td><strong>Git investigation</strong></td>
+<td>Mirror repos; <code>grep_repo</code>, <code>read_file</code>, <code>git_log</code>, <code>git_blame</code>, <code>git_show</code>.</td>
+</tr>
+<tr>
+<td><strong>PR review</strong></td>
+<td>Summarize/review from URL or thread; GitHub App <code>@alfred review</code> on PR comments (optional, needs public URL).</td>
+</tr>
+<tr>
+<td><strong>JIRA</strong></td>
+<td>Search, get, update, comment, create, link PRs; assignee resolution via <code>assignee_map</code>; workspace identity map.</td>
+</tr>
+<tr>
+<td><strong>AWS (read-only)</strong></td>
+<td><code>athena_query</code>, <code>cloudwatch_query</code>, <code>list_cloudwatch_log_groups</code>; domain <strong><code>grade_events_query</code></strong> via local playbooks with guardrails (LIMIT, partition windows).</td>
+</tr>
+<tr>
+<td><strong>Graphify</strong></td>
+<td>Optional code graphs on sync — <code>query_graph</code> when <code>git.graphify_enabled</code>.</td>
+</tr>
+<tr>
+<td><strong>Playbooks</strong></td>
+<td><code>.alfred/playbooks/*.md</code> — company triggers, formatting, investigation tools (local only).</td>
+</tr>
+<tr>
+<td><strong>Skills</strong></td>
+<td>Bundled <code>skills/*.md</code> — investigate, review PR, git status, JIRA, AWS, summarize alerts.</td>
+</tr>
+<tr>
+<td><strong>AI</strong></td>
+<td>Ollama, OpenAI-compat, Anthropic, Gemini, Kimi — per-task routing (<code>investigation</code>, <code>skill_matching</code>, …).</td>
+</tr>
+<tr>
+<td><strong>Admin UI</strong></td>
+<td>Chat, secrets, AI routing, integrations, repo mirrors, usage (tokens + est. cost), health.</td>
+</tr>
+<tr>
+<td><strong>CLI</strong></td>
+<td><code>exec</code>, <code>git sync</code>, <code>slack emojis</code>, <code>up</code> / <code>stop</code>, Ollama helpers.</td>
+</tr>
+</tbody>
+</table>
+<h3 id="shipped-skills-skills">Shipped skills (<code>skills/</code>)</h3>
+<table>
+<thead>
+<tr>
+<th>Skill</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>investigate_bug.md</code></td>
+<td>Code search, git read tools, PR context, Graphify</td>
+</tr>
+<tr>
+<td><code>review_pr.md</code></td>
+<td>PR diff review and summary</td>
+</tr>
+<tr>
+<td><code>git_status.md</code></td>
+<td>Open PRs, repo lists</td>
+</tr>
+<tr>
+<td><code>jira_management.md</code></td>
+<td>JIRA search/update/comment/create, identity map</td>
+</tr>
+<tr>
+<td><code>jira_ticket.md</code></td>
+<td>Link PRs to JIRA issues</td>
+</tr>
+<tr>
+<td><code>aws_query.md</code></td>
+<td>Athena + CloudWatch Logs (generic)</td>
+</tr>
+<tr>
+<td><code>summarize_bugs.md</code></td>
+<td>Operational summaries from Slack context</td>
+</tr>
+</tbody>
+</table>
+<p>Company-specific Athena tables (e.g. event dumps) → <strong><code>.alfred/playbooks/</code></strong> with <code>mode: investigation</code> and <code>allowed_tools</code>.</p>
+<hr>
+<h2 id="not-built-yet">Not built yet</h2>
+<table>
+<thead>
+<tr>
+<th>Item</th>
+<th>Target</th>
+<th>Notes</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Intent router, thread relevancy, skill matcher</td>
+<td><strong>v0.1</strong></td>
+<td>Upgrade from keywords + direct paths</td>
+</tr>
+<tr>
+<td>HTTP enqueue queue, durable task queue, governance</td>
+<td><strong>v1</strong></td>
+<td>Confirmation UX, audit export</td>
+</tr>
+<tr>
+<td>Git write ops, ECS/S3 tools</td>
+<td><strong>v2</strong></td>
+<td></td>
+</tr>
+<tr>
+<td>Slack app DMs</td>
+<td><strong>Won't do</strong></td>
+<td>Use <code>@alfred</code> in channels</td>
+</tr>
+</tbody>
+</table>
+<p>Details: <a href="docs/build-reference/building_phase_v0.md"><code>building_phase_v0.md</code></a></p>
+<hr>
+<h2 id="quick-start">Quick start</h2>
+<pre class="hljs"><code><div>git <span class="hljs-built_in">clone</span> &lt;repo-url&gt; alfred &amp;&amp; <span class="hljs-built_in">cd</span> alfred
+chmod +x scripts/*.sh
+./scripts/setup.sh          <span class="hljs-comment"># venv, alfred init, example playbook</span>
+./scripts/up.sh             <span class="hljs-comment"># API + Slack listener + Vite UI</span>
+</div></code></pre>
+<table>
+<thead>
+<tr>
+<th>Service</th>
+<th>URL</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Admin UI (dev)</td>
+<td>http://127.0.0.1:5173</td>
+</tr>
+<tr>
+<td>API + bundled UI</td>
+<td>http://127.0.0.1:8080</td>
+</tr>
+<tr>
+<td>Health</td>
+<td>http://127.0.0.1:8080/api/health</td>
+</tr>
+</tbody>
+</table>
+<pre class="hljs"><code><div>alfred token      <span class="hljs-comment"># view admin username, password, and token for login</span>
+alfred status     <span class="hljs-comment"># init + Slack readiness</span>
+</div></code></pre>
+<p>Then complete <a href="#setup-guide">Setup guide</a> for Slack, AI, Git, and optional AWS/JIRA.</p>
+<hr>
+<h2 id="setup-guide">Setup guide</h2>
+<h3 id="prerequisites">Prerequisites</h3>
+<ul>
+<li>Python <strong>3.13</strong> (local) or Docker (production)</li>
+<li>Slack workspace admin (create app)</li>
+<li>AI provider API key (Kimi, Anthropic, OpenAI, or local Ollama)</li>
+<li>GitHub/GitLab token with repo read access</li>
+<li>Optional: JIRA Cloud, AWS IAM profile or keys for Athena/CloudWatch</li>
+</ul>
+<h3 id="1--install">1 — Install</h3>
+<p><strong>Local:</strong></p>
+<pre class="hljs"><code><div>./scripts/setup.sh
+</div></code></pre>
+<p><strong>Docker:</strong></p>
+<pre class="hljs"><code><div>docker compose up --build -d
+docker compose logs alfred | grep -i token   <span class="hljs-comment"># admin token on first boot</span>
+</div></code></pre>
+<h3 id="2--admin-ui">2 — Admin UI</h3>
+<p>Open http://127.0.0.1:5173 (dev) or http://127.0.0.1:8080 (serve). Log in using your admin username and password (run <code>alfred token</code> to retrieve them).</p>
+<h3 id="3--secrets-admin-%E2%86%92-secrets">3 — Secrets (Admin → Secrets)</h3>
+<table>
+<thead>
+<tr>
+<th>Secret</th>
+<th>Used for</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Slack bot token (<code>xoxb-</code>)</td>
+<td>Post replies, read history</td>
+</tr>
+<tr>
+<td>Slack signing secret</td>
+<td>Event verification</td>
+</tr>
+<tr>
+<td>Slack app token (<code>xapp-</code>)</td>
+<td>Socket Mode</td>
+</tr>
+<tr>
+<td>AI API keys</td>
+<td>LLM calls</td>
+</tr>
+<tr>
+<td>Git token</td>
+<td>Mirrors, PR API, GitHub comment reactions</td>
+</tr>
+<tr>
+<td>JIRA API token</td>
+<td>Ticket tools</td>
+</tr>
+<tr>
+<td>AWS keys (optional)</td>
+<td>Leave blank if using server-side <code>aws.profile</code></td>
+</tr>
+<tr>
+<td>GitHub webhook secret</td>
+<td>PR comment bot</td>
+</tr>
+</tbody>
+</table>
+<p>Env fallbacks: <a href=".env.example"><code>.env.example</code></a></p>
+<h3 id="4--slack-app">4 — Slack app</h3>
+<p>See <a href="#slack-app">Slack app</a>. Then <code>/invite @alfred</code> in a channel and <code>@alfred hello</code>.</p>
+<blockquote>
+<p><strong>Note:</strong> Alfred responds to <strong><code>@alfred</code> in channels</strong>, not the app's Chat/DM tab (out of scope).</p>
+</blockquote>
+<h3 id="5--ai-admin-%E2%86%92-ai">5 — AI (Admin → AI)</h3>
+<ul>
+<li>Enable provider(s), set API keys</li>
+<li>Route <strong><code>investigation</code></strong> to a capable model (Kimi, Claude) — small Ollama models are weak at tool-calling</li>
+<li>Kimi: provider <code>kimi</code>, base <code>https://api.moonshot.ai/v1</code>, model <code>kimi-k2.6</code></li>
+</ul>
+<h3 id="6--git-admin-%E2%86%92-integrations">6 — Git (Admin → Integrations)</h3>
+<pre class="hljs"><code><div><span class="hljs-attr">git:</span>
+  <span class="hljs-attr">enabled:</span> <span class="hljs-literal">true</span>
+  <span class="hljs-attr">provider:</span> <span class="hljs-string">github</span>
+  <span class="hljs-attr">default_org:</span> <span class="hljs-string">YourOrg</span>
+  <span class="hljs-attr">main_repo:</span> <span class="hljs-string">YourOrg/your-service</span>
+  <span class="hljs-attr">graphify_enabled:</span> <span class="hljs-literal">false</span>   <span class="hljs-comment"># optional semantic graphs</span>
+</div></code></pre>
+<pre class="hljs"><code><div>alfred git sync
+</div></code></pre>
+<h3 id="7--jira-optional">7 — JIRA (optional)</h3>
+<pre class="hljs"><code><div><span class="hljs-attr">jira:</span>
+  <span class="hljs-attr">enabled:</span> <span class="hljs-literal">true</span>
+  <span class="hljs-attr">base_url:</span> <span class="hljs-string">https://yourorg.atlassian.net</span>
+  <span class="hljs-attr">email:</span> <span class="hljs-string">you@yourorg.io</span>
+  <span class="hljs-attr">default_project:</span> <span class="hljs-string">TECH</span>
+  <span class="hljs-attr">assignee_map:</span> <span class="hljs-string">{}</span>   <span class="hljs-comment"># populate via workspace identity map</span>
+</div></code></pre>
+<h3 id="8--aws-optional">8 — AWS (optional)</h3>
+<p>See <a href="#aws-integration">AWS integration</a>.</p>
+<h3 id="9--company-playbooks">9 — Company playbooks</h3>
+<pre class="hljs"><code><div>mkdir -p .alfred/playbooks
+cp docs/playbooks/example-slack-summaries.md .alfred/playbooks/my-alerts.md
+<span class="hljs-comment"># add investigation playbooks for your Athena tables, alert bots, etc.</span>
+</div></code></pre>
+<p>Never commit <code>.alfred/</code> — secrets, DB, mirrors, playbooks.</p>
+<h3 id="10--run">10 — Run</h3>
+<pre class="hljs"><code><div>./scripts/up.sh      <span class="hljs-comment"># dev: API + Slack + Vite</span>
+alfred serve         <span class="hljs-comment"># production API only</span>
+alfred stop          <span class="hljs-comment"># stop background processes</span>
+</div></code></pre>
+<p>Logs: <code>.alfred/alfred.log</code></p>
+<h3 id="verify">Verify</h3>
+<table>
+<thead>
+<tr>
+<th>Check</th>
+<th>How</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Health</td>
+<td>Admin → Health (Slack, AI, Git, JIRA, AWS)</td>
+</tr>
+<tr>
+<td>Chat</td>
+<td>Admin → Chat</td>
+</tr>
+<tr>
+<td>Slack</td>
+<td><code>@alfred what are my open PRs?</code></td>
+</tr>
+<tr>
+<td>Git</td>
+<td><code>@alfred where is X handled in org/repo?</code></td>
+</tr>
+<tr>
+<td>JIRA</td>
+<td><code>@alfred status of TECH-123</code></td>
+</tr>
+<tr>
+<td>AWS</td>
+<td><code>@alfred pull grade events for fp_id …</code> (with playbook + config)</td>
+</tr>
+<tr>
+<td>Usage</td>
+<td>Admin → Usage — tokens, est. cost, tools</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="aws-integration">AWS integration</h2>
+<p>Alfred includes <strong>read-only</strong> AWS tools via <code>pip install alfred-agent[aws]</code> (boto3).</p>
+<h3 id="tools">Tools</h3>
+<table>
+<thead>
+<tr>
+<th>Tool</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>athena_query</code></td>
+<td>Run SQL against Glue/Athena</td>
+</tr>
+<tr>
+<td><code>cloudwatch_query</code></td>
+<td>Logs Insights on a log group or mapped service</td>
+</tr>
+<tr>
+<td><code>list_cloudwatch_log_groups</code></td>
+<td>Discover log group paths</td>
+</tr>
+<tr>
+<td><code>grade_events_query</code></td>
+<td>Guardrailed queries on a configured event table (via company playbook)</td>
+</tr>
+</tbody>
+</table>
+<p>IAM errors are surfaced with needed actions — Alfred does not guess credentials.</p>
+<h3 id="config-configyaml">Config (<code>config.yaml</code>)</h3>
+<pre class="hljs"><code><div><span class="hljs-attr">aws:</span>
+  <span class="hljs-attr">enabled:</span> <span class="hljs-literal">true</span>
+  <span class="hljs-attr">profile:</span> <span class="hljs-string">your-profile</span>          <span class="hljs-comment"># server-side profile (preferred on EC2)</span>
+  <span class="hljs-attr">region:</span> <span class="hljs-string">ap-south-1</span>
+  <span class="hljs-attr">allowed_services:</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-string">cloudwatch</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-string">athena</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-string">ecs</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-string">s3</span>
+  <span class="hljs-attr">athena_database:</span> <span class="hljs-string">your_glue_db</span>
+  <span class="hljs-attr">athena_workgroup:</span> <span class="hljs-string">primary</span>
+  <span class="hljs-attr">athena_output_location:</span> <span class="hljs-string">s3://your-bucket/athena/queries/</span>
+  <span class="hljs-attr">log_group_map:</span>
+    <span class="hljs-attr">checkout-api:</span> <span class="hljs-string">/ecs/checkout-api</span>
+  <span class="hljs-attr">grade_events_table:</span> <span class="hljs-string">grade_events</span>
+  <span class="hljs-attr">grade_events_s3_location:</span> <span class="hljs-string">s3://your-data-bucket/path/</span>   <span class="hljs-comment"># documentation / validation</span>
+</div></code></pre>
+<p><strong>Secrets:</strong> optional <code>aws_access_key_id</code> / <code>aws_secret_access_key</code> in Admin → Secrets. Profile takes precedence when configured on the host.</p>
+<h3 id="domain-event-tables-playbooks">Domain event tables (playbooks)</h3>
+<p>Generic AWS querying is in <code>skills/aws_query.md</code>. <strong>Company-specific tables</strong> (partition columns, filter semantics, response format) belong in <strong><code>.alfred/playbooks/</code></strong>:</p>
+<pre class="hljs"><code><div><span class="hljs-meta">---</span>
+<span class="hljs-attr">name:</span> <span class="hljs-string">grade_events</span>
+<span class="hljs-attr">mode:</span> <span class="hljs-string">investigation</span>
+<span class="hljs-attr">triggers:</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-string">grade</span> <span class="hljs-string">events</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-string">checkout</span> <span class="hljs-string">events</span>
+<span class="hljs-attr">allowed_tools:</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-string">grade_events_query</span>
+<span class="hljs-meta">---</span>
+</div></code></pre>
+<p>Document database, table, S3 path, partition keys (<code>date</code>, <code>hour</code>), and which IDs to filter on (<code>fp_id</code>, <code>session_id</code>, <code>merchant_id</code>).</p>
+<h3 id="health-check">Health check</h3>
+<p>Admin → Health → <strong>AWS</strong> runs STS <code>GetCallerIdentity</code> when enabled.</p>
+<hr>
+<h2 id="slack-app">Slack app</h2>
+<p>Configure at <a href="https://api.slack.com/apps">api.slack.com/apps</a>:</p>
+<ol>
+<li>Enable <strong>Socket Mode</strong> → App-Level Token with <code>connections:write</code></li>
+<li><strong>Bot Token Scopes:</strong><br>
+<code>app_mentions:read</code>, <code>channels:history</code>, <code>channels:read</code>, <code>chat:write</code>, <code>files:write</code>, <code>groups:history</code>, <code>groups:read</code>, <code>lists:read</code>, <code>users:read</code>, <strong><code>users:read.email</code></strong>, <code>assistant:write</code><br>
+Optional: <strong><code>emoji:read</code></strong> (for <code>alfred slack emojis</code>)</li>
+<li>Enable <strong>Agents &amp; AI Apps</strong> for native thinking status</li>
+<li><strong>Event Subscriptions</strong> → <code>app_mention</code></li>
+<li>Install to workspace → paste tokens in Admin → Secrets</li>
+</ol>
+<p><strong>Custom thinking status</strong> — add workspace emoji lines in config:</p>
+<pre class="hljs"><code><div><span class="hljs-attr">slack:</span>
+  <span class="hljs-attr">loading_messages:</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-string">":this_is_fine: Everything is fine. Checking prod…"</span>
+    <span class="hljs-bullet">-</span> <span class="hljs-string">":typingcat: Typing furiously…"</span>
+</div></code></pre>
+<p>List shortcodes: <code>alfred slack emojis</code> (requires <code>emoji:read</code> scope). Custom + built-in lines are mixed randomly (10 per request).</p>
+<p><strong>App Home Chat tab:</strong> enable Messages tab in App Home if you want the input unblocked — Alfred still only processes channel <code>@mentions</code> until DM support ships.</p>
+<hr>
+<h2 id="cli-reference">CLI reference</h2>
+<table>
+<thead>
+<tr>
+<th>Command</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>alfred init</code></td>
+<td>Create <code>.alfred/</code>, config, encrypted secrets. Prompts interactively for admin credentials.</td>
+</tr>
+<tr>
+<td><code>alfred init --force</code></td>
+<td>Re-initialize (allows updating admin credentials)</td>
+</tr>
+<tr>
+<td><code>alfred serve</code></td>
+<td>API + admin UI + Slack listener</td>
+</tr>
+<tr>
+<td><code>alfred serve --reload</code></td>
+<td>Dev auto-reload</td>
+</tr>
+<tr>
+<td><code>alfred up</code></td>
+<td>Background: API + Slack (+ Vite UI, + Ollama if default)</td>
+</tr>
+<tr>
+<td><code>alfred stop</code> / <code>alfred down</code></td>
+<td>Stop background processes</td>
+</tr>
+<tr>
+<td><code>alfred status</code></td>
+<td>Data dir, init state, Slack readiness</td>
+</tr>
+<tr>
+<td><code>alfred token</code></td>
+<td>Print admin username, password, and token</td>
+</tr>
+<tr>
+<td><code>alfred exec &quot;…&quot;</code></td>
+<td>Run locally (no Slack post)</td>
+</tr>
+<tr>
+<td><code>alfred git sync</code></td>
+<td>Clone/update shared mirrors</td>
+</tr>
+<tr>
+<td><code>alfred git workspaces</code></td>
+<td>List session workspaces</td>
+</tr>
+<tr>
+<td><code>alfred git cleanup</code></td>
+<td>Remove expired workspaces</td>
+</tr>
+<tr>
+<td><code>alfred context generate</code></td>
+<td>Regenerate main-repo markdown context</td>
+</tr>
+<tr>
+<td><code>alfred slack emojis</code></td>
+<td>List workspace emoji shortcodes (<code>-q</code>, <code>--yaml</code>)</td>
+</tr>
+<tr>
+<td><code>alfred ollama status</code></td>
+<td>Ollama install/runtime</td>
+</tr>
+<tr>
+<td><code>alfred ollama setup</code></td>
+<td>Install, start, pull default model</td>
+</tr>
+<tr>
+<td><code>alfred ollama pull --model …</code></td>
+<td>Pull a model</td>
+</tr>
+<tr>
+<td><code>alfred ollama stop</code></td>
+<td>Stop Ollama</td>
+</tr>
+</tbody>
+</table>
+<p>Global: <code>--data-dir PATH</code> (default: <code>ALFRED_DATA_DIR</code> or <code>./.alfred</code>)</p>
+<hr>
+<h2 id="configuration">Configuration</h2>
+<h3 id="alfred-layout"><code>.alfred/</code> layout</h3>
+<table>
+<thead>
+<tr>
+<th>Path</th>
+<th>Purpose</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code>config.yaml</code></td>
+<td>Non-secret settings</td>
+</tr>
+<tr>
+<td><code>secrets.enc</code></td>
+<td>Encrypted tokens</td>
+</tr>
+<tr>
+<td><code>.key</code></td>
+<td>Local encryption key</td>
+</tr>
+<tr>
+<td><code>alfred.db</code></td>
+<td>Sessions + observability (SQLite)</td>
+</tr>
+<tr>
+<td><code>alfred.log</code></td>
+<td>Runtime logs</td>
+</tr>
+<tr>
+<td><code>playbooks/</code></td>
+<td><strong>Your</strong> domain playbooks (gitignored)</td>
+</tr>
+<tr>
+<td><code>repos/shared/</code></td>
+<td>Git mirror cache</td>
+</tr>
+<tr>
+<td><code>repos/workspaces/</code></td>
+<td>Per-conversation workspaces</td>
+</tr>
+<tr>
+<td><code>cache/playbook_urls/</code></td>
+<td>Fetched live URL cache</td>
+</tr>
+</tbody>
+</table>
+<h3 id="example-routing-snippet">Example routing snippet</h3>
+<pre class="hljs"><code><div><span class="hljs-attr">ai:</span>
+  <span class="hljs-attr">default_provider:</span> <span class="hljs-string">kimi</span>
+  <span class="hljs-attr">routing:</span>
+    <span class="hljs-attr">skill_matching:</span> <span class="hljs-string">kimi</span>
+    <span class="hljs-attr">investigation:</span> <span class="hljs-string">kimi</span>
+<span class="hljs-attr">git:</span>
+  <span class="hljs-attr">enabled:</span> <span class="hljs-literal">true</span>
+  <span class="hljs-attr">default_org:</span> <span class="hljs-string">YourOrg</span>
+  <span class="hljs-attr">main_repo:</span> <span class="hljs-string">YourOrg/backend</span>
+<span class="hljs-attr">jira:</span>
+  <span class="hljs-attr">enabled:</span> <span class="hljs-literal">true</span>
+  <span class="hljs-attr">base_url:</span> <span class="hljs-string">https://yourorg.atlassian.net</span>
+  <span class="hljs-attr">default_project:</span> <span class="hljs-string">TECH</span>
+<span class="hljs-attr">observability:</span>
+  <span class="hljs-attr">user_labels:</span> <span class="hljs-string">{}</span>
+  <span class="hljs-attr">model_pricing:</span> <span class="hljs-string">{}</span>
+</div></code></pre>
+<p>Environment: <a href=".env.example"><code>.env.example</code></a> — <code>ALFRED_DATA_DIR</code>, <code>ALFRED_HOST</code>, <code>ALFRED_PORT</code>.</p>
+<h3 id="security--authentication">Security &amp; Authentication</h3>
+<p>To protect the admin UI and the API, Alfred enforces authentication across all API endpoints.</p>
+<h4 id="1-credentials-configuration">1. Credentials Configuration</h4>
+<ul>
+<li><strong>Interactive Initialization</strong>: Running <code>alfred init</code> will prompt you for an admin username and password. If you leave the password blank, a secure password is auto-generated.</li>
+<li><strong>Non-Interactive / CI</strong>: Use <code>alfred init --non-interactive</code> to automatically generate random secure credentials.</li>
+<li><strong>Custom Credentials</strong>: You can specify custom credentials using <code>alfred init --username &lt;username&gt; --password &lt;password&gt;</code>.</li>
+<li><strong>Legacy Backfilling</strong>: Starting an existing Alfred deployment without credentials automatically generates a secure admin username, password, and token, saving them in the encrypted secrets store.</li>
+</ul>
+<h4 id="2-authenticating-api-calls">2. Authenticating API Calls</h4>
+<p>External integrations, CLI commands, or scripts talking to the Alfred API can authenticate in three ways:</p>
+<ul>
+<li><strong>HTTP Basic Auth</strong>: Pass standard Basic Authentication using the admin username and password.</li>
+<li><strong>HTTP Bearer Auth</strong>: Pass the admin token in the Authorization header (<code>Authorization: Bearer &lt;token&gt;</code>).</li>
+<li><strong>Custom Header</strong>: Pass the admin token in the <code>X-Alfred-Token</code> header.</li>
+</ul>
+<h4 id="3-retrieving-credentials">3. Retrieving Credentials</h4>
+<p>To print your current admin username, password, and API token at any time, run:</p>
+<pre class="hljs"><code><div>alfred token
+</div></code></pre>
+<h3 id="optional--github-pr-comment-bot">Optional — GitHub PR comment bot</h3>
+<p>Requires a <strong>public HTTPS URL</strong> on your company subdomain (e.g. <code>alfred.flexype.dev</code> via Cloudflare tunnel or ALB). Configure GitHub App webhook → <code>/api/v1/github/webhook</code>, subscribe to <code>Issue comment</code>, install on org repos. Admin → Integrations → GitHub App + Secrets. Comment <code>@alfred review</code> on a PR.</p>
+<h3 id="optional--public-url-cloudflare-tunnel">Optional — Public URL (Cloudflare Tunnel)</h3>
+<p>Only needed for GitHub webhooks or remote Admin UI — <strong>not</strong> for Slack (Socket Mode). Use <code>./scripts/tunnel.sh</code> after <code>cloudflared tunnel</code> setup. Local dev works with <code>./scripts/up.sh</code> alone.</p>
+<hr>
+<h2 id="project-structure">Project structure</h2>
+<pre class="hljs"><code><div>alfred/
+├── backend/
+│   ├── agent/                 # ReAct loop
+│   ├── ai/                    # LLM adapters, routing, instrumentation
+│   ├── api/                   # FastAPI routes (health, chat, config, …)
+│   ├── aws/                   # Session, Athena, CloudWatch, grade_events guardrails
+│   ├── context/               # Repo context generator, Graphify
+│   ├── git/                   # Mirrors, sandbox, GitHub/GitLab API
+│   ├── github/                # GitHub App webhook handler
+│   ├── ingress/               # Processor, playbooks, Slack/JIRA/git context, render
+│   ├── jira/                  # JIRA Cloud REST client
+│   ├── observability/         # Usage, pricing, tool events
+│   ├── slack/                 # Socket Mode listener, status, emojis, files
+│   ├── storage/               # SQLite sessions, Slack user cache
+│   ├── tools/                 # Registry — git, jira, aws, graphify
+│   ├── ollama/                # Local Ollama service helpers
+│   ├── runtime/               # Process supervisor (up/stop)
+│   ├── models/                # Pydantic config, task, response, session
+│   ├── cli.py
+│   ├── config_manager.py
+│   └── health.py
+├── frontend/                  # React admin UI (Vite)
+├── skills/                    # Generic skills (committed)
+├── docs/
+│   ├── playbooks/             # Example playbooks + README
+│   └── build-reference/       # Architecture + implementation tracker
+├── tests/
+├── scripts/                   # setup.sh, up.sh, dev.sh, tunnel.sh
+├── Dockerfile
+├── docker-compose.yml
+└── pyproject.toml
+</div></code></pre>
+<p>Runtime data (not in git): <strong><code>.alfred/</code></strong> at repo root or <code>ALFRED_DATA_DIR</code>.</p>
+<hr>
+<h2 id="architecture">Architecture</h2>
+<pre><code class="language-mermaid"><div class="mermaid">flowchart LR
+    subgraph ingress [Ingress]
+        Slack[Slack Socket Mode]
+        CLI[alfred exec]
+        GH[GitHub App webhook]
+    end
+
+    subgraph core [Core]
+        Proc[TaskProcessor]
+        PB[Playbooks]
+        SK[Skills]
+        SESS[Sessions]
+    end
+
+    subgraph exec [Execution]
+        Direct[Direct routes]
+        Agent[ReAct loop]
+        Tools[Tools]
+    end
+
+    subgraph data [Data sources]
+        Git[Repo mirrors]
+        JIRA[JIRA Cloud]
+        AWS[Athena + CloudWatch]
+        GF[Graphify]
+    end
+
+    Slack --> Proc
+    CLI --> Proc
+    GH --> Proc
+    Proc --> PB & SK & SESS
+    Proc --> Direct & Agent
+    Agent --> Tools
+    Tools --> Git & JIRA & AWS & GF
+    Proc --> AI[LLM router + observability]
+</div></code></pre>
+<p>Principles: <strong>local-first</strong>, <strong>generic core + local playbooks</strong>, <strong>pluggable AI</strong>, <strong>read-only AWS/git by default</strong>.</p>
+<p>Full design: <a href="docs/build-reference/v0.md"><code>docs/build-reference/v0.md</code></a></p>
+<hr>
+<h2 id="skills-vs-playbooks">Skills vs playbooks</h2>
+<table>
+<thead>
+<tr>
+<th></th>
+<th><strong>Skills</strong> (<code>skills/</code>)</th>
+<th><strong>Playbooks</strong> (<code>.alfred/playbooks/</code>)</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Purpose</td>
+<td>Generic investigation, review, JIRA, AWS</td>
+<td>Company rules — alerts, tables, event dumps</td>
+</tr>
+<tr>
+<td>Shipped with Alfred</td>
+<td>Yes</td>
+<td>No — you create locally</td>
+</tr>
+<tr>
+<td>Commit to git?</td>
+<td><strong>Yes</strong></td>
+<td><strong>No</strong></td>
+</tr>
+<tr>
+<td>Example</td>
+<td><code>skills/aws_query.md</code></td>
+<td><code>my-alerts.md</code>, <code>grade-events.md</code></td>
+</tr>
+</tbody>
+</table>
+<p>Format: <a href="docs/playbooks/README.md"><code>docs/playbooks/README.md</code></a></p>
+<hr>
+<h2 id="example-interactions">Example interactions</h2>
+<p><strong>Slack (channels):</strong></p>
+<pre class="hljs"><code><div>@alfred what are my open PRs?
+@alfred review https://github.com/YourOrg/backend/pull/42
+@alfred where is duplicate order handled in backend?
+@alfred list my open TECH tickets
+@alfred status of TECH-123
+@alfred pull grade events for fp_id 019ee783-2bf1-76ab-a65d-f6f18a9272e7
+@alfred query cloudwatch logs for checkout-api errors in the last hour
+@alfred map all slack users to jira and github
+</div></code></pre>
+<p><strong>CLI:</strong></p>
+<pre class="hljs"><code><div>alfred <span class="hljs-built_in">exec</span> <span class="hljs-string">"list open PRs on YourOrg/backend"</span>
+alfred git sync
+alfred slack emojis --yaml
+alfred slack emojis -q cat
+</div></code></pre>
+<hr>
+<h2 id="deploy-on-aws-hosting-alfred">Deploy on AWS (hosting Alfred)</h2>
+<p>Alfred uses <strong>Slack Socket Mode</strong> (outbound WebSocket) — no public URL required for Slack. Outbound HTTPS to Slack, AI APIs, GitHub, and AWS is required.</p>
+<h3 id="ec2">EC2</h3>
+<ul>
+<li>Instance with 30+ GB EBS if mirroring many repos</li>
+<li>Security group: restrict <code>:8080</code> for Admin UI; allow outbound HTTPS</li>
+<li><code>ALFRED_DATA_DIR=/data/.alfred</code> on persistent volume</li>
+<li>Docker or <code>alfred serve</code> with systemd / compose <code>restart: unless-stopped</code></li>
+<li>Optional: attach IAM role for AWS tools instead of static keys</li>
+</ul>
+<h3 id="ecs-fargate">ECS (Fargate)</h3>
+<ul>
+<li>ECR image from <code>Dockerfile</code></li>
+<li>EFS mount at <code>/data/.alfred</code> for secrets, DB, mirrors, playbooks</li>
+<li>Private subnet + NAT for outbound</li>
+<li>Optional ALB for Admin UI; not required for Slack</li>
+<li>Health: <code>GET /api/health</code></li>
+</ul>
+<h3 id="docker-compose-any-host">Docker Compose (any host)</h3>
+<pre class="hljs"><code><div>docker compose up --build -d
+</div></code></pre>
+<p>Port <code>8080</code>, volume <code>alfred_data</code> → <code>/data/.alfred</code>.</p>
+<hr>
+<h2 id="development">Development</h2>
+<pre class="hljs"><code><div><span class="hljs-built_in">source</span> .venv/bin/activate
+pip install -e <span class="hljs-string">".[ai,dev,aws,slack]"</span>
+uv run pytest tests/ -q
+ruff check backend tests
+<span class="hljs-built_in">cd</span> frontend &amp;&amp; npm run dev
+</div></code></pre>
+<p>Release wheel: <code>./scripts/build-release.sh</code></p>
+<hr>
+<h2 id="documentation">Documentation</h2>
+<table>
+<thead>
+<tr>
+<th>Document</th>
+<th>Description</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><a href="docs/README.md"><code>docs/README.md</code></a></td>
+<td>Docs index</td>
+</tr>
+<tr>
+<td><a href="docs/build-reference/building_phase_v0.md"><code>docs/build-reference/building_phase_v0.md</code></a></td>
+<td><strong>Implementation status &amp; gaps</strong></td>
+</tr>
+<tr>
+<td><a href="docs/build-reference/v0.md"><code>docs/build-reference/v0.md</code></a></td>
+<td>Layer architecture</td>
+</tr>
+<tr>
+<td><a href="docs/build-reference/idea.md"><code>docs/build-reference/idea.md</code></a></td>
+<td>Original blueprint</td>
+</tr>
+<tr>
+<td><a href="docs/playbooks/README.md"><code>docs/playbooks/README.md</code></a></td>
+<td>Playbook format</td>
+</tr>
+</tbody>
+</table>
+<hr>
+<h2 id="roadmap">Roadmap</h2>
+<table>
+<thead>
+<tr>
+<th>Target</th>
+<th>Focus</th>
+<th>Status</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>v0</strong></td>
+<td>Slack channels, git/JIRA/AWS read, GitHub PR bot, admin UI</td>
+<td>Mostly done</td>
+</tr>
+<tr>
+<td><strong>v0.1</strong></td>
+<td>Intent router, thread relevancy, skill matcher</td>
+<td>Next</td>
+</tr>
+<tr>
+<td><strong>v1</strong></td>
+<td>Task queue, HTTP enqueue, governance</td>
+<td>Planned</td>
+</tr>
+<tr>
+<td><strong>v2</strong></td>
+<td>Git writes, ECS/S3 tools</td>
+<td>Planned</td>
+</tr>
+<tr>
+<td>—</td>
+<td>Slack DMs</td>
+<td><strong>Won't do</strong></td>
+</tr>
+</tbody>
+</table>
+<p>Full tracker: <a href="docs/build-reference/building_phase_v0.md"><code>building_phase_v0.md</code></a></p>
+<hr>
+<h2 id="license">License</h2>
+<p>MIT — see <a href="LICENSE">LICENSE</a>.</p>
+
+</body>
+</html>

@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Request
+from fastapi import APIRouter, Depends, Request
 
 from backend.__version__ import __version__
+from backend.api.deps import require_admin
 from backend.health import run_all_checks
 
 router = APIRouter(tags=["health"])
@@ -25,7 +26,10 @@ def health(request: Request) -> dict:
 
 
 @router.get("/health/checks")
-def health_checks(request: Request) -> dict:
+def health_checks(
+    request: Request,
+    _manager=Depends(require_admin),
+) -> dict:
     manager = request.app.state.config_manager
     config, _ = manager.load_merged()
     checks = run_all_checks(config, data_dir=manager.data_dir)

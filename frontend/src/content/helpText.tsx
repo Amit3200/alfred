@@ -83,6 +83,25 @@ export const SECRETS_HELP: Record<string, HelpGuide> = {
       { label: "JIRA REST API", href: "https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/" },
     ],
   },
+  google: {
+    title: "Google Workspace",
+    summary:
+      "OAuth client JSON (or service account key) for Google Sheets and Docs. OAuth clients need a one-time Connect Google flow in Integrations.",
+    steps: [
+      "Google Cloud Console → APIs & Services → Enable Google Sheets API and Google Docs API.",
+      "Credentials → Create OAuth client ID (Web application) or service account key.",
+      "For OAuth: add authorized redirect URI shown in Integrations → Google (…/api/config/google/oauth/callback).",
+      "Download JSON and paste here or use Upload — encrypted at rest, never written to config.yaml.",
+      "OAuth only: save secrets, then Integrations → Google → Connect Google and sign in once.",
+      "Share spreadsheets/docs with the Google account (OAuth) or service account email.",
+      "Requires: pip install 'alfred-agent[google]'.",
+    ],
+    links: [
+      { label: "Google Cloud Console", href: "https://console.cloud.google.com/apis/credentials" },
+      { label: "Sheets API", href: "https://developers.google.com/sheets/api" },
+      { label: "Docs API", href: "https://developers.google.com/docs/api" },
+    ],
+  },
 };
 
 export const AI_KEY_HELP: Record<string, HelpGuide> = {

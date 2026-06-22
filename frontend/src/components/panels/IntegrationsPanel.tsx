@@ -2,8 +2,9 @@ import { ReloadOutlined, PlusOutlined, DeleteOutlined, ApiOutlined, CheckCircleO
 import { Button, Col, Flex, Input, Row, Select, Switch, Typography, Modal } from "antd";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, type AlfredConfig } from "../../api/client";
+import { api, type AlfredConfig, type GoogleOAuthStatus } from "../../api/client";
 import { useApp } from "../../context/AppContext";
+import { JsonCredentialField } from "../ui/JsonCredentialField";
 
 interface CustomIntegration {
   id: string;
@@ -99,6 +100,15 @@ function getLogo(name: string) {
       />
     );
   }
+  if (n === "google") {
+    return (
+      <img
+        src="https://cdn.jsdelivr.net/gh/devicons/devicon@latest/icons/google/google-original.svg"
+        alt="Google"
+        style={{ width: 36, height: 36 }}
+      />
+    );
+  }
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 34, height: 34, color: "var(--alfred-accent)" }}>
       <path d="M12 2v8M18 12H6v2a6 6 0 0 0 12 0v-2ZM12 14v6M16 2v2M8 2v2"/>
@@ -107,7 +117,8 @@ function getLogo(name: string) {
 }
 
 export function IntegrationsPanel() {
-  const { config, updateConfig, saveConfig, testIntegration, notify } = useApp();
+  const { config, updateConfig, saveConfig, testIntegration, notify, secrets, setSecrets, saveSecrets } =
+    useApp();
   const [availableRepos, setAvailableRepos] = useState<string[]>([]);
   const [reposSource, setReposSource] = useState<string>("configured");
   const [reposOrg, setReposOrg] = useState<string | null>(null);
@@ -134,6 +145,9 @@ export function IntegrationsPanel() {
   const [customDescription, setCustomDescription] = useState("");
   const [testingCustom, setTestingCustom] = useState(false);
   const [selectedCustomId, setSelectedCustomId] = useState<string | null>(null);
+  const [googleOAuth, setGoogleOAuth] = useState<GoogleOAuthStatus | null>(null);
+  const [connectingGoogle, setConnectingGoogle] = useState(false);
+  const [savingGoogleCredentials, setSavingGoogleCredentials] = useState(false);
 
   const loadAvailableRepos = useCallback(async () => {
     if (!config?.git.enabled) {
@@ -159,6 +173,48 @@ export function IntegrationsPanel() {
   useEffect(() => {
     void loadAvailableRepos();
   }, [loadAvailableRepos, config?.git.default_org, config?.git.provider]);
+
+  const loadGoogleOAuthStatus = useCallback(async () => {
+    try {
+      setGoogleOAuth(await api.getGoogleOAuthStatus());
+    } catch {
+      setGoogleOAuth(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeModal === "google") {
+      void loadGoogleOAuthStatus();
+    }
+  }, [activeModal, loadGoogleOAuthStatus]);
+
+  const handleConnectGoogle = async () => {
+    setConnectingGoogle(true);
+    try {
+      const result = await api.startGoogleOAuth();
+      window.open(result.authorization_url, "_blank", "noopener,noreferrer");
+      notify("info", "Complete sign-in in the Google tab, then return here and test the connection.");
+    } catch (err) {
+      notify("error", err instanceof Error ? err.message : "Failed to start Google OAuth");
+    } finally {
+      setConnectingGoogle(false);
+    }
+  };
+
+  const handleSaveGoogleCredentials = async () => {
+    const json = (secrets.google_credentials_json ?? "").trim();
+    if (!json) {
+      notify("error", "Paste or upload credentials.json first.");
+      return;
+    }
+    setSavingGoogleCredentials(true);
+    try {
+      await saveSecrets();
+      await loadGoogleOAuthStatus();
+    } finally {
+      setSavingGoogleCredentials(false);
+    }
+  };
 
   const mainRepoSelectOptions = useMemo(
     () => mainRepoOptions(availableRepos, config?.git.main_repo),
@@ -286,7 +342,8 @@ export function IntegrationsPanel() {
         Integrations
       </Typography.Title>
       <Typography.Paragraph className="alfred-page-desc" style={{ marginBottom: 24 }}>
-        Connect Slack, Git, GitHub App, JIRA, and AWS. Toggle each service to customize settings and verify connections.
+        Connect Slack, Git, GitHub App, JIRA, AWS, and Google Workspace. Toggle each service to customize
+        settings and verify connections.
       </Typography.Paragraph>
 
       <div className="alfred-integrations-grid">
@@ -363,6 +420,21 @@ export function IntegrationsPanel() {
           </div>
           <div className="alfred-integration-card-title">JIRA</div>
           <div className="alfred-integration-card-subtitle">Ticket retrieval, commenting & identity resolution</div>
+        </div>
+
+        {/* Google Workspace Card */}
+        <div className="alfred-integration-card" onClick={() => openConfigModal("google", config.google ?? { enabled: false, oauth_redirect_base_url: "" })}>
+          <div className="alfred-integration-card-status">
+            <div className={`alfred-integration-card-dot ${config.google?.enabled ? "enabled" : "disabled"}`} />
+            <span style={{ fontSize: 11, color: "var(--alfred-text-faint)" }}>
+              {config.google?.enabled ? "Active" : "Inactive"}
+            </span>
+          </div>
+          <div className="alfred-integration-card-logo">
+            {getLogo("google")}
+          </div>
+          <div className="alfred-integration-card-title">Google Workspace</div>
+          <div className="alfred-integration-card-subtitle">Google Sheets read/write & Docs read/create</div>
         </div>
 
         {/* Custom Integration Cards */}
@@ -841,6 +913,107 @@ export function IntegrationsPanel() {
                   })
                 }
               />
+            </Col>
+          </Row>
+        </div>
+      </Modal>
+
+      {/* Google Workspace Modal */}
+      <Modal
+        title="Google Workspace Configuration"
+        open={activeModal === "google"}
+        width={620}
+        onCancel={() => handleCancelStandard("google")}
+        footer={[
+          <Button
+            key="creds"
+            loading={savingGoogleCredentials}
+            disabled={!(secrets.google_credentials_json ?? "").trim()}
+            onClick={() => void handleSaveGoogleCredentials()}
+          >
+            Save credentials
+          </Button>,
+          <Button key="test" onClick={() => testIntegration("google")}>
+            Test connection
+          </Button>,
+          <Button key="cancel" onClick={() => handleCancelStandard("google")}>
+            Cancel
+          </Button>,
+          <Button key="save" type="primary" onClick={handleSaveStandard}>
+            Save changes
+          </Button>,
+        ]}
+      >
+        <div style={{ padding: "12px 0" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+            <Typography.Text>Enable Google Sheets & Docs tools</Typography.Text>
+            <Switch
+              checked={config.google?.enabled ?? false}
+              onChange={(v) =>
+                updateConfig({
+                  google: {
+                    enabled: v,
+                    oauth_redirect_base_url: config.google?.oauth_redirect_base_url ?? "",
+                  },
+                })
+              }
+            />
+          </div>
+          <Row gutter={[16, 16]}>
+            <Col span={24}>
+              <JsonCredentialField
+                label="Google OAuth client or service account JSON"
+                configured={config._secrets_configured?.google_credentials_json}
+                credentialType={config._secrets_configured?.google_credentials_type}
+                oauthConnected={config._secrets_configured?.google_oauth_connected}
+                value={secrets.google_credentials_json ?? ""}
+                onChange={(v) => setSecrets((s) => ({ ...s, google_credentials_json: v }))}
+                hint="Download from GCP → APIs & Services → Credentials. OAuth clients need Connect Google after save."
+              />
+            </Col>
+            <Col span={24}>
+              <label className="alfred-field-label">Public Alfred URL (OAuth redirect base)</label>
+              <Input
+                placeholder="https://alfred.flexype.dev"
+                value={config.google?.oauth_redirect_base_url ?? ""}
+                onChange={(e) =>
+                  updateConfig({
+                    google: {
+                      enabled: config.google?.enabled ?? false,
+                      oauth_redirect_base_url: e.target.value,
+                    },
+                  })
+                }
+              />
+              <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 6, marginBottom: 0 }}>
+                Add this redirect URI in Google Cloud Console (OAuth client → Authorized redirect URIs):
+                <br />
+                <Typography.Text code copyable>
+                  {(googleOAuth?.redirect_uri || "{base}/api/config/google/oauth/callback").replace(
+                    "{base}",
+                    (config.google?.oauth_redirect_base_url || "https://your-alfred-host").replace(/\/$/, ""),
+                  )}
+                </Typography.Text>
+              </Typography.Paragraph>
+            </Col>
+            <Col span={24}>
+              {googleOAuth?.credentials_type === "oauth_client" && (
+                <Flex gap={12} align="center" wrap="wrap">
+                  <Button loading={connectingGoogle} onClick={() => void handleConnectGoogle()}>
+                    Connect Google
+                  </Button>
+                  <Typography.Text type={googleOAuth.oauth_connected ? "success" : "secondary"}>
+                    {googleOAuth.oauth_connected
+                      ? "OAuth connected"
+                      : "Sign in once to store a refresh token"}
+                  </Typography.Text>
+                </Flex>
+              )}
+              {googleOAuth && !googleOAuth.google_libs_installed && (
+                <Typography.Paragraph type="warning" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>
+                  Install Python extras on the server: pip install &apos;alfred-agent[google]&apos;
+                </Typography.Paragraph>
+              )}
             </Col>
           </Row>
         </div>

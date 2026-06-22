@@ -13,7 +13,7 @@ import zipfile
 from backend.api.deps import get_manager, require_admin, restart_slack_listener
 from backend.ai.registry import LLMRouter
 from backend.config_manager import ConfigManager
-from backend.health import check_ai, check_aws, check_git, check_jira, check_slack
+from backend.health import check_ai, check_aws, check_git, check_google, check_jira, check_slack
 from backend.models.config import AlfredConfig, AlfredSecrets
 
 router = APIRouter(prefix="/config", tags=["config"])
@@ -59,6 +59,8 @@ def update_secrets(
         "aws_access_key_id",
         "aws_secret_access_key",
         "jira_api_token",
+        "google_credentials_json",
+        "google_oauth_refresh_token",
         "server_admin_token",
         "server_admin_username",
         "server_admin_password",
@@ -110,6 +112,7 @@ def test_integration(
         "git": check_git,
         "aws": check_aws,
         "jira": check_jira,
+        "google": check_google,
     }
     if name not in checks:
         raise HTTPException(status_code=404, detail=f"Unknown integration: {name}")

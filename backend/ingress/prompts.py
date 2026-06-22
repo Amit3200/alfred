@@ -61,6 +61,13 @@ ALFRED_SYSTEM_PROMPT = f"""{ALFRED_IDENTITY}
 {SLACK_FORMAT_RULES}
 """
 
+GITHUB_COMMENT_RULES = """\
+## GitHub PR comment format
+
+- Write GitHub-flavored Markdown (GFM): `**bold**`, `#` headings, and pipe tables are OK.
+- Do not dump raw file contents — summarize and cite paths with backticks.
+- Keep code snippets short; use fenced blocks with a language tag when needed."""
+
 
 def build_slack_user_message(
     task_intent: str,

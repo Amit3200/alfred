@@ -164,6 +164,8 @@ class ConfigManager:
         config.aws.access_key_id = secrets_obj.aws_access_key_id
         config.aws.secret_access_key = secrets_obj.aws_secret_access_key
         config.jira.api_token = secrets_obj.jira_api_token
+        config.google.credentials_json = secrets_obj.google_credentials_json
+        config.google.oauth_refresh_token = secrets_obj.google_oauth_refresh_token
         for name, provider in config.ai.providers.items():
             if key := secrets_obj.ai_api_keys.get(name):
                 provider.api_key = key
@@ -197,6 +199,10 @@ class ConfigManager:
             secrets_obj.aws_secret_access_key = config.aws.secret_access_key
         if config.jira.api_token:
             secrets_obj.jira_api_token = config.jira.api_token
+        if config.google.credentials_json:
+            secrets_obj.google_credentials_json = config.google.credentials_json
+        if config.google.oauth_refresh_token:
+            secrets_obj.google_oauth_refresh_token = config.google.oauth_refresh_token
         for name, provider in config.ai.providers.items():
             if provider.api_key:
                 secrets_obj.ai_api_keys[name] = provider.api_key
@@ -209,6 +215,8 @@ class ConfigManager:
         config.aws.access_key_id = ""
         config.aws.secret_access_key = ""
         config.jira.api_token = ""
+        config.google.credentials_json = ""
+        config.google.oauth_refresh_token = ""
         config.server.admin_token = ""
         config.server.admin_username = ""
         config.server.admin_password = ""
@@ -234,6 +242,22 @@ class ConfigManager:
     def _secrets_status(self) -> dict:
         secrets_obj = self.load_secrets()
         bot = secrets_obj.slack_bot_token
+        google_raw = secrets_obj.google_credentials_json
+        google_cred_type: str | None = None
+        if google_raw.strip():
+            try:
+                from backend.google.credentials import credentials_json_type
+
+                google_cred_type = credentials_json_type(google_raw)
+            except ValueError:
+                google_cred_type = "invalid"
+        google_connected = bool(
+            google_cred_type == "service_account"
+            or (
+                google_cred_type == "oauth_client"
+                and secrets_obj.google_oauth_refresh_token.strip()
+            )
+        )
         return {
             "slack_bot_token": bool(bot),
             "slack_bot_token_valid": bot.startswith("xoxb-") if bot else False,
@@ -246,6 +270,10 @@ class ConfigManager:
             "aws_access_key_id": bool(secrets_obj.aws_access_key_id),
             "aws_secret_access_key": bool(secrets_obj.aws_secret_access_key),
             "jira_api_token": bool(secrets_obj.jira_api_token),
+            "google_credentials_json": bool(google_raw.strip()),
+            "google_oauth_refresh_token": bool(secrets_obj.google_oauth_refresh_token.strip()),
+            "google_credentials_type": google_cred_type,
+            "google_oauth_connected": google_connected,
             "server_admin_token": bool(secrets_obj.server_admin_token),
             "server_admin_username": bool(secrets_obj.server_admin_username),
             "server_admin_password": bool(secrets_obj.server_admin_password),

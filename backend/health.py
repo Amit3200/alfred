@@ -154,6 +154,42 @@ def check_jira(config: AlfredConfig) -> dict:
         return {"ok": False, "message": str(exc)}
 
 
+def check_google(config: AlfredConfig) -> dict:
+    if not config.google.enabled:
+        return {"ok": False, "skipped": True, "message": "Google Workspace disabled"}
+    raw = (config.google.credentials_json or "").strip()
+    if not raw:
+        return {"ok": False, "message": "Google credentials JSON not configured (Secrets)"}
+    try:
+        from backend.google.credentials import (
+            build_google_credentials,
+            credentials_json_type,
+            google_libs_available,
+            refresh_if_needed,
+        )
+
+        if not google_libs_available():
+            return {
+                "ok": False,
+                "message": "Install Google libraries: pip install 'alfred-agent[google]'",
+            }
+        cred_type = credentials_json_type(raw)
+        refresh = (config.google.oauth_refresh_token or "").strip()
+        if cred_type == "oauth_client" and not refresh:
+            return {
+                "ok": False,
+                "message": "OAuth client saved — click Connect Google in Integrations to authorize.",
+            }
+        creds = build_google_credentials(credentials_json=raw, refresh_token=refresh)
+        refresh_if_needed(creds)
+        if cred_type == "service_account":
+            email = creds.service_account_email
+            return {"ok": True, "message": f"Service account {email}"}
+        return {"ok": True, "message": "OAuth connected for Sheets and Docs"}
+    except Exception as exc:
+        return {"ok": False, "message": str(exc)}
+
+
 def check_ai(config: AlfredConfig, provider: str | None = None, *, data_dir=None) -> dict:
     from backend.observability.context import (
         InteractionContext,
@@ -182,5 +218,6 @@ def run_all_checks(config: AlfredConfig, *, data_dir: Path | None = None) -> dic
         "git": check_git(config, data_dir=data_dir),
         "aws": check_aws(config),
         "jira": check_jira(config),
+        "google": check_google(config),
         "ai": check_ai(config, data_dir=data_dir),
     }

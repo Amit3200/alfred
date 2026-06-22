@@ -564,6 +564,63 @@ def context_generate(data_dir: Path | None) -> None:
     click.echo(f"Generated context for {manifest.get('repo')} at commit {manifest.get('head_sha', '?')[:12]}")
 
 
+@main.group()
+def github() -> None:
+    """GitHub PR helpers (review, comment)."""
+
+
+@github.command("review")
+@click.argument("pr_ref")
+@click.option("--data-dir", type=click.Path(path_type=Path), default=None)
+@click.option(
+    "--intent",
+    default="review this pull request",
+    help="Review instruction passed to Alfred (default: full PR review).",
+)
+@click.option("--post/--no-post", default=True, help="Post the review as a PR comment.")
+@click.option("--dry-run", is_flag=True, help="Print rendered comment only; do not post.")
+def github_review(
+    pr_ref: str,
+    data_dir: Path | None,
+    intent: str,
+    post: bool,
+    dry_run: bool,
+) -> None:
+    """Review a PR and post a formatted GitHub comment (GFM).
+
+    PR_REF can be a URL or org/repo#123, e.g. FlexyPe/cipher#2047
+    """
+    from backend.github.review import run_github_pr_review
+
+    manager = ConfigManager(data_dir)
+    if not manager.is_initialized():
+        click.echo("Alfred not initialized. Run: alfred init")
+        raise SystemExit(1)
+
+    try:
+        body, status = run_github_pr_review(
+            manager,
+            pr_ref,
+            intent=intent,
+            post=post and not dry_run,
+        )
+    except ValueError as exc:
+        click.echo(str(exc), err=True)
+        raise SystemExit(1) from exc
+    except RuntimeError as exc:
+        click.echo(str(exc), err=True)
+        raise SystemExit(1) from exc
+    except Exception as exc:
+        click.echo(f"Review failed: {exc}", err=True)
+        raise SystemExit(1) from exc
+
+    if dry_run or not post:
+        click.echo(body)
+    else:
+        click.echo(status)
+        click.echo(f"Preview:\n{body[:500]}{'…' if len(body) > 500 else ''}")
+
+
 @main.command("down")
 @click.option("--data-dir", type=click.Path(path_type=Path), default=None)
 @click.option("--with-ollama/--keep-ollama", default=True)

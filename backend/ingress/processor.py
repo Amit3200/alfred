@@ -13,7 +13,7 @@ from backend.ingress.context_policy import (
     omit_assistant_session_history,
 )
 from backend.ingress.playbooks import Playbook, PlaybookStore
-from backend.ingress.prompts import ALFRED_SYSTEM_PROMPT, build_slack_user_message
+from backend.ingress.prompts import ALFRED_SYSTEM_PROMPT, GITHUB_COMMENT_RULES, build_slack_user_message
 from backend.ingress.render import Channel, render_for_channel
 from backend.ingress.response_clean import clean_response_scaffold
 from backend.ingress.slack_context import SlackContextBundle
@@ -44,6 +44,8 @@ STRUCTURED_TOOL_KINDS = frozenset(
         "cloudwatch_query",
         "cloudwatch_log_groups",
         "grade_events_query",
+        "google_sheet",
+        "google_doc",
     }
 )
 
@@ -169,6 +171,16 @@ class TaskProcessor:
         if review_skill and self.config.git.enabled:
             pr_context_prompt, pr_metadata = self._prefetch_pr_context(task, session=session)
 
+        google_context_prompt = ""
+        if self.config.google.enabled:
+            from backend.ingress.google_context import format_google_context_for_prompt
+
+            google_context_prompt = format_google_context_for_prompt(
+                self.config,
+                task,
+                session,
+            )
+
         conversational = None if active_skill else self._playbooks.pick_conversational(
             task.cleaned_intent,
             channel_id=task.channel_id,
@@ -187,7 +199,13 @@ class TaskProcessor:
 
         extra_system = "\n\n".join(
             part
-            for part in (repo_context_prompt, git_context_prompt, jira_context_prompt, pr_context_prompt)
+            for part in (
+                repo_context_prompt,
+                git_context_prompt,
+                jira_context_prompt,
+                google_context_prompt,
+                pr_context_prompt,
+            )
             if part
         )
         messages = self._build_messages(
@@ -270,7 +288,7 @@ class TaskProcessor:
             )
 
             if investigation and investigation.allowed_tools and (
-                self.config.git.enabled or self.config.jira.enabled
+                self.config.git.enabled or self.config.jira.enabled or self.config.google.enabled
             ):
                 set_call_kind("investigation")
                 response, inv_patch = self._run_investigation(
@@ -632,7 +650,7 @@ class TaskProcessor:
             structured = _tool_result_to_response(registry.last_result)
             if structured is not None:
                 if prose:
-                    structured.text = prose
+                    return AssistantResponse.from_text(prose), patch
                 return structured, patch
 
         if prose:
@@ -701,6 +719,8 @@ class TaskProcessor:
         extra_system: str = "",
     ) -> list[Message]:
         system_parts = [ALFRED_SYSTEM_PROMPT]
+        if task.source == "git":
+            system_parts.append(GITHUB_COMMENT_RULES)
         if playbook_prompt:
             system_parts.append(playbook_prompt)
         if extra_system:

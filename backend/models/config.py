@@ -27,6 +27,7 @@ class SlackConfig(BaseModel):
             "Optional workspace-specific thinking lines for Slack Assistant status. "
             "Use custom emoji shortcodes from your workspace, e.g. "
             "':this_is_fine: Everything is fine. Checking prod…'. "
+            "Each line must be under 51 characters after emoji shortcodes are stripped. "
             "Mixed randomly with built-in defaults (up to 10 per request)."
         ),
     )
@@ -111,6 +112,25 @@ class AWSConfig(BaseModel):
     grade_events_s3_location: str = Field(
         default="",
         description="S3 location of grade_events data (documentation / validation).",
+    )
+
+
+class GoogleConfig(BaseModel):
+    enabled: bool = False
+    oauth_redirect_base_url: str = Field(
+        default="",
+        description=(
+            "Public Alfred URL for Google OAuth callback, e.g. https://alfred.example.com. "
+            "Add {base}/api/config/google/oauth/callback as an authorized redirect URI in GCP."
+        ),
+    )
+    credentials_json: str = Field(
+        default="",
+        description="OAuth client or service account JSON — stored encrypted, not in config.yaml.",
+    )
+    oauth_refresh_token: str = Field(
+        default="",
+        description="OAuth refresh token after Connect Google — stored encrypted.",
     )
 
 
@@ -244,6 +264,7 @@ class AlfredConfig(BaseModel):
     git: GitConfig = Field(default_factory=GitConfig)
     aws: AWSConfig = Field(default_factory=AWSConfig)
     jira: JiraConfig = Field(default_factory=JiraConfig)
+    google: GoogleConfig = Field(default_factory=GoogleConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
     skills: SkillsConfig = Field(default_factory=SkillsConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
@@ -261,6 +282,8 @@ class AlfredSecrets(BaseModel):
     aws_access_key_id: str = ""
     aws_secret_access_key: str = ""
     jira_api_token: str = ""
+    google_credentials_json: str = ""
+    google_oauth_refresh_token: str = ""
     ai_api_keys: dict[str, str] = Field(default_factory=dict)
     server_admin_token: str = ""
     server_admin_username: str = ""
