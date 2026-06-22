@@ -12,17 +12,17 @@ from backend.models.response import AssistantResponse
 
 
 def test_parse_pr_ref_url():
-    repo, number, url = parse_pr_ref("https://github.com/FlexyPe/cipher/pull/2047")
-    assert repo == "FlexyPe/cipher"
+    repo, number, url = parse_pr_ref("https://github.com/AcmeCorp/platform/pull/2047")
+    assert repo == "AcmeCorp/platform"
     assert number == 2047
     assert url.endswith("/pull/2047")
 
 
 def test_parse_pr_ref_hash():
-    repo, number, url = parse_pr_ref("FlexyPe/cipher#2047")
-    assert repo == "FlexyPe/cipher"
+    repo, number, url = parse_pr_ref("AcmeCorp/platform#2047")
+    assert repo == "AcmeCorp/platform"
     assert number == 2047
-    assert "FlexyPe/cipher/pull/2047" in url
+    assert "AcmeCorp/platform/pull/2047" in url
 
 
 def test_parse_pr_ref_invalid():
@@ -43,13 +43,13 @@ def test_run_github_pr_review_posts_rendered_body():
     with patch("backend.github.review.post_pull_request_comment") as post:
         body, status = run_github_pr_review(
             manager,
-            "FlexyPe/cipher#7",
+            "AcmeCorp/platform#7",
             processor_factory=lambda: mock_processor,
         )
 
     assert "Executive Summary" in body
     assert "Improve webhook logging" in body
-    assert status == "posted comment on FlexyPe/cipher#7"
+    assert status == "posted comment on AcmeCorp/platform#7"
     post.assert_called_once()
     assert post.call_args.kwargs["body"] == body
     assert post.call_args.kwargs["number"] == 7

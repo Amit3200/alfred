@@ -474,7 +474,9 @@ export type ResponsePayload = {
     | "athena_query"
     | "cloudwatch_query"
     | "cloudwatch_log_groups"
-    | "grade_events_query";
+    | "grade_events_query"
+    | "google_sheet"
+    | "google_doc";
   data: Record<string, unknown>;
 };
 

@@ -24,6 +24,8 @@ PayloadKind = Literal[
     "cloudwatch_query",
     "cloudwatch_log_groups",
     "grade_events_query",
+    "google_sheet",
+    "google_doc",
 ]
 
 

@@ -30,14 +30,14 @@ def test_should_run_pr_analysis_for_followup_in_session():
         turns=[
             ConversationTurn(
                 role="user",
-                content="review https://github.com/FlexyPe/flexype-adhocs/pull/91",
+                content="review https://github.com/AcmeCorp/adhocs/pull/91",
             ),
         ],
-        metadata={"active_pr": {"repo": "FlexyPe/flexype-adhocs", "number": 91}},
+        metadata={"active_pr": {"repo": "AcmeCorp/adhocs", "number": 91}},
     )
     followup = "but what it does? the business impact and all what is it all about?"
     assert should_run_pr_analysis(followup, session)
-    assert extract_pr_from_session(session) == ("FlexyPe/flexype-adhocs", 91)
+    assert extract_pr_from_session(session) == ("AcmeCorp/adhocs", 91)
 
 
 def test_should_run_pr_analysis_for_retry_in_session():
@@ -49,10 +49,10 @@ def test_should_run_pr_analysis_for_retry_in_session():
         turns=[
             ConversationTurn(
                 role="user",
-                content="review https://github.com/FlexyPe/cipher/pull/2040",
+                content="review https://github.com/AcmeCorp/platform/pull/2040",
             ),
         ],
-        metadata={"active_pr": {"repo": "FlexyPe/cipher", "number": 2040}},
+        metadata={"active_pr": {"repo": "AcmeCorp/platform", "number": 2040}},
     )
     assert should_run_pr_analysis("can you retry again?", session)
 
@@ -78,10 +78,10 @@ def test_processor_followup_reuses_session_pr_via_skill():
         turns=[
             ConversationTurn(
                 role="user",
-                content="review https://github.com/FlexyPe/flexype-adhocs/pull/91",
+                content="review https://github.com/AcmeCorp/adhocs/pull/91",
             ),
         ],
-        metadata={"active_pr": {"repo": "FlexyPe/flexype-adhocs", "number": 91, "head": "feature/sqs"}},
+        metadata={"active_pr": {"repo": "AcmeCorp/adhocs", "number": 91, "head": "feature/sqs"}},
     )
 
     task = Task(
@@ -96,7 +96,7 @@ def test_processor_followup_reuses_session_pr_via_skill():
     with patch.object(
         processor,
         "_prefetch_pr_context",
-        return_value=("## Pre-fetched PR data\nRabbitMQ migration", {"repo": "FlexyPe/flexype-adhocs", "number": 91}),
+        return_value=("## Pre-fetched PR data\nRabbitMQ migration", {"repo": "AcmeCorp/adhocs", "number": 91}),
     ):
         with patch(
             "backend.agent.loop.run_agent_loop",
@@ -129,14 +129,14 @@ def test_processor_retry_routes_to_review_skill():
         turns=[
             ConversationTurn(
                 role="user",
-                content="can you review the PR - https://github.com/FlexyPe/cipher/pull/2040?",
+                content="can you review the PR - https://github.com/AcmeCorp/platform/pull/2040?",
             ),
             ConversationTurn(
                 role="assistant",
                 content="Prior review output",
             ),
         ],
-        metadata={"active_pr": {"repo": "FlexyPe/cipher", "number": 2040, "head": "webhook-email-update"}},
+        metadata={"active_pr": {"repo": "AcmeCorp/platform", "number": 2040, "head": "webhook-email-update"}},
     )
 
     task = Task(
@@ -152,7 +152,7 @@ def test_processor_retry_routes_to_review_skill():
     with patch.object(
         processor,
         "_prefetch_pr_context",
-        return_value=("## Pre-fetched PR data\nPR #2040", {"repo": "FlexyPe/cipher", "number": 2040}),
+        return_value=("## Pre-fetched PR data\nPR #2040", {"repo": "AcmeCorp/platform", "number": 2040}),
     ):
         with patch(
             "backend.agent.loop.run_agent_loop",
@@ -187,10 +187,10 @@ def test_investigation_prefers_llm_text_over_last_tool_result():
             registry = mock_registry_cls.return_value
             registry.last_result = ToolResult(
                 kind="file_content",
-                data={"repo": "FlexyPe/cipher", "path": "utils.ts", "content": "code"},
+                data={"repo": "AcmeCorp/platform", "path": "utils.ts", "content": "code"},
             )
             registry.last_tool_name = "read_file"
-            registry.last_tool_args = {"repo": "FlexyPe/cipher", "path": "utils.ts"}
+            registry.last_tool_args = {"repo": "AcmeCorp/platform", "path": "utils.ts"}
 
             response, _ = processor._run_investigation(
                 processor._playbooks.get_by_name("review_pr"),

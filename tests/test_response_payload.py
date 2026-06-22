@@ -17,9 +17,15 @@ def test_response_payload_accepts_aws_kinds():
         assert payload.kind == kind
 
 
-def test_assistant_response_structured_jira_list():
+def test_response_payload_accepts_google_kinds():
+    for kind in ("google_sheet", "google_doc"):
+        payload = ResponsePayload(kind=kind, data={})
+        assert payload.kind == kind
+
+
+def test_assistant_response_structured_google_doc_create():
     response = AssistantResponse.structured(
-        "jira_list",
-        {"issues": [{"key": "TECH-1", "summary": "Test"}]},
+        "google_doc",
+        {"action": "create", "title": "2026-06-21/merchant/v0", "url": "https://docs.google.com/…"},
     )
-    assert response.payload.kind == "jira_list"
+    assert response.payload.kind == "google_doc"

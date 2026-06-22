@@ -974,7 +974,7 @@ export function IntegrationsPanel() {
             <Col span={24}>
               <label className="alfred-field-label">Public Alfred URL (OAuth redirect base)</label>
               <Input
-                placeholder="https://alfred.flexype.dev"
+                placeholder="https://alfred.example.com"
                 value={config.google?.oauth_redirect_base_url ?? ""}
                 onChange={(e) =>
                   updateConfig({

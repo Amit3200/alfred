@@ -121,7 +121,7 @@ GRADE_EVENTS_QUERY = ToolSchema(
             "kind": {"type": "string", "description": "Event kind filter."},
             "merchant_id": {"type": "string", "description": "Merchant ID filter."},
             "session_id": {"type": "string", "description": "Checkout session ID filter."},
-            "fp_id": {"type": "string", "description": "FlexyPe fp_id filter."},
+            "fp_id": {"type": "string", "description": "AcmeCorp fp_id filter."},
             "environment": {"type": "string", "description": "Environment filter, e.g. production."},
             "category": {"type": "string", "description": "Event category filter."},
             "platform": {"type": "string", "description": "Platform filter."},

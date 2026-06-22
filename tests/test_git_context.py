@@ -30,19 +30,19 @@ def test_wants_git_retry():
 
 
 def test_collect_thread_git_hints_finds_file_line():
-    hints = collect_thread_git_hints("see `order_handler.py:42` in FlexyPe/backend")
+    hints = collect_thread_git_hints("see `order_handler.py:42` in AcmeCorp/backend")
     assert hints["file_lines"] == [{"path": "order_handler.py", "line": 42}]
-    assert "FlexyPe/backend" in hints["repos"]
+    assert "AcmeCorp/backend" in hints["repos"]
 
 
 def test_format_session_git_context_includes_active_pr():
     session = _session(
         active_pr={
-            "repo": "FlexyPe/backend",
+            "repo": "AcmeCorp/backend",
             "number": 91,
             "head": "feature/foo",
         },
-        last_git_action={"tool": "grep_repo", "args": {"repo": "FlexyPe/backend"}},
+        last_git_action={"tool": "grep_repo", "args": {"repo": "AcmeCorp/backend"}},
     )
     block = format_session_git_context(session, "what does it do?")
     assert "Active PR: #91" in block
@@ -51,9 +51,9 @@ def test_format_session_git_context_includes_active_pr():
 
 
 def test_detect_investigate_where_is():
-    git = GitConfig(enabled=True, provider="github", token="x", default_org="FlexyPe")
+    git = GitConfig(enabled=True, provider="github", token="x", default_org="AcmeCorp")
     action = detect_investigate_direct_action(
-        "where is duplicate order handled in flexype-backend?",
+        "where is duplicate order handled in acme-backend?",
         "investigate_bug",
         git,
         None,
@@ -61,7 +61,7 @@ def test_detect_investigate_where_is():
     assert action is not None
     tool, args = action
     assert tool == "grep_repo"
-    assert args["repo"] == "FlexyPe/flexype-backend"
+    assert args["repo"] == "AcmeCorp/acme-backend"
     assert "duplicate" in args["pattern"]
     assert "order" in args["pattern"]
 
@@ -83,8 +83,8 @@ def test_detect_investigate_what_do_we_use_from_thread_repo():
         enabled=True,
         provider="github",
         token="x",
-        default_org="FlexyPe",
-        main_repo="FlexyPe/cipher",
+        default_org="AcmeCorp",
+        main_repo="AcmeCorp/platform",
     )
     session = ConversationSession(
         key="slack:1:1",
@@ -95,7 +95,7 @@ def test_detect_investigate_what_do_we_use_from_thread_repo():
             ConversationTurn(role="user", content="do you have access to cipher repo?"),
             ConversationTurn(
                 role="assistant",
-                content="Yes — I have access to the `FlexyPe/cipher` repo.",
+                content="Yes — I have access to the `AcmeCorp/platform` repo.",
             ),
         ],
     )
@@ -108,12 +108,12 @@ def test_detect_investigate_what_do_we_use_from_thread_repo():
     assert action is not None
     tool, args = action
     assert tool == "grep_repo"
-    assert args["repo"] == "FlexyPe/cipher"
+    assert args["repo"] == "AcmeCorp/platform"
     assert args["pattern"] == "currency"
 
 
 def test_enrich_tool_arguments_fills_repo_from_thread():
-    git = GitConfig(enabled=True, provider="github", token="x", default_org="FlexyPe")
+    git = GitConfig(enabled=True, provider="github", token="x", default_org="AcmeCorp")
     session = ConversationSession(
         key="slack:1:1",
         source="slack",
@@ -122,19 +122,19 @@ def test_enrich_tool_arguments_fills_repo_from_thread():
         turns=[
             ConversationTurn(
                 role="assistant",
-                content="Yes — I have access to the `FlexyPe/cipher` repo.",
+                content="Yes — I have access to the `AcmeCorp/platform` repo.",
             ),
         ],
     )
     args = enrich_tool_arguments("grep_repo", {"pattern": "currency"}, git, session)
-    assert args["repo"] == "FlexyPe/cipher"
+    assert args["repo"] == "AcmeCorp/platform"
 
 
 def test_enrich_tool_arguments_fills_ref_from_active_pr():
-    git = GitConfig(enabled=True, provider="github", token="x", default_org="FlexyPe")
-    session = _session(active_pr={"repo": "FlexyPe/backend", "number": 1, "head": "pr-branch"})
+    git = GitConfig(enabled=True, provider="github", token="x", default_org="AcmeCorp")
+    session = _session(active_pr={"repo": "AcmeCorp/backend", "number": 1, "head": "pr-branch"})
     args = enrich_tool_arguments("grep_repo", {"repo": "backend", "pattern": "x"}, git, session)
-    assert args["repo"] == "FlexyPe/backend"
+    assert args["repo"] == "AcmeCorp/backend"
     assert args["ref"] == "pr-branch"
 
 

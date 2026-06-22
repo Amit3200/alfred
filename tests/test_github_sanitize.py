@@ -11,7 +11,7 @@ def _issue_comment_payload(
     body: str,
     login: str = "dev-user",
     user_type: str = "User",
-    repo: str = "FlexyPe/cipher",
+    repo: str = "AcmeCorp/platform",
     number: int = 42,
 ) -> dict:
     return {
@@ -40,7 +40,7 @@ def test_clean_github_comment_strips_mention():
 def test_task_from_issue_comment_matches_bot_slug():
     config = AlfredConfig(
         github=GitHubAppConfig(enabled=True, bot_login="alfred"),
-        git=GitConfig(enabled=True, repos=["FlexyPe/cipher"]),
+        git=GitConfig(enabled=True, repos=["AcmeCorp/platform"]),
     )
     task = task_from_issue_comment(
         _issue_comment_payload(body="@alfred can you review this PR?"),
@@ -53,7 +53,7 @@ def test_task_from_issue_comment_matches_bot_slug():
 def test_task_from_issue_comment_builds_pr_task():
     config = AlfredConfig(
         github=GitHubAppConfig(enabled=True),
-        git=GitConfig(enabled=True, repos=["FlexyPe/cipher"]),
+        git=GitConfig(enabled=True, repos=["AcmeCorp/platform"]),
     )
     task = task_from_issue_comment(
         _issue_comment_payload(body="@alfred please review"),
@@ -61,9 +61,9 @@ def test_task_from_issue_comment_builds_pr_task():
     )
     assert task is not None
     assert task.source == "git"
-    assert task.channel_id == "FlexyPe/cipher"
+    assert task.channel_id == "AcmeCorp/platform"
     assert task.thread_ts == "42"
-    assert "https://github.com/FlexyPe/cipher/pull/42" in task.cleaned_intent
+    assert "https://github.com/AcmeCorp/platform/pull/42" in task.cleaned_intent
     assert task.metadata["pr_number"] == 42
 
 
@@ -86,6 +86,6 @@ def test_task_from_issue_comment_respects_repo_allowlist():
         git=GitConfig(repos=["OtherOrg/other"]),
     )
     assert task_from_issue_comment(
-        _issue_comment_payload(body="@alfred review", repo="FlexyPe/cipher"),
+        _issue_comment_payload(body="@alfred review", repo="AcmeCorp/platform"),
         config=config,
     ) is None

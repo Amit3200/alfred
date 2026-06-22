@@ -13,7 +13,7 @@ from backend.models.task import Task
 def test_wants_pr_code_analysis_with_review_and_url():
     intent = (
         "summarize and review PR "
-        "https://github.com/FlexyPe/flexype-adhocs/pull/91"
+        "https://github.com/AcmeCorp/adhocs/pull/91"
     )
     assert wants_pr_code_analysis(intent)
 
@@ -37,14 +37,14 @@ def test_processor_pr_review_uses_investigation_loop():
         source="ui",
         user_id="u1",
         channel_id="ui:abc:abc",
-        raw_text="review this PR https://github.com/FlexyPe/flexype-adhocs/pull/91",
-        cleaned_intent="review this PR https://github.com/FlexyPe/flexype-adhocs/pull/91",
+        raw_text="review this PR https://github.com/AcmeCorp/adhocs/pull/91",
+        cleaned_intent="review this PR https://github.com/AcmeCorp/adhocs/pull/91",
     )
 
     with patch.object(
         processor,
         "_prefetch_pr_context",
-        return_value=("## Pre-fetched PR data\nPR #91", {"repo": "FlexyPe/flexype-adhocs", "number": 91}),
+        return_value=("## Pre-fetched PR data\nPR #91", {"repo": "AcmeCorp/adhocs", "number": 91}),
     ):
         with patch("backend.agent.loop.run_agent_loop", return_value="## 1. Executive Summary\nSafe.") as mock_loop:
             response = processor.process(task)
@@ -68,15 +68,15 @@ def test_processor_metadata_summary_when_no_review_keyword():
         source="ui",
         user_id="u1",
         channel_id="ui:abc:abc",
-        raw_text="summarize https://github.com/FlexyPe/flexype-adhocs/pull/91",
-        cleaned_intent="summarize https://github.com/FlexyPe/flexype-adhocs/pull/91",
+        raw_text="summarize https://github.com/AcmeCorp/adhocs/pull/91",
+        cleaned_intent="summarize https://github.com/AcmeCorp/adhocs/pull/91",
     )
 
     pr_detail = {
         "number": 91,
         "title": "SQS Consumer",
-        "repo": "FlexyPe/flexype-adhocs",
-        "url": "https://github.com/FlexyPe/flexype-adhocs/pull/91",
+        "repo": "AcmeCorp/adhocs",
+        "url": "https://github.com/AcmeCorp/adhocs/pull/91",
         "body": "Adds consumer",
         "head": "feature/sqs",
         "base": "main",

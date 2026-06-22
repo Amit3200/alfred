@@ -16,17 +16,17 @@ from backend.ingress.playbooks import Playbook, PlaybookStore
 
 
 def test_validate_fetch_url_https_only() -> None:
-    assert validate_fetch_url("https://flexype.io") == "https://flexype.io"
+    assert validate_fetch_url("https://example.com") == "https://example.com"
     with pytest.raises(ValueError):
-        validate_fetch_url("http://flexype.io")
+        validate_fetch_url("http://example.com")
     with pytest.raises(ValueError):
         validate_fetch_url("https://127.0.0.1")
 
 
 def test_html_to_text_strips_scripts() -> None:
-    html = "<html><head><script>ignore()</script></head><body><h1>FlexyPe</h1><p>Checkout suite</p></body></html>"
+    html = "<html><head><script>ignore()</script></head><body><h1>Example Corp</h1><p>Checkout suite</p></body></html>"
     text = html_to_text(html)
-    assert "FlexyPe" in text
+    assert "Example Corp" in text
     assert "Checkout suite" in text
     assert "ignore" not in text
 
@@ -60,9 +60,9 @@ def test_format_for_prompt_includes_dynamic_sources(tmp_path) -> None:
         """---
 name: company
 triggers:
-  - flexype
+  - example corp
 fetch_urls:
-  - https://flexype.io
+  - https://example.com
 ---
 
 Static body.
@@ -70,7 +70,7 @@ Static body.
         encoding="utf-8",
     )
     store = PlaybookStore(tmp_path)
-    matched = store.match("what is flexype?")
+    matched = store.match("what is example corp?")
     html = "<html><body><p>Website headline about checkout</p></body></html>"
 
     class FakeResponse:

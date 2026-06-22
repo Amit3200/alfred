@@ -63,7 +63,7 @@ Use these when reading gaps below:
 | CLI `alfred exec` | ✅ | v0 | `backend/cli.py` |
 | Slack `app_mention` | ✅ | v0 | `backend/slack/listener.py` — **supported ingress** |
 | Slack DM / App Home Chat | ⛔ Won't do | — | Use `@alfred` in channels |
-| GitHub App webhook | ✅ | v0 | Works when `github.callback_base_url` points at a public host (e.g. `alfred.flexype.dev`); each company uses their subdomain + tunnel/ALB |
+| GitHub App webhook | ✅ | v0 | Works when `github.callback_base_url` points at a public host (e.g. `alfred.abc.dev`); each company uses their subdomain + tunnel/ALB |
 | HTTP enqueue queue (fast ack + worker) | ❌ | **v1** | Socket Mode handles Slack today; queue for webhooks + recovery |
 
 ### Layer 2 — Config & Admin
@@ -203,7 +203,7 @@ Defer until v1: queue, governance. Defer until v2: git writes, ECS/S3.
 | Decision | Rationale |
 |----------|-----------|
 | Channel `@mentions` only | No Slack app DM support — simpler ingress, matches team usage |
-| Public URL per company for GitHub App | Webhook needs HTTPS; e.g. `alfred.flexype.dev` + Cloudflare tunnel or ALB |
+| Public URL per company for GitHub App | Webhook needs HTTPS; e.g. `alfred.abc.dev` + Cloudflare tunnel or ALB |
 | Playbooks local, skills in repo | Company tables/rules stay private |
 | Socket Mode for Slack | No public URL required for Slack |
 | Direct processor paths (temporary) | Until v0.1 unified intent router |

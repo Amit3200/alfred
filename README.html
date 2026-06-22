@@ -968,7 +968,7 @@ Optional: <strong><code>emoji:read</code></strong> (for <code>alfred slack emoji
 <pre class="hljs"><code><div>alfred token
 </div></code></pre>
 <h3 id="optional--github-pr-comment-bot">Optional — GitHub PR comment bot</h3>
-<p>Requires a <strong>public HTTPS URL</strong> on your company subdomain (e.g. <code>alfred.flexype.dev</code> via Cloudflare tunnel or ALB). Configure GitHub App webhook → <code>/api/v1/github/webhook</code>, subscribe to <code>Issue comment</code>, install on org repos. Admin → Integrations → GitHub App + Secrets. Comment <code>@alfred review</code> on a PR.</p>
+<p>Requires a <strong>public HTTPS URL</strong> on your company subdomain (e.g. <code>alfred.abc.dev</code> via Cloudflare tunnel or ALB). Configure GitHub App webhook → <code>/api/v1/github/webhook</code>, subscribe to <code>Issue comment</code>, install on org repos. Admin → Integrations → GitHub App + Secrets. Comment <code>@alfred review</code> on a PR.</p>
 <h3 id="optional--public-url-cloudflare-tunnel">Optional — Public URL (Cloudflare Tunnel)</h3>
 <p>Only needed for GitHub webhooks or remote Admin UI — <strong>not</strong> for Slack (Socket Mode). Use <code>./scripts/tunnel.sh</code> after <code>cloudflared tunnel</code> setup. Local dev works with <code>./scripts/up.sh</code> alone.</p>
 <hr>

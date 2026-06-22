@@ -12,25 +12,25 @@ def _sample_prs() -> list[PullRequestSummary]:
             number=1685,
             title="Thanks page",
             state="open",
-            repo="FlexyPe/cipher",
+            repo="AcmeCorp/platform",
             author="alice",
-            url="https://github.com/FlexyPe/cipher/pull/1685",
+            url="https://github.com/AcmeCorp/platform/pull/1685",
         ),
         PullRequestSummary(
             number=91,
             title="SQS Consumer Support Added",
             state="open",
-            repo="FlexyPe/flexype-adhocs",
+            repo="AcmeCorp/adhocs",
             author="alice",
-            url="https://github.com/FlexyPe/flexype-adhocs/pull/91",
+            url="https://github.com/AcmeCorp/adhocs/pull/91",
         ),
         PullRequestSummary(
             number=16,
             title="Flx tests",
             state="open",
-            repo="FlexyPe/flexype-adhocs",
+            repo="AcmeCorp/adhocs",
             author="alice",
-            url="https://github.com/FlexyPe/flexype-adhocs/pull/16",
+            url="https://github.com/AcmeCorp/adhocs/pull/16",
         ),
     ]
 
@@ -38,9 +38,9 @@ def _sample_prs() -> list[PullRequestSummary]:
 def test_format_prs_slack_groups_by_repo():
     text = format_prs(_sample_prs(), slack=True)
     assert "*3 open PRs*" in text
-    assert "`cipher`" in text
-    assert "`flexype-adhocs`" in text
-    assert "<https://github.com/FlexyPe/cipher/pull/1685|#1685 Thanks page>" in text
+    assert "`platform`" in text
+    assert "`adhocs`" in text
+    assert "<https://github.com/AcmeCorp/platform/pull/1685|#1685 Thanks page>" in text
     assert "There is an open PR" not in text
 
 
@@ -51,9 +51,9 @@ def test_format_prs_empty():
 def test_format_prs_markdown_groups_by_repo():
     text = format_prs(_sample_prs(), slack=False)
     assert "**3 open PRs**" in text
-    assert "### cipher" in text
-    assert "### flexype-adhocs" in text
-    assert "[#1685 Thanks page](https://github.com/FlexyPe/cipher/pull/1685)" in text
+    assert "### platform" in text
+    assert "### adhocs" in text
+    assert "[#1685 Thanks page](https://github.com/AcmeCorp/platform/pull/1685)" in text
     assert "<https://" not in text
 
 
@@ -63,9 +63,9 @@ def test_format_pr_detail_markdown():
             "number": 91,
             "title": "SQS Consumer Support Added",
             "state": "open",
-            "repo": "FlexyPe/flexype-adhocs",
+            "repo": "AcmeCorp/adhocs",
             "author": "alice",
-            "url": "https://github.com/FlexyPe/flexype-adhocs/pull/91",
+            "url": "https://github.com/AcmeCorp/adhocs/pull/91",
             "head": "feature/sqs",
             "base": "main",
             "body": "Adds consumer",
@@ -73,8 +73,8 @@ def test_format_pr_detail_markdown():
         },
         slack=False,
     )
-    assert "**PR in `flexype-adhocs`**" in text
-    assert "[#91 SQS Consumer Support Added](https://github.com/FlexyPe/flexype-adhocs/pull/91)" in text
+    assert "**PR in `adhocs`**" in text
+    assert "[#91 SQS Consumer Support Added](https://github.com/AcmeCorp/adhocs/pull/91)" in text
 
 
 def test_format_pr_detail_slack():
@@ -83,9 +83,9 @@ def test_format_pr_detail_slack():
             "number": 91,
             "title": "SQS Consumer Support Added",
             "state": "open",
-            "repo": "FlexyPe/flexype-adhocs",
+            "repo": "AcmeCorp/adhocs",
             "author": "alice",
-            "url": "https://github.com/FlexyPe/flexype-adhocs/pull/91",
+            "url": "https://github.com/AcmeCorp/adhocs/pull/91",
             "head": "feature/sqs",
             "base": "main",
             "body": "Adds consumer",
@@ -93,6 +93,6 @@ def test_format_pr_detail_slack():
         },
         slack=True,
     )
-    assert "*PR in `flexype-adhocs`*" in text
-    assert "<https://github.com/FlexyPe/flexype-adhocs/pull/91|#91 SQS Consumer Support Added>" in text
+    assert "*PR in `adhocs`*" in text
+    assert "<https://github.com/AcmeCorp/adhocs/pull/91|#91 SQS Consumer Support Added>" in text
     assert "`feature/sqs` → `main`" in text

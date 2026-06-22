@@ -50,13 +50,13 @@ def test_identity_lookup_direct_route():
     config = AlfredConfig()
     config.jira = JiraConfig(enabled=True)
     task = _task(
-        raw="<@UOM|Om Sinkar> slack email jira email jira name slack handle",
+        raw="<@UALICE|Alice Smith> slack email jira email jira name slack handle",
         cleaned="slack email jira email jira name slack handle",
     )
     action = detect_jira_direct_action(task.cleaned_intent, config, task)
     assert action is not None
     assert action[0] == "lookup_user_identity"
-    assert action[1]["slack_user_id"] == "UOM"
+    assert action[1]["slack_user_id"] == "UALICE"
 
 
 def test_format_user_identity_result_includes_assignee_map():
@@ -64,19 +64,19 @@ def test_format_user_identity_result_includes_assignee_map():
         {
             "identities": [
                 {
-                    "display_name": "Om Sinkar",
-                    "slack_user_id": "UOM",
-                    "slack_display_name": "Om Sinkar",
-                    "slack_email": "om@flexype.io",
-                    "jira_display_name": "Om Sinkar",
-                    "jira_email": "om@flexype.io",
+                    "display_name": "Alice Smith",
+                    "slack_user_id": "UALICE",
+                    "slack_display_name": "Alice Smith",
+                    "slack_email": "alice@example.com",
+                    "jira_display_name": "Alice Smith",
+                    "jira_email": "alice@example.com",
                 }
             ],
-            "assignee_map_suggestion": {"Om Sinkar": "om@flexype.io", "UOM": "om@flexype.io"},
+            "assignee_map_suggestion": {"Alice Smith": "alice@example.com", "UALICE": "alice@example.com"},
         }
     )
     assert "assignee_map" in text
-    assert "om@flexype.io" in text
+    assert "alice@example.com" in text
 
 
 def test_workspace_identity_request_routes_to_bulk_tool():
@@ -105,8 +105,8 @@ def test_list_slack_human_members_skips_bots():
                         "id": "U1",
                         "is_bot": False,
                         "name": "om",
-                        "real_name": "Om Sinkar",
-                        "profile": {"display_name": "Om Sinkar", "email": "om@flexype.io"},
+                        "real_name": "Alice Smith",
+                        "profile": {"display_name": "Alice Smith", "email": "alice@example.com"},
                     },
                 ],
             }
@@ -118,9 +118,9 @@ def test_list_slack_human_members_skips_bots():
 
 
 def test_match_github_login_by_slack_handle():
-    entry = {"slack_handle": "om-sinkar", "slack_email": "om@flexype.io"}
-    org_members = [{"login": "om-sinkar"}, {"login": "other-dev"}]
-    assert _match_github_login(entry, org_members) == "om-sinkar"
+    entry = {"slack_handle": "alice-smith", "slack_email": "alice@example.com"}
+    org_members = [{"login": "alice-smith"}, {"login": "other-dev"}]
+    assert _match_github_login(entry, org_members) == "alice-smith"
 
 
 def test_format_workspace_identity_result():
@@ -132,17 +132,17 @@ def test_format_workspace_identity_result():
             "matched_github": 1,
             "identities": [
                 {
-                    "display_name": "Om Sinkar",
+                    "display_name": "Alice Smith",
                     "slack_user_id": "U1",
                     "slack_handle": "om",
-                    "slack_email": "om@flexype.io",
-                    "jira_email": "om@flexype.io",
-                    "github_login": "om-sinkar",
+                    "slack_email": "alice@example.com",
+                    "jira_email": "alice@example.com",
+                    "github_login": "alice-smith",
                 }
             ],
-            "assignee_map_suggestion": {"Om Sinkar": "om@flexype.io"},
+            "assignee_map_suggestion": {"Alice Smith": "alice@example.com"},
         }
     )
     assert "Workspace identity map" in text
-    assert "om@flexype.io" in text
-    assert "om-sinkar" in text
+    assert "alice@example.com" in text
+    assert "alice-smith" in text

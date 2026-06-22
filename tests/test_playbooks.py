@@ -59,14 +59,14 @@ def test_playbook_loads_nested_cipher_skills(tmp_path: Path):
         """---
 name: debug_payment_webhook_failures
 repos:
-  - FlexyPe/cipher
+  - AcmeCorp/platform
 allowed_channels:
   - "#ops-alerts"
 trigger_keywords:
   - razorpay webhook
 ---
 
-Cipher payment runbook.
+Platform payment runbook.
 """,
         encoding="utf-8",
     )
@@ -84,18 +84,18 @@ def test_playbook_repo_filter_excludes_other_repos(tmp_path: Path):
         """---
 name: cipher-only
 repos:
-  - FlexyPe/cipher
+  - AcmeCorp/platform
 triggers:
   - deploy stack
 ---
 
-Cipher deploy steps.
+Platform deploy steps.
 """,
         encoding="utf-8",
     )
     store = PlaybookStore(tmp_path)
     assert len(store.match("deploy stack", repo="other-org/other-repo")) == 0
-    assert len(store.match("deploy stack", repo="FlexyPe/cipher")) == 1
+    assert len(store.match("deploy stack", repo="AcmeCorp/platform")) == 1
     assert len(store.match("deploy stack")) == 1
 
 

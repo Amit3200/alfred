@@ -57,10 +57,10 @@ def test_parse_kimi_tool_tag():
     raw = (
         "I'll search.\n\n"
         '<tool>{"tool_type": "function", "tool_name": "grep_repo", '
-        '"tool_input": {"pattern": "recalculation", "path": "FlexyPe/cipher"}}</tool>'
+        '"tool_input": {"pattern": "recalculation", "path": "AcmeCorp/platform"}}</tool>'
     )
     parsed = parse_text_tool_call(raw)
-    assert parsed == ("grep_repo", {"pattern": "recalculation", "path": "FlexyPe/cipher"})
+    assert parsed == ("grep_repo", {"pattern": "recalculation", "path": "AcmeCorp/platform"})
 
 
 def test_looks_like_code_investigation():
@@ -80,18 +80,18 @@ def test_looks_like_tool_json_with_tool_tag():
 def test_extract_pr_from_slack_link():
     intent = (
         "summarize what this PR does - "
-        "<https://github.com/FlexyPe/flexype-adhocs/pull/91|#91 Feat: SQS Consumer Sup>"
+        "<https://github.com/AcmeCorp/adhocs/pull/91|#91 Feat: SQS Consumer Sup>"
     )
     ref = extract_pr_reference(intent)
-    assert ref == ("FlexyPe/flexype-adhocs", 91)
+    assert ref == ("AcmeCorp/adhocs", 91)
 
 
 def test_detect_get_pr_from_url():
     from backend.models.config import GitConfig
 
-    intent = "can you summarize what this PR does - https://github.com/FlexyPe/cipher/pull/1685"
-    action = detect_git_direct_action(intent, _git_skill(), GitConfig(default_org="FlexyPe"))
-    assert action == ("get_pr", {"repo": "FlexyPe/cipher", "number": 1685})
+    intent = "can you summarize what this PR does - https://github.com/AcmeCorp/platform/pull/1685"
+    action = detect_git_direct_action(intent, _git_skill(), GitConfig(default_org="AcmeCorp"))
+    assert action == ("get_pr", {"repo": "AcmeCorp/platform", "number": 1685})
 
 
 def test_wants_pr_summary():
@@ -103,7 +103,7 @@ def test_wants_pr_code_analysis():
     from backend.ingress.git_direct import wants_pr_code_analysis
 
     assert wants_pr_code_analysis(
-        "review https://github.com/FlexyPe/flexype-adhocs/pull/91"
+        "review https://github.com/AcmeCorp/adhocs/pull/91"
     )
     assert not wants_pr_code_analysis("summarize my open prs")
 
@@ -112,17 +112,17 @@ def test_resolve_repo_slug_with_default_org():
     from backend.models.config import GitConfig
     from backend.git.api import resolve_repo_slug
 
-    git = GitConfig(default_org="FlexyPe", repos=["FlexyPe/flexype-adhocs"])
-    assert resolve_repo_slug("flexype-adhocs", git) == "FlexyPe/flexype-adhocs"
+    git = GitConfig(default_org="AcmeCorp", repos=["AcmeCorp/adhocs"])
+    assert resolve_repo_slug("adhocs", git) == "AcmeCorp/adhocs"
 
 
 def test_normalize_tool_arguments_short_repo():
     from backend.models.config import GitConfig
     from backend.ingress.git_direct import normalize_tool_arguments
 
-    git = GitConfig(default_org="FlexyPe")
-    args = normalize_tool_arguments("get_pr", {"repo": "flexype-adhocs", "number": 91}, git)
-    assert args["repo"] == "FlexyPe/flexype-adhocs"
+    git = GitConfig(default_org="AcmeCorp")
+    args = normalize_tool_arguments("get_pr", {"repo": "adhocs", "number": 91}, git)
+    assert args["repo"] == "AcmeCorp/adhocs"
 
 
 def test_looks_like_tool_json():

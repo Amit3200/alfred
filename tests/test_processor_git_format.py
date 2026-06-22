@@ -26,9 +26,9 @@ def test_processor_uses_structured_pr_payload():
             number=1685,
             title="Thanks page",
             state="open",
-            repo="FlexyPe/cipher",
+            repo="AcmeCorp/platform",
             author="alice",
-            url="https://github.com/FlexyPe/cipher/pull/1685",
+            url="https://github.com/AcmeCorp/platform/pull/1685",
         ),
     ]
 
@@ -53,4 +53,4 @@ def test_processor_uses_structured_pr_payload():
     assert response.payload.kind == "pr_list"
     reply = render_for_channel(response, "slack")
     assert "*1 open PR*" in reply
-    assert "<https://github.com/FlexyPe/cipher/pull/1685|#1685 Thanks page>" in reply
+    assert "<https://github.com/AcmeCorp/platform/pull/1685|#1685 Thanks page>" in reply

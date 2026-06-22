@@ -72,6 +72,7 @@ STATUS_LINES: list[tuple[str, str]] = [
 
 MAX_LOADING_MESSAGES = 10
 MAX_SLACK_LOADING_MESSAGE_LENGTH = 50
+MIN_DEFAULT_SLOTS_IN_ASSISTANT = 3
 ASSISTANT_STATUS = "is thinking…"
 STATUS_ROTATION_SECONDS = 3.0
 _SLACK_EMOJI_PREFIX_RE = re.compile(r"^:[\w-]+:\s*")
@@ -135,21 +136,63 @@ def _default_status_lines() -> list[str]:
     return [f"{emoji} {line}" for emoji, line in STATUS_LINES]
 
 
+def build_loading_pool(*, custom_lines: list[str] | None = None) -> list[str]:
+    """Full rotation pool: all custom overrides first, then built-in lines."""
+    custom = [line.strip() for line in (custom_lines or []) if line and line.strip()]
+    defaults = _default_status_lines()
+    if not custom:
+        return list(defaults)
+    return custom + defaults
+
+
+def _interleave_loading_messages(custom: list[str], defaults: list[str], count: int) -> list[str]:
+    """Mix custom and default lines up to count (custom first in each pair)."""
+    merged: list[str] = []
+    ci = di = 0
+    while len(merged) < count and (ci < len(custom) or di < len(defaults)):
+        if ci < len(custom):
+            merged.append(custom[ci])
+            ci += 1
+            if len(merged) >= count:
+                break
+        if di < len(defaults):
+            merged.append(defaults[di])
+            di += 1
+    return merged[:count]
+
+
 def loading_messages_for_slack(
     *,
     custom_lines: list[str] | None = None,
     count: int = MAX_LOADING_MESSAGES,
 ) -> list[str]:
-    """Build loading_messages for assistant.threads.setStatus (max 10)."""
+    """Build loading_messages for assistant.threads.setStatus (max 10, custom + defaults)."""
     custom = [line.strip() for line in (custom_lines or []) if line and line.strip()]
     defaults = _default_status_lines()
 
-    if len(custom) >= count:
-        return custom[:count]
-    remaining = count - len(custom)
-    if len(defaults) <= remaining:
+    if not custom:
+        if len(defaults) <= count:
+            return list(defaults[:count])
+        return random.sample(defaults, count)
+
+    if len(custom) + len(defaults) <= count:
         return custom + defaults
-    return custom + random.sample(defaults, remaining)
+
+    default_slots = min(
+        max(MIN_DEFAULT_SLOTS_IN_ASSISTANT, count // 4),
+        count - 1,
+        len(defaults),
+    )
+    custom_slots = count - default_slots
+    picked_custom = custom[:custom_slots]
+    if len(picked_custom) < custom_slots:
+        default_slots = count - len(picked_custom)
+    picked_defaults = (
+        random.sample(defaults, default_slots)
+        if len(defaults) > default_slots
+        else list(defaults)
+    )
+    return _interleave_loading_messages(picked_custom, picked_defaults, count)
 
 
 def loading_line_to_status(line: str) -> str:
@@ -216,8 +259,9 @@ class ThinkingIndicator:
                 previous._supersede()
             _ACTIVE_BY_THREAD[key] = self
 
-        self._status_pool = loading_messages_for_slack(custom_lines=self._loading_messages)
-        self._slack_loading_messages = slack_loading_messages(self._status_pool)
+        self._status_pool = build_loading_pool(custom_lines=self._loading_messages)
+        assistant_lines = loading_messages_for_slack(custom_lines=self._loading_messages)
+        self._slack_loading_messages = slack_loading_messages(assistant_lines)
         first_line = self._status_pool[0] if self._status_pool else ASSISTANT_STATUS
         self._status_text = loading_line_to_status(first_line)
         use_assistant = (

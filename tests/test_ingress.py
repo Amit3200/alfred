@@ -20,12 +20,12 @@ from backend.models.task import Task
 def test_clean_slack_text_strips_mention_and_alfred_prefix():
     assert clean_slack_text("<@U123ABC> @alfred why is this broken?") == "why is this broken?"
     assert clean_slack_text("<@U123ABC> hello") == "hello"
-    assert clean_slack_text("<@U123ABC|Om Sinkar> open tickets assigned to") == "open tickets assigned to"
+    assert clean_slack_text("<@U123ABC|Alice Smith> open tickets assigned to") == "open tickets assigned to"
 
 
 def test_extract_slack_mention_labels():
-    labels = extract_slack_mention_labels("<@UOM|Om Sinkar> list tickets")
-    assert labels == {"UOM": "Om Sinkar"}
+    labels = extract_slack_mention_labels("<@UALICE|Alice Smith> list tickets")
+    assert labels == {"UALICE": "Alice Smith"}
 
 
 def test_channel_allowed_wildcard():

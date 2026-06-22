@@ -48,10 +48,10 @@ def test_resolve_jira_assignee_from_map():
     config = AlfredConfig()
     config.jira = JiraConfig(
         enabled=True,
-        assignee_map={"Om Sinkar": "om@flexype.io"},
+        assignee_map={"Alice Smith": "alice@example.com"},
     )
     client = MagicMock()
-    assert resolve_jira_assignee("Om Sinkar", config, client) == "om@flexype.io"
+    assert resolve_jira_assignee("Alice Smith", config, client) == "alice@example.com"
     client.search_users.assert_not_called()
 
 
@@ -60,25 +60,25 @@ def test_resolve_jira_assignee_via_search():
     config.jira = JiraConfig(enabled=True)
     client = MagicMock()
     client.search_users.return_value = [
-        {"displayName": "Om Sinkar", "emailAddress": "om@flexype.io"},
+        {"displayName": "Alice Smith", "emailAddress": "alice@example.com"},
     ]
-    assert resolve_jira_assignee("Om Sinkar", config, client) == "om@flexype.io"
+    assert resolve_jira_assignee("Alice Smith", config, client) == "alice@example.com"
 
 
 def test_resolve_assignees_from_slack_mention_label():
     config = AlfredConfig()
     config.jira = JiraConfig(
         enabled=True,
-        assignee_map={"Om Sinkar": "om@flexype.io"},
+        assignee_map={"Alice Smith": "alice@example.com"},
     )
     task = _task(
-        raw="<@UOM123|Om Sinkar> give me open tickets assigned to",
+        raw="<@UALICE123|Alice Smith> give me open tickets assigned to",
         cleaned="give me open tickets assigned to",
         user_id="UAMIT",
     )
     client = MagicMock()
     assignees = resolve_assignees_for_task(task, config, client)
-    assert assignees == ["om@flexype.io"]
+    assert assignees == ["alice@example.com"]
     client.search_users.assert_not_called()
 
 
@@ -86,22 +86,22 @@ def test_resolve_assignees_skips_current_user_when_other_named():
     config = AlfredConfig()
     config.jira = JiraConfig(
         enabled=True,
-        assignee_map={"Om Sinkar": "om@flexype.io"},
+        assignee_map={"Alice Smith": "alice@example.com"},
     )
     task = _task(
-        raw="<@UOM|Om Sinkar> list open tickets assigned to",
+        raw="<@UALICE|Alice Smith> list open tickets assigned to",
         cleaned="list open tickets assigned to",
     )
     client = MagicMock()
     assignees = resolve_assignees_for_task(task, config, client)
-    assert assignees == ["om@flexype.io"]
+    assert assignees == ["alice@example.com"]
     assert "currentUser()" not in assignees
 
 
 def test_build_open_assigned_jql_with_project_and_assignee():
-    jql = build_open_assigned_jql(["om@flexype.io"], ["TECH"])
+    jql = build_open_assigned_jql(["alice@example.com"], ["TECH"])
     assert 'project = "TECH"' in jql
-    assert 'assignee = "om@flexype.io"' in jql
+    assert 'assignee = "alice@example.com"' in jql
     assert "status not in" in jql
 
 
@@ -109,13 +109,13 @@ def test_detect_jira_list_action_for_named_assignee(monkeypatch):
     config = AlfredConfig()
     config.jira = JiraConfig(
         enabled=True,
-        base_url="https://flexype.atlassian.net",
-        email="amit@flexype.io",
+        base_url="https://acme.atlassian.net",
+        email="bob@example.com",
         default_project="TECH",
-        assignee_map={"Om Sinkar": "om@flexype.io"},
+        assignee_map={"Alice Smith": "alice@example.com"},
     )
     task = _task(
-        raw="<@UOM|Om Sinkar> give me all open tickets assigned to",
+        raw="<@UALICE|Alice Smith> give me all open tickets assigned to",
         cleaned="give me all open tickets assigned to",
     )
 
@@ -133,7 +133,7 @@ def test_detect_jira_list_action_for_named_assignee(monkeypatch):
     tool, args = action
     assert tool == "jira_search"
     assert 'project = "TECH"' in args["jql"]
-    assert 'assignee = "om@flexype.io"' in args["jql"]
+    assert 'assignee = "alice@example.com"' in args["jql"]
     assert "currentUser()" not in args["jql"]
 
 
@@ -141,13 +141,13 @@ def test_format_jira_context_includes_resolved_assignee(monkeypatch):
     config = AlfredConfig()
     config.jira = JiraConfig(
         enabled=True,
-        base_url="https://flexype.atlassian.net",
-        email="amit@flexype.io",
+        base_url="https://acme.atlassian.net",
+        email="bob@example.com",
         default_project="TECH",
-        assignee_map={"Om Sinkar": "om@flexype.io"},
+        assignee_map={"Alice Smith": "alice@example.com"},
     )
     task = _task(
-        raw="<@UOM|Om Sinkar> open tickets assigned to",
+        raw="<@UALICE|Alice Smith> open tickets assigned to",
         cleaned="open tickets assigned to",
     )
 
@@ -162,6 +162,6 @@ def test_format_jira_context_includes_resolved_assignee(monkeypatch):
     monkeypatch.setattr("backend.ingress.jira_context.JiraApiClient", FakeClient)
     prompt = format_jira_context_for_prompt(config, task)
     assert "Resolved assignee" in prompt
-    assert "om@flexype.io" in prompt
+    assert "alice@example.com" in prompt
     assert "Default project scope" in prompt
     assert "TECH" in prompt

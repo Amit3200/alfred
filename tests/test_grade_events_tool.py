@@ -14,7 +14,7 @@ def _config() -> AlfredConfig:
     config.aws = AWSConfig(
         enabled=True,
         allowed_services=["athena"],
-        athena_database="flexype",
+        athena_database="analytics",
         athena_output_location="s3://bucket/athena/",
         grade_events_table="grade_events",
     )

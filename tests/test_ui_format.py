@@ -4,11 +4,11 @@ from backend.ingress.ui_format import format_for_ui
 
 _LEGACY_PR_LIST = """*4 open PRs*
 
-`cipher`
-• #1685 Add Thankyou page — https://github.com/FlexyPe/cipher/pull/1685
+`platform`
+• #1685 Add Thankyou page — https://github.com/AcmeCorp/platform/pull/1685
 
-`flexype-adhocs`
-• #91 Feat: SQS Consumer Support Added — https://github.com/FlexyPe/flexype-adhocs/pull/91 • #16 Fix tests — https://github.com/FlexyPe/flexype-adhocs/pull/16 • #8 Dump PR — https://github.com/FlexyPe/flexype-adhocs/pull/8"""
+`adhocs`
+• #91 Feat: SQS Consumer Support Added — https://github.com/AcmeCorp/adhocs/pull/91 • #16 Fix tests — https://github.com/AcmeCorp/adhocs/pull/16 • #8 Dump PR — https://github.com/AcmeCorp/adhocs/pull/8"""
 
 
 def test_slack_links_to_markdown():
@@ -30,10 +30,10 @@ def test_preserves_code_fences():
 def test_legacy_pr_list_normalization():
     text = format_for_ui(_LEGACY_PR_LIST)
     assert "**4 open PRs**" in text
-    assert "### cipher" in text
-    assert "### flexype-adhocs" in text
-    assert "[#1685 Add Thankyou page](https://github.com/FlexyPe/cipher/pull/1685)" in text
-    assert "[#91 Feat: SQS Consumer Support Added](https://github.com/FlexyPe/flexype-adhocs/pull/91)" in text
-    assert "[#16 Fix tests](https://github.com/FlexyPe/flexype-adhocs/pull/16)" in text
-    assert "[#8 Dump PR](https://github.com/FlexyPe/flexype-adhocs/pull/8)" in text
+    assert "### platform" in text
+    assert "### adhocs" in text
+    assert "[#1685 Add Thankyou page](https://github.com/AcmeCorp/platform/pull/1685)" in text
+    assert "[#91 Feat: SQS Consumer Support Added](https://github.com/AcmeCorp/adhocs/pull/91)" in text
+    assert "[#16 Fix tests](https://github.com/AcmeCorp/adhocs/pull/16)" in text
+    assert "[#8 Dump PR](https://github.com/AcmeCorp/adhocs/pull/8)" in text
     assert " — https://" not in text

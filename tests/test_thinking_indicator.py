@@ -10,6 +10,7 @@ from backend.slack.status import (
     MAX_SLACK_LOADING_MESSAGE_LENGTH,
     STATUS_LINES,
     ThinkingIndicator,
+    build_loading_pool,
     loading_line_to_status,
     loading_messages_for_slack,
     pool_has_custom_shortcodes,
@@ -38,22 +39,38 @@ def test_loading_messages_mixes_custom_and_defaults(monkeypatch):
     messages = loading_messages_for_slack(custom_lines=custom)
 
     assert len(messages) == 10
-    assert messages[:2] == custom
-    assert any(message in defaults for message in messages[2:])
+    assert all(line in messages for line in custom)
+    assert any(message in defaults for message in messages)
 
 
 def test_loading_messages_returns_full_merged_pool_when_under_limit():
     custom = [":doge: Much query.", ":cat: Meow."]
-    messages = loading_messages_for_slack(custom_lines=custom, count=1000)
+    messages = build_loading_pool(custom_lines=custom)
     assert messages[:2] == custom
     assert len(messages) == 2 + len(STATUS_LINES)
 
 
-def test_loading_messages_samples_from_merged_pool():
+def test_loading_messages_includes_defaults_when_many_custom(monkeypatch):
     custom = [f":emoji_{index}: line {index}" for index in range(12)]
+    defaults = {f"{emoji} {line}" for emoji, line in STATUS_LINES}
+
+    def sample_first(pool: list[str], count: int) -> list[str]:
+        return pool[:count]
+
+    monkeypatch.setattr(random, "sample", sample_first)
     messages = loading_messages_for_slack(custom_lines=custom)
+
     assert len(messages) == 10
-    assert messages[:10] == custom[:10]
+    assert any(message in defaults for message in messages)
+    assert any(message.startswith(":emoji_") for message in messages)
+
+
+def test_build_loading_pool_includes_all_defaults_with_many_custom():
+    custom = [f":emoji_{index}: line {index}" for index in range(21)]
+    pool = build_loading_pool(custom_lines=custom)
+    assert pool[:21] == custom
+    assert len(pool) == 21 + len(STATUS_LINES)
+    assert pool[21].startswith("🍳")
 
 
 def test_slack_loading_messages_truncates_long_custom_lines():

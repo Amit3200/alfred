@@ -23,7 +23,7 @@ def test_extract_list_refs_from_slack_link():
     message = {
         "text": (
             "Submit a ticket (app): reported a "
-            "<https://flexype.slack.com/lists/T081ABC/F0A5AS3HF9S?record_id=Rec0BC2G4SQ1J|bug>"
+            "<https://acme.slack.com/lists/T081ABC/F0A5AS3HF9S?record_id=Rec0BC2G4SQ1J|bug>"
         )
     }
     refs = extract_list_refs([message])
@@ -135,7 +135,7 @@ def test_enrich_channel_context_with_lists_fetches_records():
     messages = [
         {
             "text": (
-                "<https://flexype.slack.com/lists/T081ABC/F0A5AS3HF9S?record_id=Rec0BC2G4SQ1J|bug>"
+                "<https://acme.slack.com/lists/T081ABC/F0A5AS3HF9S?record_id=Rec0BC2G4SQ1J|bug>"
             )
         }
     ]

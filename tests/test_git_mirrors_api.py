@@ -78,18 +78,18 @@ def test_list_available_repos_api(tmp_path):
         enabled=True,
         provider="github",
         token="ghp_test",
-        default_org="FlexyPe",
-        repos=["FlexyPe/cipher"],
+        default_org="AcmeCorp",
+        repos=["AcmeCorp/platform"],
     )
     manager.save_merged(config, secrets)
 
     from unittest.mock import patch
 
     with patch("backend.git.api._GitHubClient.list_accessible_repos") as mock_list:
-        mock_list.return_value = ["FlexyPe/cipher", "FlexyPe/other"]
+        mock_list.return_value = ["AcmeCorp/platform", "AcmeCorp/other"]
         res = client.get("/api/git/mirrors/repos/available", headers=headers)
 
     assert res.status_code == 200
     body = res.json()
     assert body["source"] == "org"
-    assert "FlexyPe/other" in body["repos"]
+    assert "AcmeCorp/other" in body["repos"]

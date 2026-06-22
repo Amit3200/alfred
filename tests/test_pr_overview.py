@@ -22,8 +22,8 @@ def test_deterministic_overview_uses_pr_body():
     detail = {
         "number": 91,
         "title": "Feat: SQS Consumer Support Added",
-        "repo": "FlexyPe/flexype-adhocs",
-        "url": "https://github.com/FlexyPe/flexype-adhocs/pull/91",
+        "repo": "AcmeCorp/adhocs",
+        "url": "https://github.com/AcmeCorp/adhocs/pull/91",
         "head": "feature/sqs",
         "base": "main",
         "author": "amit",
@@ -44,7 +44,7 @@ def test_format_pr_context_for_prompt_includes_overview():
     detail = {
         "number": 91,
         "title": "SQS Consumer",
-        "repo": "FlexyPe/flexype-adhocs",
+        "repo": "AcmeCorp/adhocs",
         "head": "feature/sqs",
         "base": "main",
         "body": "Adds SQS consumer.",
@@ -64,14 +64,14 @@ def test_format_pr_context_for_prompt_includes_overview():
 
 
 def test_grounding_rejects_magento_hallucination():
-    detail = {"title": "SQS Consumer Support", "repo": "FlexyPe/flexype-adhocs"}
+    detail = {"title": "SQS Consumer Support", "repo": "AcmeCorp/adhocs"}
     files = [{"filename": "sqs_consumer.py", "status": "added", "additions": 100, "deletions": 0}]
     bad = "The code appears to be Magento 2 Integration with RESTful APIs and PEP 8 naming."
     assert not _is_grounded_response(bad, detail, files)
 
 
 def test_grounding_accepts_specific_file_reference():
-    detail = {"title": "SQS Consumer Support", "repo": "FlexyPe/flexype-adhocs"}
+    detail = {"title": "SQS Consumer Support", "repo": "AcmeCorp/adhocs"}
     files = [{"filename": "katarot/consumer/dev/sqs_consumer.py", "status": "added", "additions": 100, "deletions": 0}]
     good = "In `sqs_consumer.py`, messages are deleted after processing regardless of outcome."
     assert _is_grounded_response(good, detail, files)

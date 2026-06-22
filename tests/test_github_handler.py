@@ -26,10 +26,10 @@ def test_webhook_queues_and_reacts_eyes_immediately():
         },
         "issue": {
             "number": 7,
-            "html_url": "https://github.com/FlexyPe/cipher/pull/7",
+            "html_url": "https://github.com/AcmeCorp/platform/pull/7",
             "pull_request": {},
         },
-        "repository": {"full_name": "FlexyPe/cipher"},
+        "repository": {"full_name": "AcmeCorp/platform"},
     }
 
     with (

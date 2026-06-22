@@ -19,19 +19,19 @@ def test_list_available_repos_merges_configured_and_remote():
         enabled=True,
         provider="github",
         token="ghp_test",
-        default_org="FlexyPe",
-        repos=["FlexyPe/cipher"],
+        default_org="AcmeCorp",
+        repos=["AcmeCorp/platform"],
     )
     client = GitApiClient(config)
     client._impl = MagicMock()
     client._impl.list_accessible_repos.return_value = [
-        "FlexyPe/cipher",
-        "FlexyPe/other",
+        "AcmeCorp/platform",
+        "AcmeCorp/other",
     ]
     payload = client.list_available_repos()
     assert payload["source"] == "org"
-    assert payload["org"] == "FlexyPe"
-    assert payload["repos"] == ["FlexyPe/cipher", "FlexyPe/other"]
+    assert payload["org"] == "AcmeCorp"
+    assert set(payload["repos"]) == {"AcmeCorp/platform", "AcmeCorp/other"}
 
 
 @patch("backend.git.api.requests.Session")
@@ -40,8 +40,8 @@ def test_list_available_repos_without_token(mock_session_cls):
         enabled=True,
         provider="github",
         token="",
-        default_org="FlexyPe",
-        repos=["FlexyPe/cipher"],
+        default_org="AcmeCorp",
+        repos=["AcmeCorp/platform"],
     )
     with pytest.raises(RuntimeError, match="Git token"):
         GitApiClient(config)

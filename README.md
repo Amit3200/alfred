@@ -402,7 +402,7 @@ alfred token
 
 ### Optional — GitHub PR comment bot
 
-Requires a **public HTTPS URL** on your company subdomain (e.g. `alfred.flexype.dev` via Cloudflare tunnel or ALB). Configure GitHub App webhook → `/api/v1/github/webhook`, subscribe to `Issue comment`, install on org repos. Admin → Integrations → GitHub App + Secrets. Comment `@alfred review` on a PR.
+Requires a **public HTTPS URL** on your company subdomain (e.g. `alfred.abc.dev` via Cloudflare tunnel or ALB). Configure GitHub App webhook → `/api/v1/github/webhook`, subscribe to `Issue comment`, install on org repos. Admin → Integrations → GitHub App + Secrets. Comment `@alfred review` on a PR.
 
 ### Optional — Public URL (Cloudflare Tunnel)
 

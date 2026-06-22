@@ -107,7 +107,7 @@ class AWSConfig(BaseModel):
     )
     grade_events_table: str = Field(
         default="grade_events",
-        description="Athena table name for FlexyPe checkout event dumps.",
+        description="Athena table name for AcmeCorp checkout event dumps.",
     )
     grade_events_s3_location: str = Field(
         default="",
@@ -157,7 +157,7 @@ class JiraConfig(BaseModel):
         default_factory=dict,
         description=(
             "Map Slack display names or user IDs to JIRA assignee emails/accountIds, "
-            "e.g. 'Om Sinkar': 'om@flexype.io'."
+            "e.g. 'Alice Smith': 'alice@example.com'."
         ),
     )
 

@@ -67,7 +67,7 @@ def test_agent_loop_executes_kimi_tool_tag():
             content=(
                 "I'll search the codebase.\n\n"
                 '<tool>{"tool_type": "function", "tool_name": "grep_repo", '
-                '"tool_input": {"pattern": "recalculation", "path": "FlexyPe/cipher"}}</tool>'
+                '"tool_input": {"pattern": "recalculation", "path": "AcmeCorp/platform"}}</tool>'
             ),
             tool_calls=[],
         ),

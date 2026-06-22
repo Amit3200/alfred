@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sync FlexyPe Cipher skill runbooks into `.alfred/playbooks/cipher/`."""
+"""Sync external platform skill runbooks into `.alfred/playbooks/cipher/`."""
 
 from __future__ import annotations
 
@@ -14,9 +14,9 @@ import yaml
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 DEFAULT_SOURCE = Path(
-    "/Users/amit3200/workspace/flexype/cipher/Skill Generation Matrix"
+    "./external/platform-skills"
 )
-CIPHER_REPO = "FlexyPe/cipher"
+PLATFORM_REPO = "AcmeCorp/platform"
 
 
 def _alfred_root() -> Path:
@@ -24,17 +24,17 @@ def _alfred_root() -> Path:
 
 
 def _transform_frontmatter(meta: dict) -> dict:
-    """Adapt Cipher agent skills for Alfred playbook loading."""
+    """Adapt external agent skills for Alfred playbook loading."""
     out = dict(meta)
 
-    # Alfred uses Slack channel IDs (C…); Cipher skills use #channel names.
+    # Alfred uses Slack channel IDs (C…); external skills use #channel names.
     out.pop("allowed_channels", None)
     out["channels"] = []
 
-    # Scope to Cipher repo when Alfred adds repo-aware matching.
+    # Scope to platform repo when Alfred adds repo-aware matching.
     repos = out.get("repos")
     if not repos:
-        out["repos"] = [CIPHER_REPO]
+        out["repos"] = [PLATFORM_REPO]
 
     triggers = out.get("triggers") or out.get("trigger_keywords") or []
     if isinstance(triggers, str):
@@ -42,7 +42,7 @@ def _transform_frontmatter(meta: dict) -> dict:
     out["triggers"] = list(triggers)
     out.pop("trigger_keywords", None)
 
-    # Shell-style tool strings are for the Cipher DevOps agent, not Alfred tools.
+    # Shell-style tool strings are for the external DevOps agent, not Alfred tools.
     out.pop("allowed_tools", None)
 
     return out
@@ -92,14 +92,14 @@ def sync(source: Path, dest_root: Path, *, dry_run: bool = False) -> int:
     if readme.is_file():
         index_meta = {
             "name": "cipher-skill-index",
-            "repos": [CIPHER_REPO],
+            "repos": [PLATFORM_REPO],
             "channels": [],
             "triggers": [
                 "cipher skill",
                 "cipher runbook",
-                "cipher devops",
+                "platform devops",
                 "skill generation matrix",
-                "FlexyPe/cipher",
+                "AcmeCorp/platform",
             ],
         }
         header = yaml.safe_dump(index_meta, sort_keys=False, allow_unicode=True).strip()
@@ -109,7 +109,7 @@ def sync(source: Path, dest_root: Path, *, dry_run: bool = False) -> int:
         index = dest_root / "cipher-skill-index.md"
         index.write_text(f"---\n{header}\n---\n\n{body}", encoding="utf-8")
 
-    print(f"Synced {len(skill_files)} cipher skill(s) to {dest_root}")
+    print(f"Synced {len(skill_files)} platform skill(s) to {dest_root}")
     return 0
 
 

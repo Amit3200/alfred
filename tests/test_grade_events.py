@@ -12,7 +12,7 @@ def _config() -> AlfredConfig:
     config = AlfredConfig()
     config.aws = AWSConfig(
         enabled=True,
-        athena_database="flexype",
+        athena_database="analytics",
         grade_events_table="grade_events",
     )
     return config

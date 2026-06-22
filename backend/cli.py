@@ -588,7 +588,7 @@ def github_review(
 ) -> None:
     """Review a PR and post a formatted GitHub comment (GFM).
 
-    PR_REF can be a URL or org/repo#123, e.g. FlexyPe/cipher#2047
+    PR_REF can be a URL or org/repo#123, e.g. AcmeCorp/platform#2047
     """
     from backend.github.review import run_github_pr_review
 

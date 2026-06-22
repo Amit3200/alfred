@@ -57,8 +57,8 @@ When the user provides a request, map it to the following JIRA Query Language (J
 jira:
   default_project: TECH
   assignee_map:
-    "Om Sinkar": om@flexype.io
-    U01234567: om@flexype.io   # Slack user ID → email
+    "Om Sinkar": om@abc.io
+    U01234567: om@abc.io   # Slack user ID → email
 ```
 
 Only use `currentUser()` when the user explicitly asks for **my/me** tasks.

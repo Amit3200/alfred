@@ -37,7 +37,7 @@ def split_repo_slug(repo: str) -> tuple[str, str]:
 
 
 def resolve_repo_slug(repo: str, git: GitConfig) -> str:
-    """Expand short repo names (e.g. flexype-adhocs) to owner/name using config."""
+    """Expand short repo names (e.g. adhocs) to owner/name using config."""
     slug = repo.strip().strip("/")
     if "/" in slug:
         return slug
