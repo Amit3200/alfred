@@ -28,7 +28,16 @@ export function AlfredMark({ size = 36, className }: AlfredMarkProps) {
       {/* bow tie — right wing */}
       <path d="M32 36 50 28c2-1 2-4 0-5L32 31v5z" className="alfred-mark-tie" />
       {/* knot */}
-      <rect x="28" y="30" width="8" height="7" rx="1.5" className="alfred-mark-knot" />
+      <g>
+        <rect x="27" y="29" width="10" height="9" rx="2" className="alfred-mark-knot" />
+        <path
+          d="M 28.5 33.5 h 2 l 1 2 l 1 -5 l 1 5.5 l 0.75 -2.5 h 1.25"
+          className="alfred-mark-knot-heartbeat"
+          strokeWidth="0.75"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        />
+      </g>
 
       {/* serving tray */}
       <path

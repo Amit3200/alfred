@@ -25,6 +25,8 @@
   --alfred-mark-bg: #1a1816;
   --alfred-mark-collar-fill: #e8e4dc;
   --alfred-mark-tray-stroke: #c4bdb4;
+  --alfred-mark-tie-fill: #c9a04a;
+  --alfred-mark-knot-fill: #9a6b2f;
   --alfred-font: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
 }
 
@@ -48,6 +50,8 @@
   --alfred-mark-bg: #252220;
   --alfred-mark-collar-fill: #2a2724;
   --alfred-mark-tray-stroke: #3d3834;
+  --alfred-mark-tie-fill: #e8c876;
+  --alfred-mark-knot-fill: #d4a853;
 }
 
 /* Theme 2.0 (Modern Professional) */
@@ -73,6 +77,8 @@
   --alfred-mark-bg: #4f46e5;
   --alfred-mark-collar-fill: #e2e8f0;
   --alfred-mark-tray-stroke: #cbd5e1;
+  --alfred-mark-tie-fill: #c7d2fe;
+  --alfred-mark-knot-fill: #a5b4fc;
   --alfred-font: "Plus Jakarta Sans", "Inter", -apple-system, BlinkMacSystemFont, sans-serif;
 }
 
@@ -96,6 +102,8 @@
   --alfred-mark-bg: #818cf8;
   --alfred-mark-collar-fill: #1e293b;
   --alfred-mark-tray-stroke: #334155;
+  --alfred-mark-tie-fill: #ffffff;
+  --alfred-mark-knot-fill: #e0e7ff;
 }
 
 /* Global Workspace Revamp & Grid Background */
@@ -585,11 +593,15 @@ body,
 }
 
 .alfred-mark-tie {
-  fill: var(--alfred-accent-bright);
+  fill: var(--alfred-mark-tie-fill);
 }
 
 .alfred-mark-knot {
-  fill: var(--alfred-accent);
+  fill: var(--alfred-mark-knot-fill);
+}
+
+.alfred-mark-knot-heartbeat {
+  stroke: var(--alfred-mark-bg);
 }
 
 .alfred-mark-tray {
