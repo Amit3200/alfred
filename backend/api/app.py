@@ -14,6 +14,7 @@ from fastapi.staticfiles import StaticFiles
 from backend.__version__ import __version__
 from backend.api.deps import require_admin
 from backend.api.routes import auth as auth_routes
+from backend.api.routes import branding as branding_routes
 from backend.api.routes import chat as chat_routes
 from backend.api.routes import config as config_routes
 from backend.api.routes import github as github_routes
@@ -83,6 +84,8 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     
     app.include_router(auth_routes.router, prefix="/api")
     app.include_router(health_routes.router, prefix="/api")
+    app.include_router(branding_routes.public_router, prefix="/api")
+    app.include_router(branding_routes.admin_router, prefix="/api", dependencies=[Depends(require_admin)])
     app.include_router(github_routes.router, prefix="/api")
     app.include_router(google_routes.public_router, prefix="/api")
     app.include_router(config_routes.router, prefix="/api", dependencies=[Depends(require_admin)])

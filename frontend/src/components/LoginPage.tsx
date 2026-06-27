@@ -1,19 +1,21 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Form, Input, Button, Typography } from "antd";
 import { LockOutlined, UserOutlined } from "@ant-design/icons";
 import { useApp } from "../context/AppContext";
 import { Logo } from "./Logo";
 
 export function LoginPage() {
-  const { login } = useApp();
+  const { login, branding, refreshBranding } = useApp();
   const [loading, setLoading] = useState(false);
 
-  const onFinish = async (values: any) => {
+  useEffect(() => {
+    void refreshBranding();
+  }, [refreshBranding]);
+
+  const onFinish = async (values: { username: string; password: string }) => {
     setLoading(true);
     try {
       await login(values.username, values.password);
-    } catch (err) {
-      // Errors are already handled and toasted by the login method in context
     } finally {
       setLoading(false);
     }
@@ -26,13 +28,13 @@ export function LoginPage() {
       <div className="alfred-login-card">
         <div className="alfred-login-header">
           <div className="alfred-login-logo">
-            <Logo compact size="lg" />
+            <Logo compact size="lg" branding={branding} />
           </div>
           <Typography.Title level={3} className="alfred-login-title" style={{ margin: 0 }}>
-            Welcome back
+            {branding.display_title}
           </Typography.Title>
           <Typography.Text className="alfred-login-desc">
-            Sign in to manage your Alfred console
+            Sign in to {branding.company_name ? branding.display_title : "your Alfred console"}
           </Typography.Text>
         </div>
         <Form

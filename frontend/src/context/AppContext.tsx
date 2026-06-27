@@ -8,12 +8,14 @@ import {
 } from "react";
 import {
   AlfredConfig,
+  PublicBranding,
   SecretsPayload,
   api,
   getAdminToken,
   setAdminToken,
   ApiError,
 } from "../api/client";
+import { defaultPublicBranding } from "../branding";
 import type { AppView, SettingsPage } from "../types";
 import { showToast } from "../utils/toast";
 
@@ -27,6 +29,7 @@ type AppContextValue = {
   version: string;
   initialized: boolean;
   dataDir: string;
+  branding: PublicBranding;
   checks: Record<string, { ok: boolean; message?: string; skipped?: boolean }> | null;
   view: AppView;
   settingsPage: SettingsPage;
@@ -42,6 +45,7 @@ type AppContextValue = {
   runChecks: () => Promise<void>;
   testProvider: (name: string) => Promise<void>;
   testIntegration: (name: string) => Promise<void>;
+  refreshBranding: () => Promise<void>;
   notify: (type: "error" | "success", text: string) => void;
 };
 
@@ -63,11 +67,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [version, setVersion] = useState("");
   const [dataDir, setDataDir] = useState("");
   const [initialized, setInitialized] = useState(false);
+  const [branding, setBranding] = useState<PublicBranding>(defaultPublicBranding());
   const [view, setView] = useState<AppView>("home");
   const [settingsPage, setSettingsPage] = useState<SettingsPage>("ai");
 
   const notify = useCallback((type: "error" | "success", text: string) => {
     showToast(type, text);
+  }, []);
+
+  const refreshBranding = useCallback(async () => {
+    try {
+      setBranding(await api.getPublicBranding());
+    } catch {
+      setBranding(defaultPublicBranding());
+    }
   }, []);
 
   const load = useCallback(async () => {
@@ -77,6 +90,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setVersion(health.version);
       setDataDir(health.data_dir || "");
       setInitialized(health.initialized);
+      await refreshBranding();
       setIsAuthenticated(true);
       if (health.initialized) {
         const cfg = await api.getConfig();
@@ -89,6 +103,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         setIsAuthenticated(false);
         setAdminToken("");
         setTokenInput("");
+        try {
+          setBranding(await api.getPublicBranding());
+        } catch {
+          setBranding(defaultPublicBranding());
+        }
       } else {
         notify("error", err instanceof Error ? err.message : "Failed to load");
       }
@@ -96,7 +115,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [notify]);
+  }, [notify, refreshBranding]);
 
   const login = async (username: string, password_or_token: string) => {
     setLoading(true);
@@ -237,6 +256,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         version,
         dataDir,
         initialized,
+        branding,
         checks,
         view,
         settingsPage,
@@ -249,6 +269,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
         runChecks,
         testProvider,
         testIntegration,
+        refreshBranding,
         notify,
       }}
     >

@@ -105,6 +105,12 @@ def repo_context_dir(data_dir: Path | None, repo_slug: str) -> Path:
     return path
 
 
+def branding_dir(data_dir: Path | None = None) -> Path:
+    path = get_data_dir(data_dir) / "branding"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
 def bundled_web_dist() -> Path | None:
     """Return path to bundled admin UI static assets, if present."""
     package_root = Path(__file__).resolve().parent

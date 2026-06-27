@@ -35,6 +35,8 @@ class ConfigManager:
         username: str | None = None,
         password: str | None = None,
         token: str | None = None,
+        *,
+        company_name: str | None = None,
     ) -> AlfredConfig:
         if self._config_path.exists() and not force:
             config = self.load_config()
@@ -56,6 +58,10 @@ class ConfigManager:
         config.server.admin_username = admin_username
         config.server.admin_password = admin_password
         
+        if company_name and company_name.strip():
+            config.branding.company_name = company_name.strip()
+            config.branding.setup_completed = True
+
         secrets_obj = AlfredSecrets(
             server_admin_token=admin_token,
             server_admin_username=admin_username,

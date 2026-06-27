@@ -5,8 +5,9 @@ import {
   KeyOutlined,
   ReloadOutlined,
   RobotOutlined,
+  UploadOutlined,
 } from "@ant-design/icons";
-import { Button, Flex, Input, Spin, Typography } from "antd";
+import { Button, Flex, Input, Modal, Spin, Typography, Upload } from "antd";
 import { AlfredMark } from "./AlfredMark";
 import { HealthChecksTable } from "./HealthChecksTable";
 import { OllamaGetStarted } from "./OllamaGetStarted";
@@ -24,6 +25,7 @@ export function HomePage() {
     saveToken,
     navigate,
     load,
+    refreshBranding,
     runChecks,
     checks,
     notify,
@@ -42,6 +44,30 @@ export function HomePage() {
     } catch (err) {
       notify("error", err instanceof Error ? err.message : "Export failed");
     }
+  };
+
+  const onImportConfig = (file: File) => {
+    Modal.confirm({
+      title: "Import configuration?",
+      content:
+        "This replaces config, secrets, encryption key, playbooks, and branding on this server with the contents of the zip. This cannot be undone.",
+      okText: "Import",
+      okType: "danger",
+      cancelText: "Cancel",
+      onOk: async () => {
+        try {
+          const result = await api.importConfig(file);
+          await load();
+          await refreshBranding();
+          const count = result.imported_files?.length ?? 0;
+          notify("success", `Imported ${count} file${count === 1 ? "" : "s"} successfully.`);
+        } catch (err) {
+          notify("error", err instanceof Error ? err.message : "Import failed");
+          throw err;
+        }
+      },
+    });
+    return false;
   };
 
   if (loading) {
@@ -156,14 +182,26 @@ export function HomePage() {
               </Button>
             </Flex>
             <div style={{ marginTop: 12, borderTop: "1px solid var(--alfred-border-subtle)", paddingTop: 12 }}>
-              <Button
-                type="default"
-                icon={<DownloadOutlined />}
-                onClick={onExportConfig}
-                disabled={!tokenInput}
-              >
-                Export Config (.zip)
-              </Button>
+              <Flex gap={8} wrap="wrap">
+                <Button
+                  type="default"
+                  icon={<DownloadOutlined />}
+                  onClick={onExportConfig}
+                  disabled={!tokenInput}
+                >
+                  Export Config (.zip)
+                </Button>
+                <Upload
+                  accept=".zip,application/zip"
+                  showUploadList={false}
+                  beforeUpload={(file) => onImportConfig(file)}
+                  disabled={!tokenInput}
+                >
+                  <Button type="default" icon={<UploadOutlined />} disabled={!tokenInput}>
+                    Import Config (.zip)
+                  </Button>
+                </Upload>
+              </Flex>
             </div>
           </div>
         </div>

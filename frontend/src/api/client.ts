@@ -83,6 +83,13 @@ export type AlfredConfig = {
     directory: string;
     custom_directory: string;
     disabled: string[];
+    agentic_routing: boolean;
+  };
+  branding: {
+    company_name: string;
+    tagline: string;
+    logo_ext: string;
+    setup_completed: boolean;
   };
   _secrets_configured?: {
     slack_bot_token: boolean;
@@ -103,6 +110,15 @@ export type AlfredConfig = {
     server_admin_token: boolean;
     ai_api_keys: Record<string, boolean>;
   };
+};
+
+export type PublicBranding = {
+  company_name: string;
+  tagline: string;
+  display_title: string;
+  setup_completed: boolean;
+  has_logo: boolean;
+  logo_url: string;
 };
 
 export type SecretsPayload = {
@@ -225,6 +241,33 @@ export const api = {
       {},
       true,
     ),
+  getPublicBranding: () => request<PublicBranding>("/api/branding"),
+  updateBrandingProfile: (body: {
+    company_name: string;
+    tagline: string;
+    setup_completed: boolean;
+  }) =>
+    request<{ branding: PublicBranding }>(
+      "/api/config/branding",
+      { method: "PUT", body: JSON.stringify(body) },
+      true,
+    ),
+  uploadBrandingLogo: async (file: File): Promise<PublicBranding> => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch("/api/config/branding/logo", {
+      method: "POST",
+      headers: { "X-Alfred-Token": getAdminToken() },
+      body: form,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new ApiError(String(body.detail || "Logo upload failed"), res.status);
+    }
+    return res.json();
+  },
+  deleteBrandingLogo: () =>
+    request<PublicBranding>("/api/config/branding/logo", { method: "DELETE" }, true),
   checks: () => request<Record<string, { ok: boolean; message?: string; skipped?: boolean }>>("/api/health/checks", {}, true),
   getConfig: () => request<AlfredConfig>("/api/config", {}, true),
   saveConfig: (config: AlfredConfig, token?: string) =>
@@ -247,6 +290,20 @@ export const api = {
       throw new Error(`Export failed: ${res.status}`);
     }
     return res.blob();
+  },
+  importConfig: async (file: File): Promise<AlfredConfig & { imported_files?: string[] }> => {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch("/api/config/import", {
+      method: "POST",
+      headers: { "X-Alfred-Token": getAdminToken() },
+      body: form,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new Error(body.detail || `Import failed: ${res.status}`);
+    }
+    return res.json();
   },
   testProvider: (name: string) =>
     request<{ ok: boolean; message?: string; reply?: string }>(

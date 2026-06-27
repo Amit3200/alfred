@@ -13,7 +13,7 @@ from backend.ingress.context_policy import (
     omit_assistant_session_history,
 )
 from backend.ingress.playbooks import Playbook, PlaybookStore
-from backend.ingress.prompts import ALFRED_SYSTEM_PROMPT, GITHUB_COMMENT_RULES, build_slack_user_message
+from backend.ingress.prompts import GITHUB_COMMENT_RULES, build_alfred_system_prompt, build_slack_user_message
 from backend.ingress.render import Channel, render_for_channel
 from backend.ingress.response_clean import clean_response_scaffold
 from backend.ingress.slack_context import SlackContextBundle
@@ -59,6 +59,7 @@ class TaskProcessor:
         context_fetcher: Callable[[Task], SlackContextBundle | str | None] | None = None,
         playbook_store: PlaybookStore | None = None,
         data_dir: Path | None = None,
+        skill_router: Any | None = None,
     ) -> None:
         self.config = config
         self.router = LLMRouter.from_config(config, data_dir=data_dir)
@@ -69,6 +70,11 @@ class TaskProcessor:
             disabled_skills=config.skills.disabled,
         )
         self._data_dir = data_dir
+        from backend.routing import SkillRouter
+
+        self._skill_router = skill_router or SkillRouter(
+            config, self._playbooks, llm_router=self.router
+        )
 
     def process(self, task: Task) -> AssistantResponse:
         from backend.observability.context import interaction_scope, set_call_kind, set_skill_name
@@ -113,29 +119,13 @@ class TaskProcessor:
 
         repo_hint = str(task.metadata.get("repo") or task.metadata.get("repository") or "")
 
-        investigation = self._playbooks.pick_investigation(
-            task.cleaned_intent,
-            channel_id=task.channel_id,
+        route_context = self._build_route_context(
+            task,
+            session=session,
+            slack_context=slack_context if include_context else None,
             repo=repo_hint,
         )
-        if investigation is None and self.config.git.enabled:
-            from backend.ingress.git_direct import looks_like_code_investigation
-
-            if looks_like_code_investigation(task.cleaned_intent):
-                investigation = self._playbooks.get_by_name("investigate_bug")
-        if investigation is None and self.config.jira.enabled:
-            from backend.ingress.jira_direct import looks_like_jira_question
-
-            if looks_like_jira_question(task.cleaned_intent):
-                investigation = (
-                    self._playbooks.get_by_name("jira_management")
-                    or self._playbooks.get_by_name("jira_ticket")
-                )
-        if investigation is None and self.config.slack.enabled:
-            from backend.ingress.user_identity import is_user_identity_lookup
-
-            if is_user_identity_lookup(task.cleaned_intent):
-                investigation = self._playbooks.get_by_name("jira_management")
+        investigation = self._skill_router.route_investigation(route_context).playbook
         review_skill = self._resolve_pr_review_skill(investigation, task, session)
         omit_assistant = omit_assistant_session_history(
             task.cleaned_intent,
@@ -181,11 +171,9 @@ class TaskProcessor:
                 session,
             )
 
-        conversational = None if active_skill else self._playbooks.pick_conversational(
-            task.cleaned_intent,
-            channel_id=task.channel_id,
-            repo=repo_hint,
-        )
+        conversational = None
+        if not active_skill:
+            conversational = self._skill_router.route_conversational(route_context).playbook
         routed_playbook = active_skill or conversational
 
         repo_context_prompt = ""
@@ -364,6 +352,29 @@ class TaskProcessor:
         from backend.ai.routing import resolve_llm_route
 
         return resolve_llm_route(self.config.ai, task_kind, router=self.router)
+
+    def _build_route_context(
+        self,
+        task: Task,
+        *,
+        session: ConversationSession | None,
+        slack_context: str | None,
+        repo: str,
+    ):
+        from backend.routing import RouteContext
+
+        session_turns: tuple[str, ...] = ()
+        if session and session.turns:
+            session_turns = tuple(
+                turn.content for turn in session.turns[-4:] if (turn.content or "").strip()
+            )
+        return RouteContext(
+            intent=task.cleaned_intent,
+            channel_id=task.channel_id,
+            repo=repo,
+            thread_context=slack_context,
+            session_turns=session_turns,
+        )
 
     def _resolve_pr_review_skill(
         self,
@@ -718,7 +729,7 @@ class TaskProcessor:
         playbook_prompt: str = "",
         extra_system: str = "",
     ) -> list[Message]:
-        system_parts = [ALFRED_SYSTEM_PROMPT]
+        system_parts = [build_alfred_system_prompt(self.config)]
         if task.source == "git":
             system_parts.append(GITHUB_COMMENT_RULES)
         if playbook_prompt:

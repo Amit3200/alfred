@@ -1,8 +1,11 @@
 import { Layout, Spin } from "antd";
+import { useState } from "react";
+import { BrandingSetupModal } from "./BrandingSetupModal";
 import { AppSidebar } from "./AppSidebar";
 import { ChatPage } from "./ChatPage";
 import { HomePage } from "./HomePage";
 import { LoginPage } from "./LoginPage";
+import { BrandingPanel } from "./panels/BrandingPanel";
 import { AISettingsPanel } from "./panels/AISettingsPanel";
 import { HealthPanel } from "./panels/HealthPanel";
 import { IntegrationsPanel } from "./panels/IntegrationsPanel";
@@ -18,6 +21,8 @@ const SIDER_WIDTH = 248;
 function SettingsContent() {
   const { settingsPage } = useApp();
   switch (settingsPage) {
+    case "branding":
+      return <BrandingPanel />;
     case "ai":
       return <AISettingsPanel />;
     case "secrets":
@@ -38,7 +43,13 @@ function SettingsContent() {
 }
 
 export function AppShell() {
-  const { view, isAuthenticated, loading } = useApp();
+  const { view, isAuthenticated, loading, config } = useApp();
+  const [setupDismissed, setSetupDismissed] = useState(false);
+  const showBrandingSetup =
+    isAuthenticated &&
+    config &&
+    !config.branding?.setup_completed &&
+    !setupDismissed;
 
   if (loading && !isAuthenticated) {
     return (
@@ -53,13 +64,16 @@ export function AppShell() {
   }
 
   return (
-    <Layout hasSider className="alfred-shell">
-      <AppSidebar width={SIDER_WIDTH} />
-      <Layout className="alfred-main" style={{ marginLeft: SIDER_WIDTH }}>
-        <Content className="alfred-main-inner">
-          {view === "home" ? <HomePage /> : view === "chat" ? <ChatPage /> : <SettingsContent />}
-        </Content>
+    <>
+      <BrandingSetupModal open={showBrandingSetup} onClose={() => setSetupDismissed(true)} />
+      <Layout hasSider className="alfred-shell">
+        <AppSidebar width={SIDER_WIDTH} />
+        <Layout className="alfred-main" style={{ marginLeft: SIDER_WIDTH }}>
+          <Content className="alfred-main-inner">
+            {view === "home" ? <HomePage /> : view === "chat" ? <ChatPage /> : <SettingsContent />}
+          </Content>
+        </Layout>
       </Layout>
-    </Layout>
+    </>
   );
 }

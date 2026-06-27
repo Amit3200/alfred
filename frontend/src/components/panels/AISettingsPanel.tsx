@@ -1,4 +1,4 @@
-import { AutoComplete, Button, Col, Input, Row, Select, Typography } from "antd";
+import { AutoComplete, Button, Col, Input, Row, Select, Switch, Typography } from "antd";
 import { useMemo } from "react";
 import {
   LLMRouteKey,
@@ -110,6 +110,29 @@ export function AISettingsPanel() {
           Choose which provider and model handle each kind of work. Empty provider on basic chat /
           PR review falls back to default or investigation routing.
         </Typography.Paragraph>
+
+        <Row gutter={[16, 12]} style={{ marginBottom: 20 }}>
+          <Col xs={24} md={6}>
+            <label className="alfred-field-label">Agentic skill routing</label>
+            <Typography.Text type="secondary" style={{ display: "block", fontSize: 12 }}>
+              When keyword triggers miss, use the Skill matching model below to pick a skill from
+              the catalog (thread context included).
+            </Typography.Text>
+          </Col>
+          <Col xs={24} md={18}>
+            <Switch
+              checked={config.skills.agentic_routing ?? true}
+              onChange={(checked) =>
+                updateConfig({
+                  skills: { ...config.skills, agentic_routing: checked },
+                })
+              }
+            />
+            <Typography.Text type="secondary" style={{ marginLeft: 12, fontSize: 13 }}>
+              {config.skills.agentic_routing ?? true ? "Enabled" : "Disabled — keywords and heuristics only"}
+            </Typography.Text>
+          </Col>
+        </Row>
 
         {ROUTE_KEYS.map((key) => {
           const route = normalizeRoute(config.ai.routing[key]);

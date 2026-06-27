@@ -27,7 +27,7 @@ export const ROUTE_LABELS: Record<LLMRouteKey, string> = {
 };
 
 export const ROUTE_DESCRIPTIONS: Record<LLMRouteKey, string> = {
-  skill_matching: "Pick the right playbook (future intent router).",
+  skill_matching: "Pick the right skill/playbook when keyword triggers miss.",
   investigation: "Tool-calling agent loops — AWS, git, JIRA, etc.",
   basic_chat: "Simple Q&A without tools.",
   pr_review: "PR review skill and code analysis.",

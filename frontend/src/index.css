@@ -584,6 +584,11 @@ body,
   flex-shrink: 0;
 }
 
+.alfred-logo-company {
+  flex-shrink: 0;
+  display: block;
+}
+
 .alfred-mark-bg {
   fill: var(--alfred-mark-bg);
 }

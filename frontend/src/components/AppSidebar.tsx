@@ -1,5 +1,6 @@
 import {
   ApiOutlined,
+  BankOutlined,
   BarChartOutlined,
   CommentOutlined,
   DatabaseOutlined,
@@ -22,14 +23,14 @@ import type { SettingsPage } from "../types";
 
 const { Sider } = Layout;
 
-const SETTINGS_KEYS = new Set(["ai", "secrets", "integrations", "repos", "playbooks", "health", "usage"]);
+const SETTINGS_KEYS = new Set(["branding", "ai", "secrets", "integrations", "repos", "playbooks", "health", "usage"]);
 
 type AppSidebarProps = {
   width: number;
 };
 
 export function AppSidebar({ width }: AppSidebarProps) {
-  const { view, settingsPage, navigate, version, logout } = useApp();
+  const { view, settingsPage, navigate, version, logout, branding } = useApp();
 
   const selectedKeys = useMemo(
     () => (view === "home" ? ["home"] : view === "chat" ? ["chat"] : [settingsPage]),
@@ -74,7 +75,7 @@ export function AppSidebar({ width }: AppSidebarProps) {
       trigger={null}
     >
       <div className="alfred-sider-header">
-        <Logo />
+        <Logo branding={branding} />
       </div>
 
       <div className="alfred-sider-nav">
@@ -93,6 +94,7 @@ export function AppSidebar({ width }: AppSidebarProps) {
               icon: <SettingOutlined />,
               label: "Configure",
               children: [
+                { key: "branding", icon: <BankOutlined />, label: "Company profile" },
                 { key: "ai", icon: <RobotOutlined />, label: "AI providers" },
                 { key: "secrets", icon: <KeyOutlined />, label: "Secrets" },
                 { key: "integrations", icon: <ApiOutlined />, label: "Integrations" },

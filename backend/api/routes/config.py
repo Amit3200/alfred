@@ -4,15 +4,15 @@ from __future__ import annotations
 
 from typing import Any
 
-from fastapi import APIRouter, Depends, HTTPException, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from pathlib import Path
 import tempfile
-import zipfile
 
 from backend.api.deps import get_manager, require_admin, restart_slack_listener
 from backend.ai.registry import LLMRouter
 from backend.config_manager import ConfigManager
+from backend.config_transfer import ConfigImportError, build_export_zip, import_config_zip
 from backend.health import check_ai, check_aws, check_git, check_google, check_jira, check_slack
 from backend.models.config import AlfredConfig, AlfredSecrets
 
@@ -121,40 +121,35 @@ def test_integration(
 
 @router.get("/export")
 def export_config(manager: ConfigManager = Depends(require_admin)) -> FileResponse:
-    """Export whole settings, config, secrets, key, and playbooks as a zip file."""
-    temp_dir = tempfile.gettempdir()
-    zip_path = Path(temp_dir) / "alfred-config-export.zip"
-    
-    # Clean up old export file if exists
-    if zip_path.exists():
-        zip_path.unlink()
-        
-    data_dir = manager.data_dir
-    files_to_zip = []
-    
-    # Add config, secrets, and key files
-    for fname in ("config.yaml", "secrets.enc", ".key"):
-        fpath = data_dir / fname
-        if fpath.exists():
-            files_to_zip.append((fpath, fname))
-            
-    # Add playbooks directory
-    playbooks_path = data_dir / "playbooks"
-    if playbooks_path.exists() and playbooks_path.is_dir():
-        for f in playbooks_path.glob("**/*"):
-            if f.is_file():
-                rel_path = f.relative_to(data_dir)
-                files_to_zip.append((f, str(rel_path)))
-                
-    if not files_to_zip:
-        raise HTTPException(status_code=400, detail="No configuration files found to export")
-        
-    with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zip_file:
-        for fpath, arcname in files_to_zip:
-            zip_file.write(fpath, arcname)
-            
+    """Export settings, secrets, encryption key, playbooks, and branding as a zip."""
+    zip_path = Path(tempfile.gettempdir()) / "alfred-config-export.zip"
+    try:
+        build_export_zip(manager.data_dir, zip_path)
+    except ConfigImportError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     return FileResponse(
         path=zip_path,
         filename="alfred-config.zip",
-        media_type="application/zip"
+        media_type="application/zip",
     )
+
+
+@router.post("/import")
+async def import_config(
+    request: Request,
+    file: UploadFile = File(...),
+    manager: ConfigManager = Depends(require_admin),
+) -> dict:
+    """Import an Alfred config zip exported from another instance."""
+    content = await file.read()
+    try:
+        imported = import_config_zip(manager.data_dir, content)
+    except ConfigImportError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+    slack_restart = restart_slack_listener(request)
+    result = manager.public_config()
+    result["imported_files"] = imported
+    result["slack_restart"] = slack_restart
+    return result

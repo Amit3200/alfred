@@ -220,6 +220,32 @@ class SkillsConfig(BaseModel):
     directory: str = "skills"
     custom_directory: str = "skills/custom"
     disabled: list[str] = Field(default_factory=list)
+    agentic_routing: bool = Field(
+        default=True,
+        description=(
+            "When true, use the skill_matching LLM route if keyword triggers and "
+            "heuristics do not match a skill."
+        ),
+    )
+
+
+class BrandingConfig(BaseModel):
+    company_name: str = Field(
+        default="",
+        description="Company name shown as “Alfred × {company}” in the admin UI.",
+    )
+    tagline: str = Field(
+        default="Agent console",
+        description="Subtitle under the product title in the admin UI.",
+    )
+    logo_ext: str = Field(
+        default="",
+        description="Logo file extension when uploaded (png, jpg, webp, svg).",
+    )
+    setup_completed: bool = Field(
+        default=False,
+        description="True after company branding has been configured in admin or init.",
+    )
 
 
 class ModelPricingConfig(BaseModel):
@@ -267,6 +293,7 @@ class AlfredConfig(BaseModel):
     google: GoogleConfig = Field(default_factory=GoogleConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
     skills: SkillsConfig = Field(default_factory=SkillsConfig)
+    branding: BrandingConfig = Field(default_factory=BrandingConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
 
 

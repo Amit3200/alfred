@@ -1,5 +1,12 @@
 """System prompts for Alfred Slack and CLI interactions."""
 
+from __future__ import annotations
+
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from backend.models.config import AlfredConfig
+
 ALFRED_IDENTITY = """\
 You are Alfred — the company's AI assistant.
 
@@ -56,10 +63,20 @@ in that window — it may be older than what I can fetch."
 - Message authors in context are shown by display name when known.
 - Always refer to people by display name in your reply — never raw Slack user IDs (U…)."""
 
-ALFRED_SYSTEM_PROMPT = f"""{ALFRED_IDENTITY}
+
+def build_alfred_system_prompt(config: AlfredConfig | None = None) -> str:
+    from backend.branding.display import branding_identity_line
+    from backend.models.config import AlfredConfig as ConfigModel
+
+    cfg = config or ConfigModel()
+    identity = branding_identity_line(cfg.branding)
+    return f"""{identity}
 
 {SLACK_FORMAT_RULES}
 """
+
+
+ALFRED_SYSTEM_PROMPT = build_alfred_system_prompt()
 
 GITHUB_COMMENT_RULES = """\
 ## GitHub PR comment format

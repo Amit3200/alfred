@@ -31,12 +31,14 @@ def main() -> None:
 @click.option("--username", help="Admin username (default: admin).")
 @click.option("--password", help="Admin password (will prompt if not provided).")
 @click.option("--non-interactive", is_flag=True, help="Do not prompt; auto-generate password/token.")
+@click.option("--company", "company_name", default=None, help="Company name for Alfred × branding.")
 def init(
     data_dir: Path | None,
     force: bool,
     username: str | None,
     password: str | None,
     non_interactive: bool,
+    company_name: str | None,
 ) -> None:
     """Initialize Alfred data directory and generate admin token."""
     manager = ConfigManager(data_dir)
@@ -66,6 +68,12 @@ def init(
                 hide_input=True,
                 show_default=False,
             )
+        if not company_name:
+            company_name = click.prompt(
+                "Company name for branding (optional, shown as Alfred × YourCo)",
+                default="",
+                show_default=False,
+            )
 
     import secrets as py_secrets
     if not admin_username:
@@ -81,6 +89,7 @@ def init(
         username=admin_username,
         password=admin_password,
         token=admin_token,
+        company_name=company_name,
     )
     
     click.echo(f"Alfred initialized at: {manager.data_dir}")
