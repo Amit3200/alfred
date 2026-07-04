@@ -239,8 +239,8 @@ flowchart TD
     CacheLookup -->|No| KeywordMatcher
     DirectRouter -->|No| KeywordMatcher
     
-    KeywordMatcher -->|Yes (Match Playbook)| ReActLoop
-    KeywordMatcher -->|No (Fallback)| ReActLoop
+    KeywordMatcher -->|Yes Match Playbook| ReActLoop
+    KeywordMatcher -->|No Fallback| ReActLoop
 
     %% Execution & Monitoring Layer
     subgraph Execution ["3. Execution & Observability Logging"]
