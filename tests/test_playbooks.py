@@ -2,7 +2,7 @@
 
 from pathlib import Path
 
-from backend.ingress.playbooks import PlaybookStore
+from backend.routing.playbooks import PlaybookStore
 
 
 def test_playbook_matches_trigger(tmp_path: Path):

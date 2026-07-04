@@ -6,7 +6,7 @@ from unittest.mock import MagicMock
 
 from backend.agent.loop import run_agent_loop
 from backend.ai.base import LLMResponse, Message, ToolSchema
-from backend.git.api import PullRequestSummary
+from backend.integrations.git.api import PullRequestSummary
 from backend.tools.registry import ToolRegistry
 from backend.tools.result import ToolResult
 

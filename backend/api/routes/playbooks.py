@@ -12,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from backend.api.deps import require_admin
 from backend.config_manager import ConfigManager
-from backend.ingress.playbooks import _parse_playbook
+from backend.routing.playbooks import _parse_playbook
 from backend.paths import bundled_playbooks_dir, playbooks_dir
 
 router = APIRouter(prefix="/playbooks", tags=["playbooks"])

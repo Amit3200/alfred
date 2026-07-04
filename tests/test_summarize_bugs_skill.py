@@ -1,6 +1,6 @@
 """Tests for summarize_bugs bundled skill."""
 
-from backend.ingress.playbooks import PlaybookStore
+from backend.routing.playbooks import PlaybookStore
 
 
 def test_summarize_bugs_skill_loads():

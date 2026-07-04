@@ -1,6 +1,6 @@
 """Tests for response scaffold cleanup."""
 
-from backend.ingress.response_clean import clean_response_scaffold
+from backend.formatting.sanitize import clean_response_scaffold
 
 
 def test_strips_scaffold_labels():

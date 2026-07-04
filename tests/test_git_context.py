@@ -1,8 +1,10 @@
 """Tests for session git context helpers."""
 
 from __future__ import annotations
+from backend.routing.git_context import metadata_patch_for_tool_result
 
-from backend.ingress.git_context import (
+
+from backend.routing.git_context import (
     collect_thread_git_hints,
     detect_investigate_direct_action,
     enrich_tool_arguments,
@@ -139,7 +141,7 @@ def test_enrich_tool_arguments_fills_ref_from_active_pr():
 
 
 def test_metadata_patch_for_get_pr():
-    from backend.ingress.git_context import metadata_patch_for_tool_result
+    pass
 
     result = ToolResult.pr_detail(
         {

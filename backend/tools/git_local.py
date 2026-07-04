@@ -9,9 +9,9 @@ from pathlib import Path
 from typing import Any
 
 from backend.ai.base import ToolSchema
-from backend.git.api import resolve_repo_slug
-from backend.git.mirror import WorkspaceMirrorManager
-from backend.git.sandbox import PathSandboxError, resolve_repo_path
+from backend.integrations.git.api import resolve_repo_slug
+from backend.integrations.git.mirror import WorkspaceMirrorManager
+from backend.integrations.git.sandbox import PathSandboxError, resolve_repo_path
 from backend.models.config import AlfredConfig
 from backend.tools.registry import ToolRegistry
 from backend.tools.result import ToolResult

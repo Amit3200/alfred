@@ -9,7 +9,7 @@ from pydantic import BaseModel, Field
 
 from backend.api.deps import require_admin
 from backend.config_manager import ConfigManager
-from backend.storage.db_maintenance import cleanup_db, get_db_stats
+from backend.db.db_maintenance import cleanup_db, get_db_stats
 
 router = APIRouter(prefix="/storage", tags=["storage"])
 

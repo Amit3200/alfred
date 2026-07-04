@@ -1,13 +1,16 @@
 """Tests for investigation / git agent path in processor."""
 
 from __future__ import annotations
+from backend.integrations.git.api import PullRequestSummary
+from backend.routing.playbooks import PlaybookStore
+
 
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 from backend.ai.base import LLMResponse
-from backend.ingress.processor import TaskProcessor
-from backend.ingress.render import render_for_channel
+from backend.orchestrator.processor import TaskProcessor
+from backend.formatting.render import render_for_channel
 from backend.models.config import GitConfig, default_config
 from backend.models.task import Task
 
@@ -20,7 +23,7 @@ def test_processor_runs_investigation_loop_for_pr_question():
     processor.router = MagicMock()
 
     with patch("backend.tools.git_api.GitApiClient") as mock_client_cls:
-        from backend.git.api import PullRequestSummary
+        pass
 
         mock_client = mock_client_cls.from_alfred_config.return_value
         mock_client.list_my_prs.return_value = [
@@ -48,7 +51,7 @@ def test_processor_runs_investigation_loop_for_pr_question():
 
 
 def test_bundled_git_status_skill_loads(tmp_path: Path):
-    from backend.ingress.playbooks import PlaybookStore
+    pass
 
     store = PlaybookStore(tmp_path)
     names = {p.name for p in store.list_playbooks()}

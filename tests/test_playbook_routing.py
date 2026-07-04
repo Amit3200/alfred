@@ -5,8 +5,8 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from backend.ingress.processor import TaskProcessor
-from backend.ingress.playbooks import PlaybookStore
+from backend.orchestrator.processor import TaskProcessor
+from backend.routing.playbooks import PlaybookStore
 from backend.models.config import default_config
 from backend.models.task import Task
 

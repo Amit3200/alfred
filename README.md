@@ -4,8 +4,8 @@
 
 Config and encrypted secrets live in `.alfred/` (not a SaaS). Optional Ollama on your machine; admin UI for setup, health, and usage tracking.
 
-> **Status:** Alpha — Slack ingress, git mirrors, JIRA, AWS read tools, Graphify, observability, and pluggable AI (incl. Kimi) are working. Git write ops, Slack DMs, BM25 skill matching, and a unified intent router are still pending.  
-> **Tracker:** [`docs/build-reference/building_phase_v0.md`](docs/build-reference/building_phase_v0.md) (last reviewed 2026-06-21)
+> **Status:** Alpha — Slack ingress, git mirrors, JIRA (with context caching), AWS read tools, Graphify, observability (with task checkpoints database), local persistent SQLite task queue + background worker, and pluggable AI (incl. Kimi) are working. Git write ops, Slack DMs, and a unified intent router are still pending.  
+> **Tracker:** [`docs/build-reference/building_phase_v0.md`](docs/build-reference/building_phase_v0.md) (last reviewed 2026-07-04)
 
 **Requires Python 3.10+.** Local dev targets **Python 3.13** (see `.python-version`).
 
@@ -70,7 +70,6 @@ Company-specific Athena tables (e.g. event dumps) → **`.alfred/playbooks/`** w
 | Item | Target | Notes |
 |------|--------|--------|
 | Intent router, thread relevancy, skill matcher | **v0.1** | Upgrade from keywords + direct paths |
-| HTTP enqueue queue, durable task queue, governance | **v1** | Confirmation UX, audit export |
 | Git write ops, ECS/S3 tools | **v2** | |
 | Slack app DMs | **Won't do** | Use `@alfred` in channels |
 
@@ -417,20 +416,16 @@ alfred/
 ├── backend/
 │   ├── agent/                 # ReAct loop
 │   ├── ai/                    # LLM adapters, routing, instrumentation
-│   ├── api/                   # FastAPI routes (health, chat, config, …)
-│   ├── aws/                   # Session, Athena, CloudWatch, grade_events guardrails
+│   ├── api/                   # FastAPI routes & UIChatService
 │   ├── context/               # Repo context generator, Graphify
-│   ├── git/                   # Mirrors, sandbox, GitHub/GitLab API
-│   ├── github/                # GitHub App webhook handler
-│   ├── ingress/               # Processor, playbooks, Slack/JIRA/git context, render
-│   ├── jira/                  # JIRA Cloud REST client
+│   ├── db/                    # DB layer (SQLite session store, Slack user cache, sqlite queue)
+│   ├── formatting/            # Response formatting strategies and sanitizers
+│   ├── integrations/          # External integrations (git, github, aws, google, slack, jira, ollama, identity)
+│   ├── models/                # Pydantic configs, response, session, task
 │   ├── observability/         # Usage, pricing, tool events
-│   ├── slack/                 # Socket Mode listener, status, emojis, files
-│   ├── storage/               # SQLite sessions, Slack user cache
-│   ├── tools/                 # Registry — git, jira, aws, graphify
-│   ├── ollama/                # Local Ollama service helpers
+│   ├── orchestrator/          # TaskProcessor orchestrator, prompt assembly, and context policies
+│   ├── routing/               # Skill/playbook matching engine, playbook store
 │   ├── runtime/               # Process supervisor (up/stop)
-│   ├── models/                # Pydantic config, task, response, session
 │   ├── cli.py
 │   ├── config_manager.py
 │   └── health.py
@@ -453,41 +448,74 @@ Runtime data (not in git): **`.alfred/`** at repo root or `ALFRED_DATA_DIR`.
 ## Architecture
 
 ```mermaid
-flowchart LR
-    subgraph ingress [Ingress]
-        Slack[Slack Socket Mode]
-        CLI[alfred exec]
-        GH[GitHub App webhook]
+flowchart TD
+    %% Ingress & Queue Layer
+    subgraph Ingress ["1. Ingress & Task Queueing"]
+        Slack["Slack Bot (@mentions Ingress)"]
+        UI["Admin UI Chat (FastAPI POST)"]
+        CLI["CLI Ingress (alfred exec)"]
+        Queue[("SQLite Task Queue (sqlite_queue.py)")]
+        Worker["Task Queue Worker Daemon Thread (worker.py)"]
     end
 
-    subgraph core [Core]
-        Proc[TaskProcessor]
-        PB[Playbooks]
-        SK[Skills]
-        SESS[Sessions]
+    Slack -->|Bolt App Event| Queue
+    UI -->|API Endpoint| Queue
+    CLI --> Queue
+    Queue -->|Dequeues Task| Worker
+
+    %% Context, Routing & Pruning Layer
+    subgraph Engine ["2. Routing, Relevancy & Pruning Engine"]
+        Context["Load Slack Thread Context & History"]
+        Pruner["Context Pruner (policy.py)\n- Truncate Tracebacks\n- Shorten long URLs"]
+        DirectRouter{"Direct Action Routing Heuristics?"}
+        CacheLookup{"Cached JIRA/PR Key in Session?"}
+        DirectExec["Execute Tool Directly"]
+        KeywordMatcher{"Word-Boundary Trigger Keyword Match?"}
+        ReActLoop["ReAct Agent Loop (LLM Routing)"]
     end
 
-    subgraph exec [Execution]
-        Direct[Direct routes]
-        Agent[ReAct loop]
-        Tools[Tools]
+    Worker --> Context
+    Context --> Pruner
+    Pruner --> DirectRouter
+    
+    DirectRouter -->|Yes| CacheLookup
+    CacheLookup -->|Yes| DirectExec
+    CacheLookup -->|No| KeywordMatcher
+    DirectRouter -->|No| KeywordMatcher
+    
+    KeywordMatcher -->|Yes (Match Playbook)| ReActLoop
+    KeywordMatcher -->|No (Fallback)| ReActLoop
+
+    %% Execution & Monitoring Layer
+    subgraph Execution ["3. Execution & Observability Logging"]
+        Tools["Allowed Tools Gated Registry"]
+        GitMirror["Git Mirrors (grep/blame/log)"]
+        JIRA["JIRA Cloud Integrations"]
+        AWS["AWS Tools (Athena / CloudWatch)"]
+        Checkpoints[("SQLite Task Checkpoints Database\n(started / completed / error timeline)")]
     end
 
-    subgraph data [Data sources]
-        Git[Repo mirrors]
-        JIRA[JIRA Cloud]
-        AWS[Athena + CloudWatch]
-        GF[Graphify]
+    DirectExec --> Tools
+    ReActLoop --> Tools
+    Tools --> GitMirror & JIRA & AWS
+    Tools -.->|Log checkpoint event| Checkpoints
+
+    %% Delivery Layer
+    subgraph Delivery ["4. Response Delivery Formatting"]
+        Render["Strategies Formatting Layer (strategies.py)"]
+        SlackSend["Post message + upload files to Slack thread"]
+        UISend["Return JSON payload response to Admin UI client"]
     end
 
-    Slack --> Proc
-    CLI --> Proc
-    GH --> Proc
-    Proc --> PB & SK & SESS
-    Proc --> Direct & Agent
-    Agent --> Tools
-    Tools --> Git & JIRA & AWS & GF
-    Proc --> AI[LLM router + observability]
+    GitMirror & JIRA & AWS --> Render
+    Render --> SlackSend
+    Render --> UISend
+
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px;
+    classDef database fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef worker fill:#fff3e0,stroke:#e65100,stroke-width:2px;
+    class Queue,Checkpoints database;
+    class Worker worker;
 ```
 
 Principles: **local-first**, **generic core + local playbooks**, **pluggable AI**, **read-only AWS/git by default**.

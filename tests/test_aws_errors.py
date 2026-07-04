@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from botocore.exceptions import ClientError
 
-from backend.aws.errors import wrap_aws_error
+from backend.integrations.aws.errors import wrap_aws_error
 
 
 def _client_error(code: str, message: str) -> ClientError:

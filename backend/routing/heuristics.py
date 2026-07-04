@@ -1,8 +1,12 @@
 """Rule-based skill fallbacks when keyword triggers miss."""
 
 from __future__ import annotations
+from backend.routing.git_direct import looks_like_code_investigation
+from backend.routing.jira_direct import looks_like_jira_question
+from backend.integrations.identity.user_identity import is_user_identity_lookup
 
-from backend.ingress.playbooks import PlaybookStore
+
+from backend.routing.playbooks import PlaybookStore
 from backend.models.config import AlfredConfig
 from backend.routing.types import RouteContext, RouteDecision, RouteMode
 
@@ -22,7 +26,7 @@ def route_by_heuristic(
         )
 
     if config.git.enabled:
-        from backend.ingress.git_direct import looks_like_code_investigation
+        pass
 
         if looks_like_code_investigation(context.intent):
             if store.get_by_name("investigate_bug"):
@@ -34,7 +38,7 @@ def route_by_heuristic(
                 )
 
     if config.jira.enabled:
-        from backend.ingress.jira_direct import looks_like_jira_question
+        pass
 
         if looks_like_jira_question(context.intent):
             for name in ("jira_management", "jira_ticket"):
@@ -47,7 +51,7 @@ def route_by_heuristic(
                     )
 
     if config.slack.enabled:
-        from backend.ingress.user_identity import is_user_identity_lookup
+        pass
 
         if is_user_identity_lookup(context.intent) and store.get_by_name("jira_management"):
             return RouteDecision(

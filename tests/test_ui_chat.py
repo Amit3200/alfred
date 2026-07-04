@@ -1,6 +1,10 @@
 """Tests for admin UI chat API."""
 
 from __future__ import annotations
+from unittest.mock import patch
+from backend.models.response import AssistantResponse
+from backend.formatting.chat_export import wants_export_markdown
+
 
 from fastapi.testclient import TestClient
 
@@ -35,15 +39,15 @@ def test_ui_chat_session_lifecycle(tmp_path):
 
 
 def test_ui_chat_export_message(tmp_path):
-    from unittest.mock import patch
+    pass
 
     client, admin_token = _client(tmp_path)
     headers = {"X-Alfred-Token": admin_token}
 
     chat_id = client.post("/api/chat/sessions", headers=headers, json={}).json()["id"]
 
-    with patch("backend.ingress.ui_chat.TaskProcessor") as mock_cls:
-        from backend.models.response import AssistantResponse
+    with patch("backend.api.ui_chat.TaskProcessor") as mock_cls:
+        pass
 
         mock_cls.return_value.process.return_value = AssistantResponse.from_text(
             "Here is your summary."
@@ -72,7 +76,7 @@ def test_ui_chat_export_message(tmp_path):
 
 
 def test_wants_export_markdown():
-    from backend.ingress.chat_export import wants_export_markdown
+    pass
 
     assert wants_export_markdown("summarize and export to MD file")
     assert wants_export_markdown("export this chat")

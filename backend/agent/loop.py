@@ -7,7 +7,7 @@ import logging
 from typing import Any
 
 from backend.ai.base import LLMProvider, LLMResponse, Message, ToolCall
-from backend.ingress.git_direct import parse_text_tool_call, strip_text_tool_markup
+from backend.routing.git_direct import parse_text_tool_call, strip_text_tool_markup
 from backend.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -166,15 +166,35 @@ def _execute_tool(
     session: Any | None = None,
     git: Any | None = None,
 ) -> str:
-    git_cfg = git or getattr(registry, "git_config", None)
-    if git_cfg is not None:
-        result = registry.run_normalized(
-            name,
-            arguments,
-            allowed=allowed,
-            git=git_cfg,
-            session=session,
-        )
-    else:
-        result = registry.run(name, arguments, allowed=allowed)
-    return result.to_json()
+    from backend.observability.checkpoint import log_checkpoint
+
+    checkpoint_name = f"{name}_tool_call"
+    if name.startswith("jira") or name in ("add_jira_comment", "link_jira_issue", "get_jira_issue", "transition_jira_issue"):
+        checkpoint_name = "jira_tool_call"
+    elif name.startswith(("git", "github")):
+        checkpoint_name = "git_tool_call"
+    elif name.startswith(("athena", "cloudwatch", "grade_events")):
+        checkpoint_name = "aws_tool_call"
+
+    log_checkpoint(checkpoint_name, name, "started")
+    try:
+        git_cfg = git or getattr(registry, "git_config", None)
+        if git_cfg is not None:
+            result = registry.run_normalized(
+                name,
+                arguments,
+                allowed=allowed,
+                git=git_cfg,
+                session=session,
+            )
+        else:
+            result = registry.run(name, arguments, allowed=allowed)
+
+        if result.kind == "error":
+            log_checkpoint(checkpoint_name, name, "error", error=RuntimeError(result.data.get("message", "Tool execution error")))
+        else:
+            log_checkpoint(checkpoint_name, name, "completed")
+        return result.to_json()
+    except Exception as exc:
+        log_checkpoint(checkpoint_name, name, "error", error=exc)
+        raise

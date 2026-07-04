@@ -1,6 +1,9 @@
 """Build LLM providers from config and route by task type."""
 
 from __future__ import annotations
+from backend.ai.routing import resolve_llm_route
+from backend.ai.base import Message
+
 
 from backend.ai.anthropic_adapter import AnthropicProvider
 from backend.ai.base import LLMProvider
@@ -53,7 +56,7 @@ class LLMRouter:
         return self._providers[name]
 
     def for_task(self, task_type: str) -> LLMProvider:
-        from backend.ai.routing import resolve_llm_route
+        pass
 
         _, provider, _ = resolve_llm_route(
             self.ai_config,
@@ -63,7 +66,7 @@ class LLMRouter:
         return provider
 
     def resolve_task(self, task_type: str) -> tuple[str, LLMProvider, str]:
-        from backend.ai.routing import resolve_llm_route
+        pass
 
         return resolve_llm_route(self.ai_config, task_type, router=self)
 
@@ -94,7 +97,7 @@ class LLMRouter:
     def ping(self, provider_name: str | None = None) -> dict:
         name = provider_name or self.ai_config.default_provider
         provider = self.get(name)
-        from backend.ai.base import Message
+        pass
 
         try:
             response = provider.chat(

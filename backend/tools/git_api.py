@@ -1,12 +1,18 @@
 """Git API tools — list PRs, get PR details, list repos (no local clone)."""
 
 from __future__ import annotations
+from backend.tools.git_local import register_local_git_tools
+from backend.tools.graphify_tool import register_graphify_tools
+from backend.tools.jira_tool import register_jira_tools
+from backend.tools.aws_tool import register_aws_tools
+from backend.tools.google_tool import register_google_tools
+
 
 from pathlib import Path
 from typing import Any
 
 from backend.ai.base import ToolSchema
-from backend.git.api import GitApiClient, resolve_repo_slug
+from backend.integrations.git.api import GitApiClient, resolve_repo_slug
 from backend.models.config import AlfredConfig
 from backend.tools.registry import ToolRegistry
 from backend.tools.result import ToolResult
@@ -163,22 +169,22 @@ def build_git_tool_registry(
         registry.register(LIST_REPOS, list_repos_handler)
 
         if data_dir is not None:
-            from backend.tools.git_local import register_local_git_tools
+            pass
 
             register_local_git_tools(registry, config=config, data_dir=Path(data_dir))
-            from backend.tools.graphify_tool import register_graphify_tools
+            pass
 
             register_graphify_tools(registry, config=config, data_dir=Path(data_dir))
 
-    from backend.tools.jira_tool import register_jira_tools
+    pass
 
     register_jira_tools(registry, config)
 
-    from backend.tools.aws_tool import register_aws_tools
+    pass
 
     register_aws_tools(registry, config)
 
-    from backend.tools.google_tool import register_google_tools
+    pass
 
     register_google_tools(registry, config)
 

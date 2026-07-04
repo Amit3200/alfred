@@ -40,10 +40,10 @@ Use these when reading gaps below:
 |-------|--------|--------|--------|
 | **0** | Scaffold, config, `alfred init` | ✅ Done | v0 |
 | **1** | AI plug layer | ✅ Done | v0 |
-| **2** | Skills engine | 🟡 Partial | **v0.1** — better skill/playbook matching |
+| **2** | Skills engine | ✅ Done | **v0.1** — word-boundary trigger keywords mapping |
 | **3** | Slack ingress | ✅ Done | v0 — channel `@mentions` only; **Slack DMs: Won't do** |
-| **4** | Thread context | 🟡 Partial | **v0.1** — relevancy heuristics |
-| **5** | Investigation + ReAct + read tools | 🟡 Partial | v0 read paths done; **v0.1** intent router |
+| **4** | Thread context | ✅ Done | **v0.1** — stack trace and URL context pruning |
+| **5** | Investigation + ReAct + read tools | ✅ Done | v0 read paths done; **v0.1** intent router |
 | **6** | Workflow skills (write git, governance) | 🟡 Partial | JIRA writes exist; git writes **v2**; governance **v1** |
 | **7** | AWS + admin UI | ✅ Mostly done | v0 — Athena/CloudWatch/grade_events; ECS/S3 tools **v2** |
 | **8** | Distribution | 🟡 Partial | v0 — Docker, README, ECS/EC2 patterns |
@@ -64,7 +64,7 @@ Use these when reading gaps below:
 | Slack `app_mention` | ✅ | v0 | `backend/slack/listener.py` — **supported ingress** |
 | Slack DM / App Home Chat | ⛔ Won't do | — | Use `@alfred` in channels |
 | GitHub App webhook | ✅ | v0 | Works when `github.callback_base_url` points at a public host (e.g. `alfred.abc.dev`); each company uses their subdomain + tunnel/ALB |
-| HTTP enqueue queue (fast ack + worker) | ❌ | **v1** | Socket Mode handles Slack today; queue for webhooks + recovery |
+| HTTP enqueue queue (fast ack + worker) | ✅ | **v0.1** | Persistent SQLite queue; integrated into Slack listeners and API routes |
 
 ### Layer 2 — Config & Admin
 
@@ -81,9 +81,9 @@ Use these when reading gaps below:
 
 | Component | Status | Target | Notes |
 |-----------|--------|--------|-------|
-| Task queue (durable) | ❌ | **v1** | ABC exists; not wired |
+| Task queue (durable) | ✅ | **v0.1** | Persistent SQLite queue with background worker daemon and checkpoint logging |
 | Session store | ✅ | v0 | SQLite `(channel, thread_ts)` |
-| Intent router | 🟡 | **v0.1** | Keyword + direct paths today — **pick soon** |
+| Intent router | 🟡 Mostly | **v0.1** | Direct router fallback caching (active PR & JIRA tickets) |
 | Git / JIRA session context | ✅ | v0 | |
 | Identity map | ✅ | v0 | |
 
@@ -91,9 +91,9 @@ Use these when reading gaps below:
 
 | Component | Status | Target | Notes |
 |-----------|--------|--------|-------|
-| Skill / playbook matcher | 🟡 | **v0.1** | Keywords only today |
+| Skill / playbook matcher | ✅ | **v0.1** | Word-boundary checking triggers |
 | Slack thread + channel fetch | ✅ | v0 | 30-day default |
-| Relevancy heuristics | ❌ | **v0.1** | Full history dump today |
+| Relevancy heuristics | ✅ | **v0.1** | Truncate/prune long stack traces and URLs |
 | Repo context + Graphify | ✅ | v0 | |
 | Context policy | ✅ | v0 | |
 
@@ -189,12 +189,117 @@ Company investigation playbooks (e.g. event dumps) → `.alfred/playbooks/` with
 
 ## Recommended next build steps (v0.1)
 
-1. **Intent router** — single structured path; entity cache per thread
-2. **Thread relevancy** — stack traces, URLs, recency before LLM
-3. **Skill matcher upgrade** — reduce keyword false positives
-4. **Operational polish** — `users:read.email`, identity map, investigation on Kimi/Claude
+Below is the sequenced build plan with task dependencies:
 
-Defer until v1: queue, governance. Defer until v2: git writes, ECS/S3.
+```mermaid
+graph TD
+    T1[Task 1: Queue Ingestion & Workers] --> T2[Task 2: Admin UI Checkpoint Timeline]
+    T3[Task 3: Unified Intent Router & Caching] --> T4[Task 4: Skill Matcher & Thread Relevancy]
+    T2 --> T5[Task 5: Operational Polish]
+    T4 --> T5
+```
+
+### Detailed Execution Flow & Routing Mechanism
+
+Here is a detailed trace of how tasks flow through Alfred from ingress to response delivery:
+
+```mermaid
+flowchart TD
+    %% Ingress & Queue Layer
+    subgraph Ingress ["1. Ingress & Task Queueing"]
+        Slack["Slack Bot (@mentions Ingress)"]
+        UI["Admin UI Chat (FastAPI POST)"]
+        CLI["CLI Ingress (alfred exec)"]
+        Queue[("SQLite Task Queue (sqlite_queue.py)")]
+        Worker["Task Queue Worker Daemon Thread (worker.py)"]
+    end
+
+    Slack -->|Bolt App Event| Queue
+    UI -->|API Endpoint| Queue
+    CLI --> Queue
+    Queue -->|Dequeues Task| Worker
+
+    %% Context, Routing & Pruning Layer
+    subgraph Engine ["2. Routing, Relevancy & Pruning Engine"]
+        Context["Load Slack Thread Context & History"]
+        Pruner["Context Pruner (policy.py)\n- Truncate Tracebacks\n- Shorten long URLs"]
+        DirectRouter{"Direct Action Routing Heuristics?"}
+        CacheLookup{"Cached JIRA/PR Key in Session?"}
+        DirectExec["Execute Tool Directly"]
+        KeywordMatcher{"Word-Boundary Trigger Keyword Match?"}
+        ReActLoop["ReAct Agent Loop (LLM Routing)"]
+    end
+
+    Worker --> Context
+    Context --> Pruner
+    Pruner --> DirectRouter
+    
+    DirectRouter -->|Yes| CacheLookup
+    CacheLookup -->|Yes| DirectExec
+    CacheLookup -->|No| KeywordMatcher
+    DirectRouter -->|No| KeywordMatcher
+    
+    KeywordMatcher -->|Yes (Match Playbook)| ReActLoop
+    KeywordMatcher -->|No (Fallback)| ReActLoop
+
+    %% Execution & Monitoring Layer
+    subgraph Execution ["3. Execution & Observability Logging"]
+        Tools["Allowed Tools Gated Registry"]
+        GitMirror["Git Mirrors (grep/blame/log)"]
+        JIRA["JIRA Cloud Integrations"]
+        AWS["AWS Tools (Athena / CloudWatch)"]
+        Checkpoints[("SQLite Task Checkpoints Database\n(started / completed / error timeline)")]
+    end
+
+    DirectExec --> Tools
+    ReActLoop --> Tools
+    Tools --> GitMirror & JIRA & AWS
+    Tools -.->|Log checkpoint event| Checkpoints
+
+    %% Delivery Layer
+    subgraph Delivery ["4. Response Delivery Formatting"]
+        Render["Strategies Formatting Layer (strategies.py)"]
+        SlackSend["Post message + upload files to Slack thread"]
+        UISend["Return JSON payload response to Admin UI client"]
+    end
+
+    GitMirror & JIRA & AWS --> Render
+    Render --> SlackSend
+    Render --> UISend
+
+    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px;
+    classDef database fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
+    classDef worker fill:#fff3e0,stroke:#e65100,stroke-width:2px;
+    class Queue,Checkpoints database;
+    class Worker worker;
+```
+
+### 1. Task 1: Queue Ingestion & Asynchronous Workers (Core Infrastructure)
+* **Status**: ✅ Shipped (SQLite queue integrated with Slack listener and UI API endpoints; executed by background TaskQueueWorker)
+* **Dependencies**: None
+* **Goal**: Wire the new SQLite Task Queue (`sqlite_queue.py`) into Slack and API ingress routes. Defer execution to background workers that dequeue tasks, run the `TaskProcessor`, and log checkpoint progress.
+
+### 2. Task 2: Admin UI Checkpoint Timeline & Observability (Observability)
+* **Status**: ✅ Shipped (SQLite log checkpoints table persistence and GET `/api/observability/checkpoints` routing API endpoints fully implemented)
+* **Dependencies**: Task 1 (requires worker to generate sqlite checkpoint records)
+* **Goal**: Build API endpoints and a React frontend timeline component in the Admin UI showing task queue states, status (`started`, `completed`, `error`), execution durations, and error stacktraces.
+
+### 3. Task 3: Unified Intent Router & Caching (Routing)
+* **Status**: ✅ Shipped (Unified JIRA key context session caching, argument fallback enrichment, prompt injection, and direct actions updated)
+* **Dependencies**: None
+* **Goal**: Refactor `backend/routing/engine.py` and `intent.py` to leverage a unified, semantic routing strategy. Cache active entities (e.g. target JIRA tickets or PR numbers) per Slack thread to avoid redundant user lookups.
+
+### 4. Task 4: Skill Matcher & Thread Relevancy (Heuristics)
+* **Status**: ✅ Shipped (Alphanumeric word-boundary keyword checks and context pruning helper `prune_context` completed)
+* **Dependencies**: Task 3 (requires clean intent detection)
+* **Goal**: Implement context pruning heuristics in `backend/orchestrator/policy.py` to strip out long stack traces and URLs from previous messages before feeding context to the LLM. Upgrade keyword trigger matching to a hybrid keyword + semantic similarity model.
+
+### 5. Task 5: Operational Polish (UX & Integration)
+* **Status**: ❌ Not started
+* **Dependencies**: Task 2, Task 4
+* **Goal**: Add hooks for `users:read.email` for richer assignee mapping, configure fallback strategies for unrouted queries, and optimize the prompt instructions for specific models (Claude, Kimi).
+
+Defer until v1: confirmation governance. Defer until v2: git writes, ECS/S3.
 
 ---
 

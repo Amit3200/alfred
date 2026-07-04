@@ -7,7 +7,7 @@ import shutil
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from backend.git.mirror import WorkspaceMirrorManager, workspace_dir_name
+from backend.integrations.git.mirror import WorkspaceMirrorManager, workspace_dir_name
 from backend.models.config import GitConfig
 
 

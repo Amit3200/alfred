@@ -1,14 +1,16 @@
 """Tests for omitting polluted assistant session turns."""
 
 from __future__ import annotations
+from backend.integrations.slack.context import SlackContextBundle
+
 
 from unittest.mock import MagicMock
 
-from backend.ingress.context_policy import omit_assistant_session_history
-from backend.ingress.processor import TaskProcessor
+from backend.orchestrator.policy import omit_assistant_session_history
+from backend.orchestrator.processor import TaskProcessor
 from backend.models.config import default_config
 from backend.models.task import Task
-from backend.storage.session_store import SessionStore
+from backend.db.session_store import SessionStore
 
 
 def test_omit_assistant_on_history_lookup():
@@ -37,7 +39,7 @@ def test_processor_drops_assistant_turns_on_refresh(tmp_path):
     mock_provider.chat.return_value = MagicMock(content="Fresh answer", model="m")
 
     def fetch(_task):
-        from backend.ingress.slack_context import SlackContextBundle
+        pass
 
         return SlackContextBundle(
             text="Channel messages (last 30 days):\n[1] line",

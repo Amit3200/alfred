@@ -9,9 +9,9 @@ from typing import Any
 from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
 
-from backend.github.client import exchange_oauth_code
-from backend.github.handler import process_github_webhook_payload
-from backend.github.verify import verify_github_signature
+from backend.integrations.github.client import exchange_oauth_code
+from backend.integrations.github.handler import process_github_webhook_payload
+from backend.integrations.github.verify import verify_github_signature
 
 logger = logging.getLogger(__name__)
 

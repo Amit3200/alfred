@@ -10,8 +10,8 @@ from backend.api.app import create_app
 from backend.config_manager import ConfigManager
 from backend.observability.models import InteractionEvent
 from backend.observability.store import SQLiteObservabilityStore
-from backend.storage.db_maintenance import get_db_stats
-from backend.storage.session_store import SessionStore
+from backend.db.db_maintenance import get_db_stats
+from backend.db.session_store import SessionStore
 
 
 def _client(tmp_path) -> tuple[TestClient, str, ConfigManager]:

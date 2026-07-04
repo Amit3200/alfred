@@ -1,6 +1,9 @@
 """FastAPI application factory."""
 
 from __future__ import annotations
+from backend.integrations.git.mirror import WorkspaceMirrorManager
+from fastapi import Depends
+
 
 import logging
 from contextlib import asynccontextmanager
@@ -29,7 +32,7 @@ from backend.api.routes import storage as storage_routes
 from backend.config_manager import ConfigManager
 from backend.logging_config import setup_logging
 from backend.paths import bundled_web_dist
-from backend.slack.listener import SlackSocketRunner
+from backend.integrations.slack.listener import SlackSocketRunner
 
 logger = logging.getLogger(__name__)
 
@@ -37,6 +40,16 @@ logger = logging.getLogger(__name__)
 @asynccontextmanager
 async def _lifespan(app: FastAPI):
     manager: ConfigManager = app.state.config_manager
+
+    # Start persistent task queue and background worker
+    from backend.db.sqlite_queue import SQLiteQueue
+    from backend.orchestrator.worker import TaskQueueWorker
+    queue = SQLiteQueue(manager.data_dir)
+    worker = TaskQueueWorker(manager, queue)
+    app.state.queue = queue
+    app.state.queue_worker = worker
+    worker.start()
+
     slack_runner = SlackSocketRunner(manager)
     app.state.slack_runner = slack_runner
     ok, message = slack_runner.start()
@@ -48,7 +61,7 @@ async def _lifespan(app: FastAPI):
     try:
         config, _ = manager.load_merged()
         if config.git.enabled:
-            from backend.git.mirror import WorkspaceMirrorManager
+            pass
 
             removed = WorkspaceMirrorManager(config.git, manager.data_dir).cleanup_expired()
             if removed:
@@ -58,6 +71,7 @@ async def _lifespan(app: FastAPI):
 
     yield
     slack_runner.stop()
+    worker.stop()
 
 
 def create_app(data_dir: Path | None = None) -> FastAPI:
@@ -80,7 +94,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
-    from fastapi import Depends
+    pass
     
     app.include_router(auth_routes.router, prefix="/api")
     app.include_router(health_routes.router, prefix="/api")

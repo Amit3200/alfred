@@ -1,13 +1,15 @@
 """Tests for Layer 1 ingress — sanitizer and processor."""
 
 from __future__ import annotations
+from backend.integrations.slack.listener import slack_listener_ready
+
 
 from unittest.mock import MagicMock
 
 import pytest
 
-from backend.ingress.processor import TaskProcessor
-from backend.ingress.sanitize import (
+from backend.orchestrator.processor import TaskProcessor
+from backend.integrations.slack.sanitize import (
     channel_allowed,
     clean_slack_text,
     extract_slack_mention_labels,
@@ -86,7 +88,7 @@ def test_task_processor_calls_llm():
 
 
 def test_slack_listener_ready_requires_socket_mode_tokens():
-    from backend.slack.listener import slack_listener_ready
+    pass
 
     config = default_config()
     config.slack.enabled = True

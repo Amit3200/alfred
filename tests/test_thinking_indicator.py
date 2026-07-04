@@ -1,11 +1,13 @@
 """Tests for Slack thinking indicator."""
 
 from __future__ import annotations
+from slack_sdk.errors import SlackApiError
+
 
 import random
 from unittest.mock import MagicMock
 
-from backend.slack.status import (
+from backend.integrations.slack.status import (
     ASSISTANT_STATUS,
     MAX_SLACK_LOADING_MESSAGE_LENGTH,
     STATUS_LINES,
@@ -104,7 +106,7 @@ def test_assistant_status_uses_unicode_loading_messages(monkeypatch):
         return []
 
     monkeypatch.setattr(
-        "backend.slack.status.loading_messages_for_slack",
+        "backend.integrations.slack.status.loading_messages_for_slack",
         lambda **kwargs: [f"{emoji} {line}" for emoji, line in STATUS_LINES[:3]],
     )
 
@@ -193,7 +195,7 @@ def test_assistant_status_on_start_and_finish():
 
 
 def test_retries_status_only_when_loading_messages_rejected():
-    from slack_sdk.errors import SlackApiError
+    pass
 
     client = MagicMock()
     response = MagicMock()

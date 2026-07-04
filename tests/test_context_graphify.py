@@ -1,6 +1,9 @@
 """Tests for Graphify integration."""
 
 from __future__ import annotations
+from backend.context.graphify import graphify_extract_lock
+from backend.context.graphify import graph_summary
+
 
 import json
 from pathlib import Path
@@ -188,7 +191,7 @@ def test_extract_graph_rejects_concurrent_run(tmp_path, monkeypatch):
         providers={"kimi": AIProviderConfig(enabled=True, api_key="sk-kimi", model="kimi-k2.6")},
     )
 
-    from backend.context.graphify import graphify_extract_lock
+    pass
 
     with graphify_extract_lock(tmp_path, "acme/backend"):
         result = extract_graph(tmp_path, git, ai=ai)
@@ -220,7 +223,7 @@ def test_graph_summary_counts_nodes(tmp_path):
     }
     (out / "graph.json").write_text(json.dumps(graph), encoding="utf-8")
 
-    from backend.context.graphify import graph_summary
+    pass
 
     summary = graph_summary(tmp_path, "acme/backend")
     assert summary["present"] is True

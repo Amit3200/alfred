@@ -6,8 +6,8 @@ import json
 from dataclasses import dataclass, field
 from typing import Any
 
-from backend.git.api import PullRequestSummary
-from backend.jira.api import JiraIssueSummary
+from backend.integrations.git.api import PullRequestSummary
+from backend.integrations.jira.api import JiraIssueSummary
 
 
 @dataclass

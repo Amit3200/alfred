@@ -4,10 +4,10 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from backend.ingress.processor import TaskProcessor
+from backend.orchestrator.processor import TaskProcessor
 from backend.models.config import default_config
 from backend.models.task import Task
-from backend.storage.session_store import SessionStore
+from backend.db.session_store import SessionStore
 
 
 def test_processor_reuses_session_turns(tmp_path):

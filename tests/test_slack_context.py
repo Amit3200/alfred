@@ -5,9 +5,9 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from unittest.mock import MagicMock
 
-from backend.ingress.context_policy import needs_context_refresh, wants_channel_history
-from backend.ingress.slack_context import fetch_slack_context, parse_history_window
-from backend.ingress.slack_messages import extract_message_text
+from backend.orchestrator.policy import needs_context_refresh, wants_channel_history
+from backend.integrations.slack.context import fetch_slack_context, parse_history_window
+from backend.formatting.slack_messages import extract_message_text
 from backend.models.task import Task
 
 

@@ -1,6 +1,6 @@
 """Tests for PR context gathering and formatting."""
 
-from backend.ingress.pr_analysis import (
+from backend.integrations.git.pr_analysis import (
     PrContext,
     _is_grounded_response,
     _prioritize_files,

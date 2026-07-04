@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from backend.git.api import GitApiClient, split_repo_slug
+from backend.integrations.git.api import GitApiClient, split_repo_slug
 from backend.models.config import GitConfig
 
 
@@ -34,7 +34,7 @@ def test_list_available_repos_merges_configured_and_remote():
     assert set(payload["repos"]) == {"AcmeCorp/platform", "AcmeCorp/other"}
 
 
-@patch("backend.git.api.requests.Session")
+@patch("backend.integrations.git.api.requests.Session")
 def test_list_available_repos_without_token(mock_session_cls):
     config = GitConfig(
         enabled=True,
@@ -47,7 +47,7 @@ def test_list_available_repos_without_token(mock_session_cls):
         GitApiClient(config)
 
 
-@patch("backend.git.api.requests.Session")
+@patch("backend.integrations.git.api.requests.Session")
 def test_github_list_my_prs(mock_session_cls):
     session = MagicMock()
     mock_session_cls.return_value = session
@@ -85,7 +85,7 @@ def test_github_list_my_prs(mock_session_cls):
     assert "Fix orders" in prs[0].title
 
 
-@patch("backend.git.api.requests.Session")
+@patch("backend.integrations.git.api.requests.Session")
 def test_github_list_prs(mock_session_cls):
     session = MagicMock()
     mock_session_cls.return_value = session
@@ -112,7 +112,7 @@ def test_github_list_prs(mock_session_cls):
     assert prs[0].author == "bob"
 
 
-@patch("backend.git.api.requests.Session")
+@patch("backend.integrations.git.api.requests.Session")
 def test_github_get_pr(mock_session_cls):
     session = MagicMock()
     mock_session_cls.return_value = session
@@ -139,7 +139,7 @@ def test_github_get_pr(mock_session_cls):
     assert data["head"] == "feature"
 
 
-@patch("backend.git.api.requests.Session")
+@patch("backend.integrations.git.api.requests.Session")
 def test_github_get_pr_files(mock_session_cls):
     session = MagicMock()
     mock_session_cls.return_value = session
@@ -168,7 +168,7 @@ def test_github_get_pr_files(mock_session_cls):
     assert "line" in files[0]["patch"]
 
 
-@patch("backend.git.api.requests.Session")
+@patch("backend.integrations.git.api.requests.Session")
 def test_github_create_issue_comment(mock_session_cls):
     session = MagicMock()
     mock_session_cls.return_value = session
@@ -189,7 +189,7 @@ def test_github_create_issue_comment(mock_session_cls):
     assert call.kwargs["json"] == {"body": "Review complete"}
 
 
-@patch("backend.git.api.requests.Session")
+@patch("backend.integrations.git.api.requests.Session")
 def test_github_create_issue_comment_reaction(mock_session_cls):
     session = MagicMock()
     mock_session_cls.return_value = session

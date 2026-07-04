@@ -14,8 +14,8 @@ from backend.context.generator import (
     resolve_main_repo,
     shared_mirror_path,
 )
-from backend.git.api import resolve_repo_slug
-from backend.git.mirror import WorkspaceMirrorManager
+from backend.integrations.git.api import resolve_repo_slug
+from backend.integrations.git.mirror import WorkspaceMirrorManager
 from backend.models.config import GitConfig
 
 

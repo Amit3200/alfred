@@ -1,6 +1,28 @@
 """Alfred CLI — init, serve, version."""
 
 from __future__ import annotations
+import sys
+import secrets as py_secrets
+from backend.integrations.slack.listener import slack_listener_ready
+from backend.orchestrator.processor import TaskProcessor
+from backend.formatting.render import render_for_channel
+from backend.models.task import Task
+from backend.integrations.ollama import service as ollama_service
+from backend.runtime.supervisor import DEFAULT_FRONTEND_PORT, start_all
+from backend.runtime.supervisor import stop_all
+from backend.integrations.slack.emojis import (
+        example_loading_line,
+        fetch_workspace_emojis,
+        filter_workspace_emojis,
+        format_emojis_yaml,
+        slack_bot_client,
+    )
+from backend.integrations.git.mirror import WorkspaceMirrorManager
+from backend.paths import get_data_dir
+from backend.api.routes.repo_context import build_context_after_sync
+from backend.context.generator import generate_repo_context, resolve_main_repo
+from backend.integrations.github.review import run_github_pr_review
+
 
 import os
 from pathlib import Path
@@ -52,7 +74,7 @@ def init(
         click.echo(f"Start the server: alfred serve --data-dir {manager.data_dir}")
         return
 
-    import sys
+    pass
     is_tty = sys.stdin.isatty()
 
     admin_username = username
@@ -75,7 +97,7 @@ def init(
                 show_default=False,
             )
 
-    import secrets as py_secrets
+    pass
     if not admin_username:
         admin_username = "admin"
     if not admin_password:
@@ -142,7 +164,7 @@ def status(data_dir: Path | None) -> None:
         config, _ = manager.load_merged()
         click.echo(f"Default AI provider: {config.ai.default_provider}")
         click.echo(f"Server: {config.server.host}:{config.server.port}")
-        from backend.slack.listener import slack_listener_ready
+        pass
 
         ready, msg = slack_listener_ready(config)
         click.echo(f"Slack ingress ready: {ready} ({msg})")
@@ -153,9 +175,9 @@ def status(data_dir: Path | None) -> None:
 @click.option("--data-dir", type=click.Path(path_type=Path), default=None)
 def exec_cmd(message: str, data_dir: Path | None) -> None:
     """Run a message through Alfred locally (same path as Slack, without posting)."""
-    from backend.ingress.processor import TaskProcessor
-    from backend.ingress.render import render_for_channel
-    from backend.models.task import Task
+    pass
+    pass
+    pass
 
     manager = ConfigManager(data_dir)
     if not manager.is_initialized():
@@ -204,7 +226,7 @@ def ollama() -> None:
 @click.option("--data-dir", type=click.Path(path_type=Path), default=None)
 def ollama_status(data_dir: Path | None) -> None:
     """Show Ollama install and runtime status."""
-    from backend.ollama import service as ollama_service
+    pass
 
     manager = ConfigManager(data_dir)
     config, _ = manager.load_merged()
@@ -226,7 +248,7 @@ def ollama_status(data_dir: Path | None) -> None:
 @ollama.command("install")
 def ollama_install_cmd() -> None:
     """Install Ollama on this machine."""
-    from backend.ollama import service as ollama_service
+    pass
 
     result = ollama_service.install_ollama()
     click.echo(result.get("message", "Done"))
@@ -237,7 +259,7 @@ def ollama_install_cmd() -> None:
 @ollama.command("start")
 def ollama_start_cmd() -> None:
     """Start the local Ollama server."""
-    from backend.ollama import service as ollama_service
+    pass
 
     result = ollama_service.start_ollama()
     click.echo(result.get("message", "Done"))
@@ -249,7 +271,7 @@ def ollama_start_cmd() -> None:
 @click.option("--model", default=None, help="Model name (default: llama3)")
 def ollama_pull_cmd(model: str | None) -> None:
     """Pull an Ollama model."""
-    from backend.ollama import service as ollama_service
+    pass
 
     result = ollama_service.pull_model(model)
     click.echo(result.get("message", "Done"))
@@ -261,7 +283,7 @@ def ollama_pull_cmd(model: str | None) -> None:
 @click.option("--model", default=None, help="Model name (default: llama3)")
 def ollama_setup_cmd(model: str | None) -> None:
     """Install, start, and pull the default local model."""
-    from backend.ollama import service as ollama_service
+    pass
 
     result = ollama_service.setup_local(model)
     for step in result.get("steps", []):
@@ -274,7 +296,7 @@ def ollama_setup_cmd(model: str | None) -> None:
 @ollama.command("stop")
 def ollama_stop_cmd() -> None:
     """Stop the local Ollama server."""
-    from backend.ollama import service as ollama_service
+    pass
 
     result = ollama_service.stop_ollama()
     click.echo(result.get("message", "Done"))
@@ -308,7 +330,7 @@ def up(
     frontend_port: int | None,
 ) -> None:
     """Start Alfred (background), Vite dev UI, and optionally Ollama."""
-    from backend.runtime.supervisor import DEFAULT_FRONTEND_PORT, start_all
+    pass
 
     manager = ConfigManager(data_dir)
     if not manager.is_initialized():
@@ -367,7 +389,7 @@ def up(
 )
 def stop_cmd(data_dir: Path | None, with_ollama: bool, with_frontend: bool) -> None:
     """Stop Alfred, Vite dev UI, and optionally Ollama."""
-    from backend.runtime.supervisor import stop_all
+    pass
 
     manager = ConfigManager(data_dir)
     result = stop_all(manager, with_ollama=with_ollama, with_frontend=with_frontend)
@@ -404,13 +426,13 @@ def slack_emojis(
     as_yaml: bool,
 ) -> None:
     """List custom Slack emoji shortcodes for thinking-status lines."""
-    from backend.slack.emojis import (
-        example_loading_line,
-        fetch_workspace_emojis,
-        filter_workspace_emojis,
-        format_emojis_yaml,
-        slack_bot_client,
-    )
+    pass
+
+
+
+
+
+
 
     manager = ConfigManager(data_dir)
     if not manager.is_initialized():
@@ -475,8 +497,8 @@ def git() -> None:
 @click.option("--data-dir", type=click.Path(path_type=Path), default=None)
 def git_sync(data_dir: Path | None) -> None:
     """Clone/update shared repo mirrors (seeds per-session workspaces)."""
-    from backend.git.mirror import WorkspaceMirrorManager
-    from backend.paths import get_data_dir
+    pass
+    pass
 
     manager = ConfigManager(data_dir)
     if not manager.is_initialized():
@@ -496,7 +518,7 @@ def git_sync(data_dir: Path | None) -> None:
     if not all(item.get("ok") for item in results):
         raise SystemExit(1)
 
-    from backend.api.routes.repo_context import build_context_after_sync
+    pass
 
     ctx = build_context_after_sync(manager, sync_results=results)
     if ctx and ctx.get("ok"):
@@ -509,8 +531,8 @@ def git_sync(data_dir: Path | None) -> None:
 @click.option("--data-dir", type=click.Path(path_type=Path), default=None)
 def git_workspaces(data_dir: Path | None) -> None:
     """List active per-conversation mirror workspaces."""
-    from backend.git.mirror import WorkspaceMirrorManager
-    from backend.paths import get_data_dir
+    pass
+    pass
 
     manager = ConfigManager(data_dir)
     config, _ = manager.load_merged()
@@ -528,8 +550,8 @@ def git_workspaces(data_dir: Path | None) -> None:
 @click.option("--data-dir", type=click.Path(path_type=Path), default=None)
 def git_cleanup(data_dir: Path | None) -> None:
     """Remove expired mirror workspaces (TTL / LRU)."""
-    from backend.git.mirror import WorkspaceMirrorManager
-    from backend.paths import get_data_dir
+    pass
+    pass
 
     manager = ConfigManager(data_dir)
     config, _ = manager.load_merged()
@@ -550,8 +572,8 @@ def context() -> None:
 @click.option("--data-dir", type=click.Path(path_type=Path), default=None)
 def context_generate(data_dir: Path | None) -> None:
     """Regenerate markdown context from the shared main-repo mirror."""
-    from backend.context.generator import generate_repo_context, resolve_main_repo
-    from backend.paths import get_data_dir
+    pass
+    pass
 
     manager = ConfigManager(data_dir)
     if not manager.is_initialized():
@@ -599,7 +621,7 @@ def github_review(
 
     PR_REF can be a URL or org/repo#123, e.g. AcmeCorp/platform#2047
     """
-    from backend.github.review import run_github_pr_review
+    pass
 
     manager = ConfigManager(data_dir)
     if not manager.is_initialized():

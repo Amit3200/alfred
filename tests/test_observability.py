@@ -1,6 +1,8 @@
 """Tests for AI observability storage and recording."""
 
 from __future__ import annotations
+from backend.observability.usage import parse_token_usage
+
 
 from datetime import datetime, timedelta, timezone
 
@@ -85,7 +87,7 @@ def test_list_events_respects_filters(tmp_path):
 
 
 def test_parse_token_usage_openai_shape():
-    from backend.observability.usage import parse_token_usage
+    pass
 
     prompt, completion, total = parse_token_usage(
         "openai",

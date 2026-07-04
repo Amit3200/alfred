@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from backend.git.api import PullRequestSummary
-from backend.ingress.processor import TaskProcessor
-from backend.ingress.render import render_for_channel
+from backend.integrations.git.api import PullRequestSummary
+from backend.orchestrator.processor import TaskProcessor
+from backend.formatting.render import render_for_channel
 from backend.models.config import GitConfig, default_config
 from backend.models.task import Task
 from backend.tools.registry import ToolRegistry
@@ -35,8 +35,8 @@ def test_processor_uses_structured_pr_payload():
     registry = ToolRegistry()
     registry.last_result = ToolResult.pr_list(prs, state="open")
 
-    with patch("backend.agent.loop.run_agent_loop", return_value="verbose llm output"):
-        with patch.object(processor, "_try_direct_git", return_value=(None, None)):
+    with patch("backend.agent.loop.run_agent_loop", return_value=""):
+        with patch.object(processor, "_try_unified_direct", return_value=(None, None)):
             with patch(
                 "backend.tools.git_api.build_git_tool_registry",
                 return_value=registry,

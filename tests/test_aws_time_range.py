@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime, timedelta
 
-from backend.aws.time_range import parse_time, resolve_time_range
+from backend.integrations.aws.time_range import parse_time, resolve_time_range
 
 
 def test_parse_relative_hours():

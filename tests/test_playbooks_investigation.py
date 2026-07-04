@@ -1,6 +1,6 @@
 """Tests for investigation skill selection."""
 
-from backend.ingress.playbooks import PlaybookStore
+from backend.routing.playbooks import PlaybookStore
 
 
 def test_pick_investigation_prefers_review_pr_over_git_status():

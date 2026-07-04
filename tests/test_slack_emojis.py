@@ -1,10 +1,12 @@
 """Tests for Slack workspace emoji listing."""
 
 from __future__ import annotations
+from backend.integrations.slack.emojis import WorkspaceEmoji
+
 
 from unittest.mock import MagicMock
 
-from backend.slack.emojis import (
+from backend.integrations.slack.emojis import (
     example_loading_line,
     fetch_workspace_emojis,
     filter_workspace_emojis,
@@ -51,7 +53,7 @@ def test_fetch_workspace_emojis_splits_custom_and_alias():
 
 
 def test_filter_workspace_emojis_search_and_aliases():
-    from backend.slack.emojis import WorkspaceEmoji
+    pass
 
     emojis = [
         WorkspaceEmoji(name="this_is_fine", kind="custom"),
@@ -65,7 +67,7 @@ def test_filter_workspace_emojis_search_and_aliases():
 
 
 def test_format_emojis_yaml():
-    from backend.slack.emojis import WorkspaceEmoji
+    pass
 
     emojis = [WorkspaceEmoji(name="this_is_fine", kind="custom")]
     yaml_text = format_emojis_yaml(emojis)

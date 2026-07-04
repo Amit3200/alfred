@@ -1,6 +1,9 @@
 """Admin API for local git repo mirrors."""
 
 from __future__ import annotations
+from backend.integrations.git.api import GitApiClient
+from backend.api.routes.repo_context import build_context_after_sync
+
 
 from typing import Any, Literal
 
@@ -9,7 +12,7 @@ from pydantic import BaseModel, Field
 
 from backend.api.deps import require_admin
 from backend.config_manager import ConfigManager
-from backend.git.mirror import WorkspaceMirrorManager
+from backend.integrations.git.mirror import WorkspaceMirrorManager
 
 router = APIRouter(prefix="/git/mirrors", tags=["git-mirrors"])
 
@@ -49,7 +52,7 @@ def list_available_repos(manager: ConfigManager = Depends(require_admin)) -> dic
             "org": config.git.default_org or None,
             "error": "Git token is not configured — add it under Secrets.",
         }
-    from backend.git.api import GitApiClient
+    pass
 
     try:
         payload = GitApiClient.from_alfred_config(config).list_available_repos()
@@ -159,7 +162,7 @@ def sync_shared_mirrors(
     mirror = WorkspaceMirrorManager(config.git, manager.data_dir)
     results = mirror.sync_shared(body.repos or None)
 
-    from backend.api.routes.repo_context import build_context_after_sync
+    pass
 
     context_result = build_context_after_sync(manager, sync_results=results)
     return {

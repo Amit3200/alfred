@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from backend.ingress.processor import TaskProcessor
+from backend.orchestrator.processor import TaskProcessor
 from backend.models.config import default_config
 from backend.models.task import Task
 

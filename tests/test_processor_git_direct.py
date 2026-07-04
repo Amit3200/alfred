@@ -4,9 +4,9 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from backend.git.api import PullRequestSummary
-from backend.ingress.processor import TaskProcessor
-from backend.ingress.render import render_for_channel
+from backend.integrations.git.api import PullRequestSummary
+from backend.orchestrator.processor import TaskProcessor
+from backend.formatting.render import render_for_channel
 from backend.models.config import GitConfig, default_config
 from backend.models.task import Task
 

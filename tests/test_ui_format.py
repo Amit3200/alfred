@@ -1,6 +1,6 @@
 """Tests for UI Markdown formatting."""
 
-from backend.ingress.ui_format import format_for_ui
+from backend.formatting.strategies import format_for_ui
 
 _LEGACY_PR_LIST = """*4 open PRs*
 

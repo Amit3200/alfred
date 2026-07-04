@@ -1,6 +1,11 @@
 """Load, save, and merge Alfred configuration and secrets."""
 
 from __future__ import annotations
+import secrets as py_secrets
+import shutil
+from backend.paths import bundled_playbooks_dir
+from backend.integrations.google.credentials import credentials_json_type
+
 
 import secrets
 from pathlib import Path
@@ -50,7 +55,7 @@ class ConfigManager:
         
         admin_username = username or "admin"
         
-        import secrets as py_secrets
+        pass
         admin_password = password or py_secrets.token_urlsafe(16)
         admin_token = token or py_secrets.token_urlsafe(32)
         
@@ -73,9 +78,9 @@ class ConfigManager:
 
     def _seed_playbooks(self) -> None:
         """Create `.alfred/playbooks/` with an example file when empty."""
-        import shutil
+        pass
 
-        from backend.paths import bundled_playbooks_dir
+        pass
 
         dest = playbooks_dir(self.data_dir)
         dest.mkdir(parents=True, exist_ok=True)
@@ -116,11 +121,11 @@ class ConfigManager:
             secrets_obj.server_admin_username = "admin"
             modified = True
         if not secrets_obj.server_admin_password:
-            import secrets as py_secrets
+            pass
             secrets_obj.server_admin_password = py_secrets.token_urlsafe(16)
             modified = True
         if not secrets_obj.server_admin_token:
-            import secrets as py_secrets
+            pass
             secrets_obj.server_admin_token = py_secrets.token_urlsafe(32)
             modified = True
             
@@ -252,7 +257,7 @@ class ConfigManager:
         google_cred_type: str | None = None
         if google_raw.strip():
             try:
-                from backend.google.credentials import credentials_json_type
+                pass
 
                 google_cred_type = credentials_json_type(google_raw)
             except ValueError:

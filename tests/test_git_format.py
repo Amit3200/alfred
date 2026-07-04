@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from backend.git.api import PullRequestSummary
-from backend.ingress.git_format import format_pr_detail, format_prs
+from backend.integrations.git.api import PullRequestSummary
+from backend.formatting.strategies import format_pr_detail, format_prs
 
 
 def _sample_prs() -> list[PullRequestSummary]:

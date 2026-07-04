@@ -9,8 +9,8 @@ from fastapi.responses import HTMLResponse
 
 from backend.api.deps import get_manager, require_admin
 from backend.config_manager import ConfigManager
-from backend.google.credentials import credentials_json_type, google_libs_available
-from backend.google.oauth import begin_oauth, finish_oauth, pop_oauth_session
+from backend.integrations.google.credentials import credentials_json_type, google_libs_available
+from backend.integrations.google.oauth import begin_oauth, finish_oauth, pop_oauth_session
 
 admin_router = APIRouter(prefix="/config/google", tags=["google"])
 public_router = APIRouter(prefix="/config/google", tags=["google"])

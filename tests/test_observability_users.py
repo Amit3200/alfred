@@ -1,6 +1,8 @@
 """Tests for observability user label enrichment."""
 
 from __future__ import annotations
+from backend.db.slack_user_cache import SlackUserCache
+
 
 from backend.models.config import AlfredConfig, ObservabilityConfig
 from backend.observability.users import UserLabelEnricher, looks_like_slack_user_id
@@ -39,7 +41,7 @@ def test_merge_by_user_combines_ids_to_names():
 
 
 def test_enricher_uses_disk_cache(tmp_path):
-    from backend.storage.slack_user_cache import SlackUserCache
+    pass
 
     SlackUserCache(tmp_path).remember("U051D2Q2QUA", "Om")
     config = AlfredConfig()

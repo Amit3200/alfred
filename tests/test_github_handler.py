@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from backend.github.handler import process_github_webhook_payload
+from backend.integrations.github.handler import process_github_webhook_payload
 from backend.models.config import AlfredConfig, GitConfig, GitHubAppConfig
 
 
@@ -33,8 +33,8 @@ def test_webhook_queues_and_reacts_eyes_immediately():
     }
 
     with (
-        patch("backend.github.handler.react_to_issue_comment") as react,
-        patch("backend.github.handler.threading.Thread") as thread_cls,
+        patch("backend.integrations.github.handler.react_to_issue_comment") as react,
+        patch("backend.integrations.github.handler.threading.Thread") as thread_cls,
     ):
         thread_cls.return_value = MagicMock()
         status = process_github_webhook_payload(payload, manager=manager)

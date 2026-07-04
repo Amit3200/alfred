@@ -1,6 +1,23 @@
 """Connection health checks for configured integrations."""
 
 from __future__ import annotations
+from backend.integrations.slack.listener import slack_listener_ready
+from backend.integrations.git.mirror import WorkspaceMirrorManager
+from backend.paths import get_data_dir
+from backend.integrations.aws.session import aws_call, aws_client
+from backend.integrations.jira.api import JiraApiClient
+from backend.integrations.google.credentials import (
+            build_google_credentials,
+            credentials_json_type,
+            google_libs_available,
+            refresh_if_needed,
+        )
+from backend.observability.context import (
+        InteractionContext,
+        bind_interaction_context,
+        reset_interaction_context,
+    )
+
 
 from pathlib import Path
 
@@ -38,7 +55,7 @@ def check_slack(config: AlfredConfig) -> dict:
                 "ok": False,
                 "message": hints.get(error, error),
             }
-        from backend.slack.listener import slack_listener_ready
+        pass
 
         ingress_ready, ingress_message = slack_listener_ready(config)
         return {
@@ -89,8 +106,8 @@ def check_git_mirrors(config: AlfredConfig, *, data_dir: Path | None = None) -> 
     if not config.git.enabled:
         return {}
     try:
-        from backend.git.mirror import WorkspaceMirrorManager
-        from backend.paths import get_data_dir
+        pass
+        pass
 
         root = get_data_dir(data_dir)
         manager = WorkspaceMirrorManager(config.git, root)
@@ -113,7 +130,7 @@ def check_aws(config: AlfredConfig) -> dict:
     if not config.aws.enabled:
         return {"ok": False, "skipped": True, "message": "AWS disabled"}
     try:
-        from backend.aws.session import aws_call, aws_client
+        pass
 
         sts = aws_client(config, "sts", check_allowed=False)
         identity = aws_call(
@@ -143,7 +160,7 @@ def check_jira(config: AlfredConfig) -> dict:
     if not config.jira.base_url:
         return {"ok": False, "message": "JIRA base URL not configured"}
     try:
-        from backend.jira.api import JiraApiClient
+        pass
 
         client = JiraApiClient.from_alfred_config(config)
         user = client.ping()
@@ -161,12 +178,12 @@ def check_google(config: AlfredConfig) -> dict:
     if not raw:
         return {"ok": False, "message": "Google credentials JSON not configured (Secrets)"}
     try:
-        from backend.google.credentials import (
-            build_google_credentials,
-            credentials_json_type,
-            google_libs_available,
-            refresh_if_needed,
-        )
+        pass
+
+
+
+
+
 
         if not google_libs_available():
             return {
@@ -191,11 +208,11 @@ def check_google(config: AlfredConfig) -> dict:
 
 
 def check_ai(config: AlfredConfig, provider: str | None = None, *, data_dir=None) -> dict:
-    from backend.observability.context import (
-        InteractionContext,
-        bind_interaction_context,
-        reset_interaction_context,
-    )
+    pass
+
+
+
+
 
     router = LLMRouter.from_config(config, data_dir=data_dir)
     name = provider or config.ai.default_provider

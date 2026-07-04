@@ -9,7 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from backend.git.api import resolve_repo_slug
+from backend.integrations.git.api import resolve_repo_slug
 from backend.models.config import AIConfig, GitConfig
 from backend.paths import repo_context_dir, shared_repos_dir
 

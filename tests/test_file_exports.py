@@ -1,14 +1,16 @@
 """Tests for Slack file exports and table formatting."""
 
 from __future__ import annotations
+from backend.formatting.file_exports import TabularData
 
-from backend.ingress.file_exports import (
+
+from backend.formatting.file_exports import (
     build_export_attachment,
     detect_export_format,
     extract_tabular_data,
     prepare_slack_delivery,
 )
-from backend.ingress.slack_format import format_for_slack
+from backend.formatting.strategies import format_for_slack
 
 
 def test_detect_export_format_csv():
@@ -52,7 +54,7 @@ THE GIR FARMER,invalid API key,17
 
 
 def test_build_export_attachment_json():
-    from backend.ingress.file_exports import TabularData
+    pass
 
     table = TabularData(headers=["Merchant", "Count"], rows=[["a.com", "3"]])
     attachment = build_export_attachment(table, "json")

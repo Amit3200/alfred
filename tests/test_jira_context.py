@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from backend.ingress.jira_context import (
+from backend.routing.jira_context import (
     build_open_assigned_jql,
     detect_jira_list_action,
     format_jira_context_for_prompt,
@@ -127,7 +127,7 @@ def test_detect_jira_list_action_for_named_assignee(monkeypatch):
         def search_users(self, *a, **k):
             return []
 
-    monkeypatch.setattr("backend.ingress.jira_context.JiraApiClient", FakeClient)
+    monkeypatch.setattr("backend.routing.jira_context.JiraApiClient", FakeClient)
     action = detect_jira_list_action(task.cleaned_intent, config, task)
     assert action is not None
     tool, args = action
@@ -159,7 +159,7 @@ def test_format_jira_context_includes_resolved_assignee(monkeypatch):
         def search_users(self, *a, **k):
             return []
 
-    monkeypatch.setattr("backend.ingress.jira_context.JiraApiClient", FakeClient)
+    monkeypatch.setattr("backend.routing.jira_context.JiraApiClient", FakeClient)
     prompt = format_jira_context_for_prompt(config, task)
     assert "Resolved assignee" in prompt
     assert "alice@example.com" in prompt

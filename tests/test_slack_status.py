@@ -5,7 +5,7 @@ from __future__ import annotations
 from unittest.mock import MagicMock, patch
 
 from backend.models.config import default_config
-from backend.slack.listener import SlackSocketRunner
+from backend.integrations.slack.listener import SlackSocketRunner
 
 
 def test_status_ok_when_running():

@@ -20,7 +20,7 @@ except ImportError:  # pragma: no cover - Windows
     fcntl = None  # type: ignore[assignment]
 
 from backend.context.generator import read_context_manifest, resolve_main_repo, shared_mirror_path
-from backend.git.api import resolve_repo_slug
+from backend.integrations.git.api import resolve_repo_slug
 from backend.models.config import AIConfig, AIProviderConfig, GitConfig
 from backend.paths import repo_context_dir
 
