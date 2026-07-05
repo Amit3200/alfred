@@ -204,6 +204,14 @@ class TaskProcessor:
             )
             if part
         )
+        # Resolve target model early to allow model-specific system prompts
+        if review_skill and self.config.git.enabled:
+            provider_name, provider, model_name = self._resolve_llm("pr_review")
+        else:
+            provider_name, provider, model_name = self._resolve_llm(
+                "investigation" if investigation else "basic_chat"
+            )
+
         messages = self._build_messages(
             task,
             session=session,
@@ -218,6 +226,7 @@ class TaskProcessor:
                 data_dir=self._data_dir_path(),
             ),
             extra_system=extra_system,
+            model_name=model_name,
         )
 
         response: AssistantResponse | None = None
@@ -227,7 +236,6 @@ class TaskProcessor:
 
         if review_skill and self.config.git.enabled:
             set_call_kind("investigation")
-            provider_name, provider, model_name = self._resolve_llm("pr_review")
             logger.info(
                 "Skill-guided PR review: %s provider=%s model=%s prefetched=%s",
                 review_skill.name,
@@ -253,9 +261,6 @@ class TaskProcessor:
                     metadata_patch = {**(metadata_patch or {}), **direct_patch}
 
         if response is None:
-            provider_name, provider, model_name = self._resolve_llm(
-                "investigation" if investigation else "basic_chat"
-            )
             logger.debug(
                 "Calling provider=%s model=%s session=%s turns=%d context=%s routed_playbook=%s investigation=%s",
                 provider_name,
@@ -285,8 +290,25 @@ class TaskProcessor:
                 from backend.routing.git_direct import looks_like_tool_json
 
                 set_call_kind("chat")
-                llm_response = provider.chat(messages, model=model_name or None)
-                raw = (llm_response.content or "").strip()
+                try:
+                    llm_response = provider.chat(messages, model=model_name or None)
+                    raw = (llm_response.content or "").strip()
+                except Exception as exc:
+                    logger.warning("Primary LLM provider chat failed: %s. Trying fallback provider.", exc)
+                    try:
+                        fallback_provider_name = self.config.ai.default_provider
+                        if fallback_provider_name != provider_name:
+                            fallback_prov = self.router.get(fallback_provider_name)
+                            fallback_model = self.config.ai.providers[fallback_provider_name].model or ""
+                            logger.info("Using fallback provider=%s model=%s", fallback_provider_name, fallback_model)
+                            llm_response = fallback_prov.chat(messages, model=fallback_model or None)
+                            raw = (llm_response.content or "").strip()
+                        else:
+                            raise
+                    except Exception as fallback_exc:
+                        logger.error("Fallback LLM provider chat failed: %s", fallback_exc)
+                        raw = ""
+
                 content = clean_response_scaffold(raw)
                 if (not content or looks_like_tool_json(raw)) and self.config.git.enabled:
                     inv = self._playbooks.get_by_name("investigate_bug")
@@ -634,8 +656,9 @@ class TaskProcessor:
         omit_assistant_turns: bool = False,
         playbook_prompt: str = "",
         extra_system: str = "",
+        model_name: str | None = None,
     ) -> list[Message]:
-        system_parts = [build_alfred_system_prompt(self.config)]
+        system_parts = [build_alfred_system_prompt(self.config, model_name=model_name)]
         if task.source == "git":
             system_parts.append(GITHUB_COMMENT_RULES)
         if playbook_prompt:

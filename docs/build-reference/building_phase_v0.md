@@ -295,7 +295,7 @@ flowchart TD
 * **Goal**: Implement context pruning heuristics in `backend/orchestrator/policy.py` to strip out long stack traces and URLs from previous messages before feeding context to the LLM. Upgrade keyword trigger matching to a hybrid keyword + semantic similarity model.
 
 ### 5. Task 5: Operational Polish (UX & Integration)
-* **Status**: ❌ Not started
+* **Status**: ✅ Shipped (Slack email fetching and JIRA assignee mapping hooks, LLM provider chat fallback logic, and Claude/Kimi system prompt optimization completed)
 * **Dependencies**: Task 2, Task 4
 * **Goal**: Add hooks for `users:read.email` for richer assignee mapping, configure fallback strategies for unrouted queries, and optimize the prompt instructions for specific models (Claude, Kimi).
 

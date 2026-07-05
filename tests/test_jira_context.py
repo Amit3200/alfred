@@ -165,3 +165,29 @@ def test_format_jira_context_includes_resolved_assignee(monkeypatch):
     assert "alice@example.com" in prompt
     assert "Default project scope" in prompt
     assert "TECH" in prompt
+
+
+def test_resolve_assignees_via_slack_user_info(monkeypatch):
+    from backend.routing.jira_context import _slack_user_info
+
+    config = AlfredConfig()
+    config.slack.enabled = True
+    config.slack.bot_token = "xoxb-dummy"
+    config.jira.enabled = True
+
+    mock_client = MagicMock()
+    mock_client.users_info.return_value = {
+        "ok": True,
+        "user": {
+            "id": "U12345",
+            "real_name": "Charlie Chaplin",
+            "name": "charlie",
+            "profile": {"email": "charlie@chaplin.com"},
+        },
+    }
+
+    monkeypatch.setattr("backend.routing.jira_context.WebClient", lambda token: mock_client)
+
+    display, email = _slack_user_info("U12345", config)
+    assert display == "Charlie Chaplin"
+    assert email == "charlie@chaplin.com"

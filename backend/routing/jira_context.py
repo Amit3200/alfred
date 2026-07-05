@@ -139,7 +139,15 @@ def resolve_assignees_for_task(
     for user_id in extract_slack_user_ids(task.raw_text):
         if user_id == (task.user_id or ""):
             continue
-        display = labels.get(user_id) or _slack_display_name(user_id, config, data_dir)
+        display = labels.get(user_id)
+        email = None
+        if not display:
+            display, email = _slack_user_info(user_id, config)
+            if not display:
+                display = _slack_display_name(user_id, config, data_dir)
+
+        if email:
+            add(email)
         if display:
             add(display)
         elif user_id in config.jira.assignee_map:
@@ -291,6 +299,23 @@ def _slack_display_name(user_id: str, config: AlfredConfig, data_dir: Any | None
         return pick_slack_display_name(response.get("user") or {})
     except Exception:
         return None
+
+
+def _slack_user_info(user_id: str, config: AlfredConfig) -> tuple[str | None, str | None]:
+    if not config.slack.enabled or not config.slack.bot_token:
+        return None, None
+    try:
+        client = WebClient(token=config.slack.bot_token)
+        response = client.users_info(user=user_id)
+        if response.get("ok"):
+            user = response.get("user") or {}
+            profile = user.get("profile") or {}
+            display = pick_slack_display_name(user)
+            email = profile.get("email")
+            return display, email
+    except Exception:
+        pass
+    return None, None
 
 
 def _names_from_raw_text(raw_text: str) -> list[str]:

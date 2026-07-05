@@ -68,16 +68,26 @@ in that window — it may be older than what I can fetch."
 - Always refer to people by display name in your reply — never raw Slack user IDs (U…)."""
 
 
-def build_alfred_system_prompt(config: AlfredConfig | None = None) -> str:
-    pass
-    pass
-
+def build_alfred_system_prompt(config: AlfredConfig | None = None, model_name: str | None = None) -> str:
     cfg = config or ConfigModel()
     identity = branding_identity_line(cfg.branding)
-    return f"""{identity}
-
-{SLACK_FORMAT_RULES}
-"""
+    
+    prompt = f"{identity}\n\n{SLACK_FORMAT_RULES}"
+    
+    if model_name:
+        model_lower = model_name.lower()
+        if "kimi" in model_lower or "moonshot" in model_lower:
+            prompt += """\n\n## Moonshot/Kimi Optimization
+- You are running on Moonshot Kimi. Be extremely concise.
+- If the Slack context size is large, prioritize a dense summary over long listings to prevent context errors.
+- Do not output thinking blocks or metadata labels (e.g., 'Lead line', 'Body') unless asked."""
+        elif "claude" in model_lower or "anthropic" in model_lower:
+            prompt += """\n\n## Anthropic/Claude Optimization
+- You are running on Anthropic Claude.
+- Strictly adhere to Slack bold (*word*) instead of GFM bold (**word**).
+- Structure responses clearly, and do not repeat the instruction guidelines in your output."""
+            
+    return prompt
 
 
 ALFRED_SYSTEM_PROMPT = build_alfred_system_prompt()
