@@ -215,7 +215,7 @@ def fetch_channel_messages(
         return []
     messages = list(response.get("messages", []))
     messages.reverse()
-    return [m for m in messages if not _should_skip_message(m, bot_user_id=bot_user_id)]
+    return [m for m in messages if not _should_skip_message(m, bot_user_id=bot_user_id, is_thread=False)]
 
 
 def messages_to_text(
@@ -262,7 +262,7 @@ def fetch_thread_messages(
         logger.warning("Slack messages API error: %s", error)
         return []
     messages = list(response.get("messages", []))
-    return [m for m in messages if not _should_skip_message(m, bot_user_id=bot_user_id)]
+    return [m for m in messages if not _should_skip_message(m, bot_user_id=bot_user_id, is_thread=True)]
 
 
 def fetch_thread_replies(
@@ -299,8 +299,10 @@ def _slack_scope_hint(error_text: str) -> str:
     return error_text
 
 
-def _should_skip_message(message: dict, *, bot_user_id: str) -> bool:
-    """Skip Alfred's own posts; keep other bots (alert integrations)."""
+def _should_skip_message(message: dict, *, bot_user_id: str, is_thread: bool = False) -> bool:
+    """Skip Alfred's own posts; keep other bots (alert integrations). Keep in threads for context."""
+    if is_thread:
+        return False
     if bot_user_id and message.get("user") == bot_user_id:
         return True
     text = (message.get("text") or "").lower()
