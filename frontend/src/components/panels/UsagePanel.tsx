@@ -1,4 +1,5 @@
 import { Button, Col, Row, Select, Table, Tooltip, Typography } from "antd";
+import { ArrowDownOutlined, ArrowUpOutlined } from "@ant-design/icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   api,
@@ -743,7 +744,7 @@ export function UsagePanel() {
           </div>
           <div className="alfred-stat-card">
             <div className="alfred-stat-label">Successful Tasks</div>
-            <div className="alfred-stat-value" style={{ color: "#52c41a" }}>
+            <div className="alfred-stat-value" style={{ color: "var(--alfred-status-ok)" }}>
               {formatNumber(summary?.successful_tasks ?? 0)}
             </div>
           </div>
@@ -760,8 +761,12 @@ export function UsagePanel() {
           <div className="alfred-stat-card">
             <div className="alfred-stat-label">User Feedback</div>
             <div className="alfred-stat-value" style={{ fontSize: 20, display: "flex", gap: 12, alignItems: "center", marginTop: 4 }}>
-              <span style={{ color: "#52c41a" }}>👍 {formatNumber(summary?.feedback_good ?? 0)}</span>
-              <span style={{ color: "#f5222d" }}>👎 {formatNumber(summary?.feedback_bad ?? 0)}</span>
+              <span style={{ color: "var(--alfred-status-ok)", display: "flex", alignItems: "center", gap: 4 }}>
+                <ArrowUpOutlined style={{ fontSize: 18 }} /> {formatNumber(summary?.feedback_good ?? 0)}
+              </span>
+              <span style={{ color: "var(--alfred-status-fail)", display: "flex", alignItems: "center", gap: 4 }}>
+                <ArrowDownOutlined style={{ fontSize: 18 }} /> {formatNumber(summary?.feedback_bad ?? 0)}
+              </span>
             </div>
           </div>
         </div>
