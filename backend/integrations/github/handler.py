@@ -47,13 +47,9 @@ def process_github_webhook_payload(
 
     _react_ack(config, task, REACTION_ACK)
 
-    worker = threading.Thread(
-        target=_process_github_task,
-        args=(task, manager, processor_factory),
-        daemon=True,
-        name=f"alfred-github-{task.id[:8]}",
-    )
-    worker.start()
+    from backend.db.sqlite_queue import SQLiteQueue
+    queue = SQLiteQueue(manager.data_dir)
+    queue.push(task.model_dump())
     return "queued"
 
 
@@ -91,47 +87,3 @@ def _react_ack(config: AlfredConfig, task: Task, content: str) -> None:
             task.channel_id,
             comment_id,
         )
-
-
-def _process_github_task(
-    task: Task,
-    manager: ConfigManager,
-    processor_factory: Callable[[], TaskProcessor] | None,
-) -> None:
-    config, _ = manager.load_merged()
-    success = False
-    try:
-        processor = processor_factory() if processor_factory else TaskProcessor(config, data_dir=manager.data_dir)
-        response = processor.process(task)
-        body = render_for_channel(response, "github")
-        number = int(task.metadata.get("pr_number") or task.thread_ts or 0)
-        post_pull_request_comment(
-            config,
-            repo=task.channel_id,
-            number=number,
-            body=body,
-        )
-        logger.info(
-            "GitHub PR comment posted repo=%s pr=%s task=%s",
-            task.channel_id,
-            number,
-            task.id,
-        )
-        success = True
-    except Exception:
-        logger.exception("Failed to process GitHub task %s", task.id)
-        try:
-            number = int(task.metadata.get("pr_number") or task.thread_ts or 0)
-            post_pull_request_comment(
-                config,
-                repo=task.channel_id,
-                number=number,
-                body=(
-                    "Sorry, I hit an error processing that request. "
-                    "Check Alfred logs and that git integration + investigation routing are configured."
-                ),
-            )
-        except Exception:
-            logger.exception("Failed to post GitHub error comment for task %s", task.id)
-    finally:
-        _react_ack(config, task, REACTION_DONE if success else REACTION_FAILED)

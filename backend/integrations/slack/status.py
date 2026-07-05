@@ -217,12 +217,37 @@ def loading_line_to_status(line: str) -> str:
     return f"is {text[0].lower()}{text[1:]}" if text else ASSISTANT_STATUS
 
 
+def sanitize_shortcode_for_assistant(prefix: str) -> str:
+    """Map or strip custom shortcodes to standard unicode emojis for native status API."""
+    if not prefix:
+        return ""
+    name = prefix.strip(":").lower()
+    mapping = {
+        "this_is_fine": "🔥",
+        "this-is-fine-fire": "🔥",
+        "typingcat": "🐱",
+        "typing_cat": "🐱",
+        "working": "🛠️",
+        "thinking": "🧠",
+        "loading": "⏳",
+        "spinner": "⏳",
+        "success": "✅",
+        "error": "❌",
+        "failed": "❌",
+        "doge": "🐶",
+        "cat": "🐱",
+    }
+    return mapping.get(name, "⏳")
+
+
 def slack_loading_messages(lines: list[str]) -> list[str]:
     """Fit loading_messages for assistant.threads.setStatus (max 50 chars, keep emojis)."""
     sanitized: list[str] = []
     for line in lines[:MAX_LOADING_MESSAGES]:
         original = line.strip()
         prefix, body = _split_loading_prefix(original)
+        if prefix.startswith(":") and prefix.endswith(":"):
+            prefix = sanitize_shortcode_for_assistant(prefix)
         sanitized.append(_fit_loading_message(prefix, body or original))
     return sanitized
 
@@ -268,10 +293,7 @@ class ThinkingIndicator:
         self._slack_loading_messages = slack_loading_messages(assistant_lines)
         first_line = self._status_pool[0] if self._status_pool else ASSISTANT_STATUS
         self._status_text = loading_line_to_status(first_line)
-        use_assistant = (
-            not pool_has_custom_shortcodes(self._status_pool)
-            and self._try_assistant_status()
-        )
+        use_assistant = self._try_assistant_status()
         if use_assistant:
             self._assistant_active = True
             logger.info(
@@ -280,19 +302,11 @@ class ThinkingIndicator:
                 self.thread_ts,
             )
             return
-        if pool_has_custom_shortcodes(self._status_pool):
-            logger.info(
-                "Slack thinking: using thread placeholder for custom emoji lines "
-                "(channel=%s thread=%s)",
-                self.channel,
-                self.thread_ts,
-            )
-        else:
-            logger.info(
-                "Slack thinking: falling back to placeholder message (channel=%s thread=%s)",
-                self.channel,
-                self.thread_ts,
-            )
+        logger.info(
+            "Slack thinking: falling back to placeholder message (channel=%s thread=%s)",
+            self.channel,
+            self.thread_ts,
+        )
         self._start_legacy_placeholder()
 
     def _supersede(self) -> None:

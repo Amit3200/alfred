@@ -543,6 +543,7 @@ class TaskProcessor:
         from backend.routing.git_direct import looks_like_tool_json, strip_text_tool_markup
         from backend.routing.git_context import metadata_patch_for_tool_result
         from backend.tools.git_api import build_git_tool_registry
+        from backend.observability.checkpoint import log_checkpoint
 
         registry = build_git_tool_registry(
             self.config,
@@ -550,16 +551,35 @@ class TaskProcessor:
             data_dir=self._data_dir_path(),
         )
 
+        runner = self.config.orchestrator.agent_runner
+        log_checkpoint("agent_loop_start", runner, "started")
+
+        if skill.mode in ("investigation", "workflow"):
+            from backend.orchestrator.planning import generate_initial_plan
+            generate_initial_plan(task, skill.allowed_tools, self.config, data_dir=self._data_dir)
+
         try:
-            raw = run_agent_loop(
-                provider,
-                messages,
-                registry,
-                skill.allowed_tools,
-                model=model or None,
-                session=session,
-                git=self.config.git,
-            )
+            if runner == "hermes":
+                from backend.orchestrator.hermes_runner import run_hermes_loop
+                raw = run_hermes_loop(
+                    provider,
+                    messages,
+                    registry,
+                    skill.allowed_tools,
+                    model=model or None,
+                    session=session,
+                    git=self.config.git,
+                )
+            else:
+                raw = run_agent_loop(
+                    provider,
+                    messages,
+                    registry,
+                    skill.allowed_tools,
+                    model=model or None,
+                    session=session,
+                    git=self.config.git,
+                )
         except Exception as exc:
             logger.exception("Investigation loop failed")
             return (

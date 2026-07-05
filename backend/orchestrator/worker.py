@@ -85,6 +85,15 @@ class TaskQueueWorker:
 
                     response = processor.process(task)
 
+                    if config.orchestrator.self_improvement and response.text:
+                        from backend.orchestrator.learning import analyze_and_generate_playbook
+                        analyze_and_generate_playbook(
+                            task,
+                            response.text,
+                            config,
+                            data_dir=self.manager.data_dir
+                        )
+
                     if task.source == "slack":
                         from backend.formatting.file_exports import prepare_slack_delivery
                         from backend.integrations.slack.listener import (
@@ -118,6 +127,20 @@ class TaskQueueWorker:
                     elif task.source == "ui":
                         # For UI Chat, processor.process(task) automatically appends the exchange to SessionStore
                         pass
+                    elif task.source == "github":
+                        from backend.formatting.render import render_for_channel
+                        from backend.integrations.github.client import post_pull_request_comment, REACTION_DONE
+                        from backend.integrations.github.handler import _react_ack
+
+                        body = render_for_channel(response, "github")
+                        number = int(task.metadata.get("pr_number") or task.thread_ts or 0)
+                        post_pull_request_comment(
+                            config,
+                            repo=task.channel_id,
+                            number=number,
+                            body=body,
+                        )
+                        _react_ack(config, task, REACTION_DONE)
 
                     self.queue.ack(task_id)
                     log_checkpoint("queue_task", task_id, "completed")
@@ -140,6 +163,24 @@ class TaskQueueWorker:
                             )
                         except Exception:
                             logger.exception("Failed to send error details back to Slack")
+                    elif task_dict.get("source") == "github" and task_dict.get("channel_id"):
+                        try:
+                            from backend.integrations.github.client import post_pull_request_comment, REACTION_FAILED
+                            from backend.integrations.github.handler import _react_ack
+                            task_to_err = Task.model_validate(task_dict)
+                            number = int(task_to_err.metadata.get("pr_number") or task_to_err.thread_ts or 0)
+                            post_pull_request_comment(
+                                config,
+                                repo=task_to_err.channel_id,
+                                number=number,
+                                body=(
+                                    "Sorry, I hit an error processing that request. "
+                                    "Check Alfred logs and that git integration + investigation routing are configured."
+                                ),
+                            )
+                            _react_ack(config, task_to_err, REACTION_FAILED)
+                        except Exception:
+                            logger.exception("Failed to post GitHub error comment")
                 finally:
                     # Reset request context variables
                     current_task_id.reset(token_task_id)

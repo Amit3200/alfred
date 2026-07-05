@@ -134,6 +134,59 @@ export function AISettingsPanel() {
           </Col>
         </Row>
 
+        <Row gutter={[16, 12]} style={{ marginBottom: 20 }}>
+          <Col xs={24} md={6}>
+            <label className="alfred-field-label">Agent execution loop</label>
+            <Typography.Text type="secondary" style={{ display: "block", fontSize: 12 }}>
+              Choose which execution framework compiles and executes instructions.
+            </Typography.Text>
+          </Col>
+          <Col xs={24} md={18}>
+            <Select
+              style={{ width: 240 }}
+              value={config.orchestrator?.agent_runner || "react"}
+              options={[
+                { value: "react", label: "ReAct loop (Standard)" },
+                { value: "hermes", label: "Hermes persistent loop" },
+              ]}
+              getPopupContainer={(n) => n.parentElement ?? document.body}
+              onChange={(v) =>
+                updateConfig({
+                  orchestrator: {
+                    ...config.orchestrator,
+                    agent_runner: v as "react" | "hermes",
+                  },
+                })
+              }
+            />
+          </Col>
+        </Row>
+
+        <Row gutter={[16, 12]} style={{ marginBottom: 20 }}>
+          <Col xs={24} md={6}>
+            <label className="alfred-field-label">Self-improvement loop</label>
+            <Typography.Text type="secondary" style={{ display: "block", fontSize: 12 }}>
+              Automatically reflect on resolved runs to extract, update, and write reusable playbooks.
+            </Typography.Text>
+          </Col>
+          <Col xs={24} md={18}>
+            <Switch
+              checked={config.orchestrator?.self_improvement ?? true}
+              onChange={(checked) =>
+                updateConfig({
+                  orchestrator: {
+                    ...config.orchestrator,
+                    self_improvement: checked,
+                  },
+                })
+              }
+            />
+            <Typography.Text type="secondary" style={{ marginLeft: 12, fontSize: 13 }}>
+              {config.orchestrator?.self_improvement ?? true ? "Enabled" : "Disabled"}
+            </Typography.Text>
+          </Col>
+        </Row>
+
         {ROUTE_KEYS.map((key) => {
           const route = normalizeRoute(config.ai.routing[key]);
           const providerName = route.provider || config.ai.default_provider;

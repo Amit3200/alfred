@@ -42,9 +42,9 @@ def test_processor_drops_assistant_turns_on_refresh(tmp_path):
         pass
 
         return SlackContextBundle(
-            text="Channel messages (last 30 days):\n[1] line",
+            text="Channel messages (last 90 days):\n[1] line",
             channel_messages=[],
-            history_window_label="last 30 days",
+            history_window_label="last 90 days",
         )
 
     processor = TaskProcessor(config, session_store=store, context_fetcher=fetch)

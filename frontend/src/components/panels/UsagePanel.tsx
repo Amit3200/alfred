@@ -421,6 +421,9 @@ export function UsagePanel() {
     tool_categories: string[];
   }>({ sources: [], users: [], models: [], tool_categories: [] });
 
+  const [checkpoints, setCheckpoints] = useState<any[]>([]);
+  const [checkpointsLoading, setCheckpointsLoading] = useState(false);
+
   const query = useMemo(
     () => ({
       preset,
@@ -436,17 +439,21 @@ export function UsagePanel() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setCheckpointsLoading(true);
     try {
-      const [summaryRes, seriesRes, filtersRes] = await Promise.all([
+      const [summaryRes, seriesRes, filtersRes, checkpointsRes] = await Promise.all([
         api.observabilitySummary(query),
         api.observabilityTimeseries(query),
         api.observabilityFilters("30d"),
+        api.observabilityCheckpoints(),
       ]);
       setSummary(summaryRes.summary);
       setTimeseries(seriesRes.timeseries);
       setFilterOptions(filtersRes);
+      setCheckpoints(checkpointsRes.checkpoints || []);
     } finally {
       setLoading(false);
+      setCheckpointsLoading(false);
     }
   }, [query]);
 
@@ -489,6 +496,67 @@ export function UsagePanel() {
     () => Object.entries(summary?.by_model ?? {}).sort((a, b) => b[1] - a[1]),
     [summary],
   );
+
+  const checkpointColumns = [
+    {
+      title: "Timestamp",
+      dataIndex: "timestamp",
+      key: "timestamp",
+      render: (value: number) => new Date(value * 1000).toLocaleString(),
+      width: 170,
+    },
+    {
+      title: "Task ID",
+      dataIndex: "task_id",
+      key: "task_id",
+      width: 150,
+      render: (val: string) => <span style={{ fontFamily: "monospace", fontSize: 12 }}>{val}</span>,
+    },
+    {
+      title: "Checkpoint Stage",
+      dataIndex: "checkpoint",
+      key: "checkpoint",
+      width: 160,
+    },
+    {
+      title: "Target / Engine",
+      dataIndex: "function_name",
+      key: "function_name",
+      width: 160,
+      render: (val: string) => {
+        if (val === "react") return <span style={{ color: "var(--alfred-accent)", fontWeight: "bold" }}>Standard ReAct</span>;
+        if (val === "hermes") return <span style={{ color: "#bd93f9", fontWeight: "bold" }}>Nous Hermes Loop</span>;
+        return val;
+      }
+    },
+    {
+      title: "Status",
+      dataIndex: "status",
+      key: "status",
+      width: 100,
+      render: (val: string) => {
+        if (val === "started") return <span style={{ color: "var(--alfred-accent)" }}>Started</span>;
+        if (val === "completed") return <span style={{ color: "#50fa7b" }}>Completed</span>;
+        if (val === "error") return <span style={{ color: "#ff5555", fontWeight: "bold" }}>Failed</span>;
+        return val;
+      }
+    },
+    {
+      title: "Diagnostic Notes",
+      dataIndex: "error",
+      key: "error",
+      render: (_: any, row: any) => {
+        if (row.error) {
+          return (
+            <Tooltip title={row.error_stacktrace}>
+              <span style={{ color: "#ff5555", cursor: "help" }}>{row.error} (Hover for traceback)</span>
+            </Tooltip>
+          );
+        }
+        return <span style={{ color: "var(--alfred-text-muted)" }}>None</span>;
+      }
+    }
+  ];
 
   const columns = [
     {
@@ -731,6 +799,19 @@ export function UsagePanel() {
           </Col>
         </Row>
       ) : null}
+
+      <div className="alfred-panel" style={{ marginBottom: 20 }}>
+        <Typography.Title level={5}>Task execution timeline (checkpoints)</Typography.Title>
+        <Table
+          size="small"
+          rowKey={(row) => `${row.timestamp}-${row.task_id}-${row.checkpoint}-${row.function_name}`}
+          loading={checkpointsLoading}
+          columns={checkpointColumns}
+          dataSource={checkpoints}
+          pagination={{ pageSize: 10, hideOnSinglePage: true }}
+          scroll={{ x: 960 }}
+        />
+      </div>
 
       <div className="alfred-panel">
         <Typography.Title level={5}>Recent interactions</Typography.Title>

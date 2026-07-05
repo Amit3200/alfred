@@ -37,7 +37,7 @@ Config and encrypted secrets live in `.alfred/` (not a SaaS). Optional Ollama on
 |------|------------|
 | **Slack `@alfred`** | Socket Mode in **channels** only (not app DM window). Thinking status + custom emoji lines. |
 | **Session memory** | SQLite per `(channel, thread)` — follow-ups, active PR, last git action. |
-| **Slack context** | Channel + thread history (~30 days), reaction display names, Slack Lists parsing. |
+| **Slack context** | Channel + thread history (~90 days with dynamic day/week queries), reaction display names, Slack Lists parsing. |
 | **Git investigation** | Mirror repos; `grep_repo`, `read_file`, `git_log`, `git_blame`, `git_show`. |
 | **PR review** | Summarize/review from URL or thread; GitHub App `@alfred review` on PR comments (optional, needs public URL). |
 | **JIRA** | Search, get, update, comment, create, link PRs; assignee resolution via `assignee_map`; workspace identity map. |
@@ -46,6 +46,9 @@ Config and encrypted secrets live in `.alfred/` (not a SaaS). Optional Ollama on
 | **Playbooks** | `.alfred/playbooks/*.md` — company triggers, formatting, investigation tools (local only). |
 | **Skills** | Bundled `skills/*.md` — investigate, review PR, git status, JIRA, AWS, summarize alerts. |
 | **AI** | Ollama, OpenAI-compat, Anthropic, Gemini, Kimi — per-task routing (`investigation`, `skill_matching`, …). |
+| **Task Planning** | Checklist-Based Task Planning Mode — pre-plans complex workflows, executes checklist step-by-step (`.alfred/plans/`). |
+| **Self-Improving** | Meta-Learning loop reflects on completed queries and writes playbooks to `.alfred/playbooks/`. |
+| **Prompts Registry** | Centralized `prompts.yaml` registry to configure all system, format, planning, and learning instructions. |
 | **Admin UI** | Chat, secrets, AI routing, integrations, repo mirrors, usage (tokens + est. cost), health. |
 | **CLI** | `exec`, `git sync`, `slack emojis`, `up` / `stop`, Ollama helpers. |
 
@@ -218,6 +221,27 @@ Logs: `.alfred/alfred.log`
 | JIRA | `@alfred status of TECH-123` |
 | AWS | `@alfred pull grade events for fp_id …` (with playbook + config) |
 | Usage | Admin → Usage — tokens, est. cost, tools |
+
+---
+
+## Agentic Orchestration
+
+Alfred supports advanced agent execution loops, self-improving memory, and checklist task planning:
+
+### Config Options (`config.yaml`)
+Configure the preferred execution loop engine:
+```yaml
+orchestrator:
+  agent_runner: "hermes"       # "react" (default ReAct) or "hermes" (Nous Hermes autonomous agent loop)
+  self_learning_enabled: true  # Autonomously draft playbooks from successful runs to .alfred/playbooks/
+```
+
+### Checklist Planning Mode
+For complex tasks (routed via `investigation` or `workflow` playbooks), Alfred generates a step-by-step checklist plan at `.alfred/plans/plan_<task_id>.md` before execution begins. As each tool completes, Alfred dynamically updates the checkboxes (`- [ ]` -> `- [x]`) in this markdown file.
+
+### Centralized Prompts Registry
+All of Alfred's prompts (system instructions, Slack/GitHub formatting, Hermes loop directives, learning loops, planning checklists) are stored in a single editable file: `backend/orchestrator/prompts.yaml`. 
+You can customize Alfred's personality, formatting layouts, or planning guidelines directly in this file without modifying any code.
 
 ---
 

@@ -26,14 +26,23 @@ def test_correction_refreshes_context():
     assert needs_context_refresh("oops I meant something else", has_session=True)
 
 
-def test_history_lookup_uses_30_day_window():
+def test_history_lookup_uses_90_day_window():
     now = datetime(2026, 6, 21, 12, 0, tzinfo=timezone.utc)
     _, _, label, limit = parse_history_window(
         "when was the last event posted?",
         now=now,
     )
-    assert label == "last 30 days"
+    assert label == "last 90 days"
     assert limit == 200
+
+
+def test_parse_history_window_days():
+    now = datetime(2026, 6, 21, 12, 0, tzinfo=timezone.utc)
+    _, _, label, _ = parse_history_window("alert in the last 14 days?", now=now)
+    assert label == "last 14 days"
+
+    _, _, label, _ = parse_history_window("alert in the last 2 weeks?", now=now)
+    assert label == "last 14 days"
 
 
 def test_parse_history_window_yesterday():

@@ -13,10 +13,10 @@ Alfred is **directionally aligned** with the v0 architecture: local-first, plugg
 | v0 first milestone | Status |
 |--------------------|--------|
 | `alfred init → configure AI → @alfred in Slack → read-only git investigation in a thread` | **Done** |
-| `@alfred` JIRA ticket queries in thread | **Mostly done** |
+| `@alfred` JIRA ticket queries in thread | **Done** (with session ticket caching) |
 | AWS read tools (Athena, CloudWatch, domain event tables) | **Done** |
 | GitHub App PR comment bot (`@alfred review` on PRs) | **Done** when company configures a public host (e.g. `alfred.yourcompany.dev`) |
-| Small-company distributable product | **Partial** — Docker, admin UI, docs; git write ops deferred to **v2** |
+| Small-company distributable product | **Done** — Docker, admin UI, docs, SQLite queues, self-improving playbooks |
 
 ---
 
@@ -27,8 +27,8 @@ Use these when reading gaps below:
 | Label | Meaning |
 |-------|---------|
 | **v0** | Shipped or in scope for current alpha |
-| **v0.1** | Next polish pass — pick soon |
-| **v1** | Next major increment (queue, governance) |
+| **v0.1** | Polish phase — completed |
+| **v1** | Next major increment (governance) |
 | **v2** | Later — write git, extra AWS surface |
 | **Won't do** | Explicitly out of scope |
 
@@ -40,13 +40,13 @@ Use these when reading gaps below:
 |-------|--------|--------|--------|
 | **0** | Scaffold, config, `alfred init` | ✅ Done | v0 |
 | **1** | AI plug layer | ✅ Done | v0 |
-| **2** | Skills engine | ✅ Done | **v0.1** — word-boundary trigger keywords mapping |
+| **2** | Skills engine | ✅ Done | v0.1 — word-boundary trigger keywords mapping |
 | **3** | Slack ingress | ✅ Done | v0 — channel `@mentions` only; **Slack DMs: Won't do** |
-| **4** | Thread context | ✅ Done | **v0.1** — stack trace and URL context pruning |
-| **5** | Investigation + ReAct + read tools | ✅ Done | v0 read paths done; **v0.1** intent router |
+| **4** | Thread context | ✅ Done | v0.1 — stack trace and URL context pruning |
+| **5** | Investigation + ReAct + read tools | ✅ Done | v0 read paths done; v0.1 intent router |
 | **6** | Workflow skills (write git, governance) | 🟡 Partial | JIRA writes exist; git writes **v2**; governance **v1** |
-| **7** | AWS + admin UI | ✅ Mostly done | v0 — Athena/CloudWatch/grade_events; ECS/S3 tools **v2** |
-| **8** | Distribution | 🟡 Partial | v0 — Docker, README, ECS/EC2 patterns |
+| **7** | AWS + admin UI | ✅ Done | v0 — Athena/CloudWatch/grade_events; ECS/S3 tools **v2** |
+| **8** | Distribution | ✅ Done | v0 — Docker, README, ECS/EC2 patterns, SQLite queue |
 
 **Legend:** ✅ Done · 🟡 Partial
 
@@ -92,7 +92,7 @@ Use these when reading gaps below:
 | Component | Status | Target | Notes |
 |-----------|--------|--------|-------|
 | Skill / playbook matcher | ✅ | **v0.1** | Word-boundary checking triggers |
-| Slack thread + channel fetch | ✅ | v0 | 30-day default |
+| Slack thread + channel fetch | ✅ | v0 | 90-day default (with relative day/week regex time window parser) |
 | Relevancy heuristics | ✅ | **v0.1** | Truncate/prune long stack traces and URLs |
 | Repo context + Graphify | ✅ | v0 | |
 | Context policy | ✅ | v0 | |
@@ -149,7 +149,9 @@ Company investigation playbooks (e.g. event dumps) → `.alfred/playbooks/` with
 
 - `@alfred` in **Slack channels** (not app DM window)
 - Thinking status + custom workspace emoji lines; `alfred slack emojis`
-- Channel + thread history (30-day window)
+- Channel + thread history (90-day window with dynamic day/week range queries)
+- **Checklist Planning Mode**: Alfred pre-plans complex tasks into checklist files (`.alfred/plans/plan_<task_id>.md`) and executes step-by-step
+- **Self-Improving Playbooks**: Reflects on successful paths and auto-saves new playbooks to `.alfred/playbooks/`
 - Domain playbooks from `.alfred/playbooks/`
 - Git: PRs, review, grep/read/blame in mirrored repos
 - JIRA: search/get/update/comment/create, assignee map, identity map
@@ -210,6 +212,7 @@ flowchart TD
         Slack["Slack Bot (@mentions Ingress)"]
         UI["Admin UI Chat (FastAPI POST)"]
         CLI["CLI Ingress (alfred exec)"]
+        Prompts[("Centralized prompts.yaml\n- System Formatting\n- Planning & Learning Directives")]
         Queue[("SQLite Task Queue (sqlite_queue.py)")]
         Worker["Task Queue Worker Daemon Thread (worker.py)"]
     end
@@ -218,6 +221,7 @@ flowchart TD
     UI -->|API Endpoint| Queue
     CLI --> Queue
     Queue -->|Dequeues Task| Worker
+    Prompts -.->|Configures prompts| Worker
 
     %% Context, Routing & Pruning Layer
     subgraph Engine ["2. Routing, Relevancy & Pruning Engine"]
@@ -227,7 +231,16 @@ flowchart TD
         CacheLookup{"Cached JIRA/PR Key in Session?"}
         DirectExec["Execute Tool Directly"]
         KeywordMatcher{"Word-Boundary Trigger Keyword Match?"}
-        ReActLoop["ReAct Agent Loop (LLM Routing)"]
+        
+        %% Planning & Running Engine
+        Planner["Checklist Planner (planning.py)\n- Pre-drafts plan.md checklist\n- Injects checklist context"]
+        RunnerSelect{"Agent Runner Select?"}
+        ReActLoop["Standard ReAct Loop"]
+        HermesLoop["Nous Hermes Loop"]
+        Updater["Checkmarks Auto-Updater\n- Toggles [ ] to [x] in plan.md"]
+        
+        %% Self-Improving Learning
+        Learner["Meta-Learning Loop (learning.py)\n- Auto-learns domain playbook\n- Saves to playbooks/"]
     end
 
     Worker --> Context
@@ -239,8 +252,13 @@ flowchart TD
     CacheLookup -->|No| KeywordMatcher
     DirectRouter -->|No| KeywordMatcher
     
-    KeywordMatcher -->|Yes Match Playbook| ReActLoop
-    KeywordMatcher -->|No Fallback| ReActLoop
+    KeywordMatcher -->|Yes / No Fallback| Planner
+    Planner --> RunnerSelect
+    RunnerSelect -->|ReAct| ReActLoop
+    RunnerSelect -->|Hermes| HermesLoop
+
+    ReActLoop & HermesLoop --> Updater
+    Updater --> Learner
 
     %% Execution & Monitoring Layer
     subgraph Execution ["3. Execution & Observability Logging"]
@@ -252,7 +270,7 @@ flowchart TD
     end
 
     DirectExec --> Tools
-    ReActLoop --> Tools
+    ReActLoop & HermesLoop --> Tools
     Tools --> GitMirror & JIRA & AWS
     Tools -.->|Log checkpoint event| Checkpoints
 
@@ -270,7 +288,7 @@ flowchart TD
     classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px;
     classDef database fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
     classDef worker fill:#fff3e0,stroke:#e65100,stroke-width:2px;
-    class Queue,Checkpoints database;
+    class Queue,Checkpoints,Prompts database;
     class Worker worker;
 ```
 

@@ -15,7 +15,7 @@ from backend.integrations.slack.users import SlackUserResolver, collect_message_
 logger = logging.getLogger(__name__)
 
 # Default channel history depth for Alfred (UTC).
-CHANNEL_HISTORY_DAYS = 30
+CHANNEL_HISTORY_DAYS = 90
 
 
 @dataclass
@@ -33,6 +33,7 @@ def parse_history_window(
     now: datetime | None = None,
 ) -> tuple[str | None, str | None, str, int]:
     """Return (oldest_ts, latest_ts, label, limit) for conversations.history."""
+    import re
     now = now or datetime.now(timezone.utc)
     lower = intent.lower()
 
@@ -45,6 +46,21 @@ def parse_history_window(
     if "today" in lower:
         start = now.replace(hour=0, minute=0, second=0, microsecond=0)
         return str(start.timestamp()), str(now.timestamp()), "today (UTC)", 200
+
+    # Match "X days" or "last X days" or "X days ago"
+    match_days = re.search(r"(?:last\s+)?(\d+)\s+day", lower)
+    if match_days:
+        days = min(int(match_days.group(1)), 180)
+        start = now - timedelta(days=days)
+        return str(start.timestamp()), str(now.timestamp()), f"last {days} days", 200
+
+    # Match "X weeks" or "last X weeks"
+    match_weeks = re.search(r"(?:last\s+)?(\d+)\s+week", lower)
+    if match_weeks:
+        weeks = min(int(match_weeks.group(1)), 26)
+        days = weeks * 7
+        start = now - timedelta(days=days)
+        return str(start.timestamp()), str(now.timestamp()), f"last {days} days", 200
 
     start = now - timedelta(days=CHANNEL_HISTORY_DAYS)
     return (

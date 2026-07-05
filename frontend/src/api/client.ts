@@ -91,6 +91,10 @@ export type AlfredConfig = {
     logo_ext: string;
     setup_completed: boolean;
   };
+  orchestrator: {
+    agent_runner: "react" | "hermes";
+    self_improvement: boolean;
+  };
   _secrets_configured?: {
     slack_bot_token: boolean;
     slack_bot_token_valid?: boolean;
@@ -458,6 +462,12 @@ export const api = {
   observabilityFilters: (preset = "30d") =>
     request<ObservabilityFilterOptions>(
       `/api/observability/filters?preset=${encodeURIComponent(preset)}`,
+      {},
+      true,
+    ),
+  observabilityCheckpoints: (taskId?: string) =>
+    request<{ checkpoints: Array<{ task_id: string; checkpoint: string; function_name: string; status: string; timestamp: number; error?: string | null; error_stacktrace?: string | null }> }>(
+      `/api/observability/checkpoints${taskId ? `?task_id=${encodeURIComponent(taskId)}` : ""}`,
       {},
       true,
     ),
