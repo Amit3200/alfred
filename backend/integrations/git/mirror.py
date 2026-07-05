@@ -398,12 +398,26 @@ class WorkspaceMirrorManager:
     def _pull(self, repo_dir: Path, *, ref: str | None = None) -> None:
         depth = str(max(1, self.git.mirror_shallow_depth))
         branch = ref or _current_branch(repo_dir)
-        _run_git(["git", "-C", str(repo_dir), "fetch", "origin", branch, "--depth", depth])
-        _run_git(["git", "-C", str(repo_dir), "pull", "--ff-only", "origin", branch])
+        try:
+            _run_git(["git", "-C", str(repo_dir), "fetch", "origin", branch, "--depth", depth])
+            _run_git(["git", "-C", str(repo_dir), "pull", "--ff-only", "origin", branch])
+        except RuntimeError as exc:
+            logger.warning("Fast-forward pull failed for %s ref=%s: %s. Attempting hard reset.", repo_dir, branch, exc)
+            try:
+                _run_git(["git", "-C", str(repo_dir), "fetch", "origin", branch, "--depth", depth])
+                _run_git(["git", "-C", str(repo_dir), "reset", "--hard", "FETCH_HEAD"])
+            except Exception as reset_exc:
+                logger.exception("Failed to force reset repo %s to FETCH_HEAD", repo_dir)
+                raise RuntimeError(f"Git pull failed and subsequent force reset failed: {reset_exc}") from exc
 
     def _checkout_ref(self, repo_dir: Path, ref: str) -> None:
         _run_git(["git", "-C", str(repo_dir), "fetch", "origin", ref, "--depth", "1"])
-        _run_git(["git", "-C", str(repo_dir), "checkout", ref])
+        try:
+            _run_git(["git", "-C", str(repo_dir), "checkout", ref])
+        except RuntimeError as exc:
+            logger.warning("Standard checkout of %s failed: %s. Attempting force checkout.", ref, exc)
+            _run_git(["git", "-C", str(repo_dir), "checkout", "-f", ref])
+            _run_git(["git", "-C", str(repo_dir), "reset", "--hard", "FETCH_HEAD"])
 
     def _try_seed_from_shared(self, repo: str, dest: Path) -> bool:
         shared = self.shared_root / _repo_dir_name(repo)

@@ -104,7 +104,7 @@ class TaskQueueWorker:
                             data_dir=self.manager.data_dir
                         )
 
-                    if task.source == "slack":
+                    if task.source == "slack" or (task.source == "scheduler" and task.channel_id):
                         from backend.formatting.file_exports import prepare_slack_delivery
                         from backend.integrations.slack.users import (
                             SlackUserResolver,
@@ -118,7 +118,7 @@ class TaskQueueWorker:
                         rendered = resolve_user_ids_in_text(rendered, resolver)
                         delivery = prepare_slack_delivery(rendered, task.cleaned_intent)
 
-                        if indicator is not None:
+                        if task.source == "slack" and indicator is not None:
                             indicator.finish(delivery.text, files=delivery.files)
                         else:
                             client.chat_postMessage(
@@ -128,50 +128,61 @@ class TaskQueueWorker:
                             )
 
                         # Randomly ask for feedback (1 out of 20 = 5% chance)
-                        import random
-                        if random.random() < 0.05:
-                            try:
-                                client.chat_postMessage(
-                                    channel=task.channel_id,
-                                    thread_ts=task.thread_ts,
-                                    text="Did Alfred do good or bad?",
-                                    blocks=[
-                                        {
-                                            "type": "section",
-                                            "text": {
-                                                "type": "mrkdwn",
-                                                "text": "Did Alfred do good or bad?"
-                                            }
-                                        },
-                                        {
-                                            "type": "actions",
-                                            "elements": [
-                                                {
-                                                    "type": "button",
-                                                    "text": {
-                                                        "type": "plain_text",
-                                                        "text": "Good 👍",
-                                                        "emoji": True
-                                                    },
-                                                    "value": task.id,
-                                                    "action_id": "feedback_good"
-                                                },
-                                                {
-                                                    "type": "button",
-                                                    "text": {
-                                                        "type": "plain_text",
-                                                        "text": "Bad 👎",
-                                                        "emoji": True
-                                                    },
-                                                    "value": task.id,
-                                                    "action_id": "feedback_bad"
+                        if task.source == "slack":
+                            import random
+                            if random.random() < 0.05:
+                                try:
+                                    client.chat_postMessage(
+                                        channel=task.channel_id,
+                                        thread_ts=task.thread_ts,
+                                        text="Did Alfred do good or bad?",
+                                        blocks=[
+                                            {
+                                                "type": "section",
+                                                "text": {
+                                                    "type": "mrkdwn",
+                                                    "text": "Did Alfred do good or bad?"
                                                 }
-                                            ]
-                                        }
-                                    ]
-                                )
+                                            },
+                                            {
+                                                "type": "actions",
+                                                "elements": [
+                                                    {
+                                                        "type": "button",
+                                                        "text": {
+                                                            "type": "plain_text",
+                                                            "text": "Good 👍",
+                                                            "emoji": True
+                                                        },
+                                                        "value": task.id,
+                                                        "action_id": "feedback_good"
+                                                    },
+                                                    {
+                                                        "type": "button",
+                                                        "text": {
+                                                            "type": "plain_text",
+                                                            "text": "Bad 👎",
+                                                            "emoji": True
+                                                        },
+                                                        "value": task.id,
+                                                        "action_id": "feedback_bad"
+                                                    }
+                                                ]
+                                            }
+                                        ]
+                                    )
+                                except Exception:
+                                    logger.exception("Failed to send Slack feedback poll")
+
+                    if task.source == "scheduler":
+                        job_id = task.metadata.get("job_id")
+                        if job_id:
+                            try:
+                                from backend.db.sqlite_schedule import db_update_last_run
+                                db_update_last_run(self.manager.data_dir, job_id, "success")
                             except Exception:
-                                logger.exception("Failed to send Slack feedback poll")
+                                logger.exception("Failed to update last run status to success for job %s", job_id)
+
                     elif task.source == "ui":
                         # For UI Chat, processor.process(task) automatically appends the exchange to SessionStore
                         pass
@@ -196,14 +207,22 @@ class TaskQueueWorker:
                     logger.exception("Error processing dequeued task %s", task_id)
                     self.queue.fail(task_id)
                     log_checkpoint("queue_task", task_id, "error", error=exc)
+                    if task_dict.get("source") == "scheduler":
+                        job_id = task_dict.get("metadata", {}).get("job_id")
+                        if job_id:
+                            try:
+                                from backend.db.sqlite_schedule import db_update_last_run
+                                db_update_last_run(self.manager.data_dir, job_id, "failed")
+                            except Exception:
+                                pass
 
                     # Post failure back to source channel if possible
-                    if task_dict.get("source") == "slack" and task_dict.get("channel_id"):
+                    if task_dict.get("source") in ("slack", "scheduler") and task_dict.get("channel_id"):
                         try:
                             from backend.integrations.slack.emojis import slack_bot_client
 
                             client = slack_bot_client(config.slack.bot_token)
-                            if indicator is not None:
+                            if task_dict.get("source") == "slack" and indicator is not None:
                                 indicator.finish(f"Sorry, I hit an error: {exc}")
                             else:
                                 client.chat_postMessage(

@@ -188,4 +188,7 @@ def build_git_tool_registry(
 
     register_google_tools(registry, config)
 
+    from backend.tools.schedule_tool import register_schedule_tools
+    register_schedule_tools(registry, data_dir)
+
     return registry

@@ -480,6 +480,21 @@ export const api = {
       true,
     ),
 
+  listSchedules: () =>
+    request<{ schedules: ScheduledJob[] }>("/api/observability/schedules", {}, true),
+  toggleSchedule: (jobId: string, active: boolean) =>
+    request<{ status: string }>(
+      `/api/observability/schedules/${encodeURIComponent(jobId)}/toggle`,
+      { method: "POST", body: JSON.stringify({ active }) },
+      true,
+    ),
+  deleteSchedule: (jobId: string) =>
+    request<{ status: string }>(
+      `/api/observability/schedules/${encodeURIComponent(jobId)}`,
+      { method: "DELETE" },
+      true,
+    ),
+
   listPlaybooks: () => request<PlaybooksListResponse>("/api/playbooks", {}, true),
   getPlaybookExample: () => request<PlaybookExampleResponse>("/api/playbooks/example", {}, true),
   getPlaybook: (filename: string) =>
@@ -917,6 +932,21 @@ export type PlaybooksListResponse = {
 export type PlaybookDetail = PlaybookSummary & {
   content: string;
   ok?: boolean;
+};
+
+export type ScheduledJob = {
+  id: string;
+  name: string;
+  description?: string | null;
+  cron_expression: string;
+  skill_name: string;
+  channel_id?: string | null;
+  user_id?: string | null;
+  status: "active" | "inactive";
+  created_at: number;
+  updated_at: number;
+  last_run_at?: number | null;
+  last_run_status?: string | null;
 };
 
 export type PlaybookExampleResponse = {

@@ -58,6 +58,11 @@ async def _lifespan(app: FastAPI):
     else:
         logger.info("Slack ingress not started: %s", message)
 
+    from backend.runtime.scheduler import SchedulerService
+    scheduler = SchedulerService(manager, queue)
+    app.state.scheduler = scheduler
+    scheduler.start()
+
     try:
         config, _ = manager.load_merged()
         if config.git.enabled:
@@ -71,6 +76,7 @@ async def _lifespan(app: FastAPI):
 
     yield
     slack_runner.stop()
+    scheduler.stop()
     worker.stop()
 
 

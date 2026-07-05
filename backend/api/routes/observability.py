@@ -13,8 +13,13 @@ from backend.observability.models import ObservabilityFilters, TimeseriesBucket
 from backend.observability.pricing import build_pricing_table
 from backend.observability.store import SQLiteObservabilityStore
 from backend.observability.users import UserLabelEnricher
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/observability", tags=["observability"])
+
+
+class ToggleScheduleRequest(BaseModel):
+    active: bool
 
 
 def _parse_dt(value: str | None) -> datetime | None:
@@ -249,6 +254,62 @@ def get_task_checkpoints(
 
     checkpoints = [dict(r) for r in rows]
     return {"checkpoints": checkpoints}
+
+
+@router.get("/schedules")
+def get_schedules(manager: ConfigManager = Depends(require_admin)) -> dict[str, Any]:
+    from backend.db.sqlite_schedule import db_list_schedules
+    try:
+        jobs = db_list_schedules(manager.data_dir)
+        return {"schedules": jobs}
+    except Exception as exc:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.post("/schedules/{job_id}/toggle")
+def toggle_schedule(
+    job_id: str,
+    payload: ToggleScheduleRequest,
+    manager: ConfigManager = Depends(require_admin),
+) -> dict[str, Any]:
+    from backend.db.sqlite_schedule import db_toggle_schedule
+    try:
+        success = db_toggle_schedule(manager.data_dir, job_id, payload.active)
+        if not success:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Job not found")
+        return {"status": "ok"}
+    except Exception as exc:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.delete("/schedules/{job_id}")
+def delete_schedule(
+    job_id: str,
+    manager: ConfigManager = Depends(require_admin),
+) -> dict[str, Any]:
+    from backend.db.sqlite_schedule import db_list_schedules, db_delete_schedule
+    from backend.paths import playbooks_dir
+    try:
+        jobs = db_list_schedules(manager.data_dir)
+        target = next((j for j in jobs if j["id"] == job_id), None)
+        if not target:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        # Delete playbook file
+        skill_name = target["skill_name"]
+        p_file = playbooks_dir(manager.data_dir) / f"{skill_name}.md"
+        if p_file.exists():
+            p_file.unlink()
+
+        db_delete_schedule(manager.data_dir, job_id)
+        return {"status": "ok"}
+    except Exception as exc:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=str(exc))
 
 
 @router.get("/health")

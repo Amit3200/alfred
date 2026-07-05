@@ -110,7 +110,7 @@ def test_assistant_status_uses_unicode_loading_messages(monkeypatch):
         lambda **kwargs: [f"{emoji} {line}" for emoji, line in STATUS_LINES[:3]],
     )
 
-    indicator = ThinkingIndicator(client, channel="C1", thread_ts="100.1")
+    indicator = ThinkingIndicator(client, channel="D1", thread_ts="100.1")
     indicator.start()
 
     call = client.assistant_threads_setStatus.call_args.kwargs
@@ -127,7 +127,7 @@ def test_custom_shortcodes_use_native_assistant_status():
 
     indicator = ThinkingIndicator(
         client,
-        channel="C1",
+        channel="D1",
         thread_ts="100.1",
         loading_messages=custom,
     )
@@ -152,7 +152,7 @@ def test_assistant_status_does_not_rotate_status_text(monkeypatch):
     def fast_wait(_seconds: float) -> bool:
         return True
 
-    indicator = ThinkingIndicator(client, channel="C1", thread_ts="100.1", rotation_seconds=0.01)
+    indicator = ThinkingIndicator(client, channel="D1", thread_ts="100.1", rotation_seconds=0.01)
     monkeypatch.setattr(indicator._stop_rotation, "wait", fast_wait)
     indicator.start()
     indicator.finish("Done.")
@@ -178,12 +178,12 @@ def test_assistant_status_on_start_and_finish():
     client.assistant_threads_setStatus.return_value = {"ok": True}
     client.chat_postMessage.return_value = {"ts": "999"}
 
-    indicator = ThinkingIndicator(client, channel="C1", thread_ts="100.1")
+    indicator = ThinkingIndicator(client, channel="D1", thread_ts="100.1")
     indicator.start()
 
     client.assistant_threads_setStatus.assert_called_once()
     call = client.assistant_threads_setStatus.call_args.kwargs
-    assert call["channel_id"] == "C1"
+    assert call["channel_id"] == "D1"
     assert call["thread_ts"] == "100.1"
     assert call["status"].startswith("is ")
     assert len(call["loading_messages"]) <= 10
@@ -214,7 +214,7 @@ def test_retries_status_only_when_loading_messages_rejected():
 
     indicator = ThinkingIndicator(
         client,
-        channel="C1",
+        channel="D1",
         thread_ts="100.1",
         loading_messages=["Reading stack traces so you don't have to…"],
     )
