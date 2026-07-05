@@ -68,7 +68,7 @@ class TaskQueueWorker:
                     context_fetcher = None
                     if task.source == "slack":
                         from backend.integrations.slack.context import fetch_slack_context
-                        from backend.integrations.slack.listener import slack_bot_client
+                        from backend.integrations.slack.emojis import slack_bot_client
 
                         client = slack_bot_client(config.slack.bot_token)
                         bot_user_id = client.auth_test().get("user_id", "")
@@ -96,11 +96,11 @@ class TaskQueueWorker:
 
                     if task.source == "slack":
                         from backend.formatting.file_exports import prepare_slack_delivery
-                        from backend.integrations.slack.listener import (
+                        from backend.integrations.slack.users import (
                             SlackUserResolver,
                             resolve_user_ids_in_text,
-                            slack_bot_client,
                         )
+                        from backend.integrations.slack.emojis import slack_bot_client
 
                         client = slack_bot_client(config.slack.bot_token)
                         rendered = render_for_channel(response, "slack")
@@ -153,7 +153,7 @@ class TaskQueueWorker:
                     # Post failure back to source channel if possible
                     if task_dict.get("source") == "slack" and task_dict.get("channel_id"):
                         try:
-                            from backend.integrations.slack.listener import slack_bot_client
+                            from backend.integrations.slack.emojis import slack_bot_client
 
                             client = slack_bot_client(config.slack.bot_token)
                             client.chat_postMessage(
