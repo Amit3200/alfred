@@ -116,11 +116,11 @@ def _start_logged_process(
     return proc
 
 
-def _wait_for_http(url: str, *, attempts: int = 20, delay: float = 0.25) -> bool:
-    pass
-
-    for _ in range(attempts):
-        time.sleep(delay)
+def _wait_for_http(url: str, retries: int = 15) -> bool:
+    if "://0.0.0.0:" in url:
+        url = url.replace("://0.0.0.0:", "://127.0.0.1:")
+    for _ in range(retries):
+        time.sleep(0.5)
         try:
             if requests.get(url, timeout=1).status_code == 200:
                 return True

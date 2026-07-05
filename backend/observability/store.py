@@ -105,6 +105,9 @@ class SQLiteObservabilityStore(ObservabilityStore):
         )
         Base.metadata.create_all(self._engine)
         self._factory = sessionmaker(bind=self._engine, expire_on_commit=False)
+        from backend.observability.checkpoint import init_checkpoint_db, init_feedback_db
+        init_checkpoint_db(path)
+        init_feedback_db(path)
 
     def record(self, event: InteractionEvent) -> None:
         row = _event_to_row(event)
@@ -137,6 +140,16 @@ class SQLiteObservabilityStore(ObservabilityStore):
                 )
                 if row.model:
                     summary.by_model[row.model] = summary.by_model.get(row.model, 0) + 1
+
+                # Check for planning calls
+                if row.call_kind == "planning":
+                    summary.plan_events += 1
+
+                # Track usage by plan/playbook
+                plan_name = row.skill_name or "general"
+                summary.by_plan[plan_name] = summary.by_plan.get(plan_name, 0) + 1
+                summary.by_plan_tokens[plan_name] = summary.by_plan_tokens.get(plan_name, 0) + int(row.total_tokens or 0)
+
             elif row.event_type == "tool_call":
                 summary.tool_calls += 1
                 category = row.tool_category or "other"
@@ -147,6 +160,55 @@ class SQLiteObservabilityStore(ObservabilityStore):
             summary.by_source[row.source] = summary.by_source.get(row.source, 0) + 1
             label = row.user_label or row.user_id or "unknown"
             summary.by_user[label] = summary.by_user.get(label, 0) + 1
+
+        # Query task metrics and feedback metrics from SQLite checkpoints/feedback tables
+        since_ts = filters.since.timestamp() if filters.since else 0.0
+        until_ts = filters.until.timestamp() if filters.until else datetime.now(timezone.utc).timestamp()
+
+        from sqlalchemy import text
+        try:
+            with self._engine.connect() as conn:
+                res = conn.execute(
+                    text(
+                        "SELECT COUNT(*) FROM task_checkpoints "
+                        "WHERE checkpoint = 'process_task' AND status = 'started' "
+                        "AND timestamp >= :since AND timestamp <= :until"
+                    ),
+                    {"since": since_ts, "until": until_ts},
+                )
+                summary.total_tasks = res.scalar() or 0
+
+                res = conn.execute(
+                    text(
+                        "SELECT COUNT(*) FROM task_checkpoints "
+                        "WHERE checkpoint = 'process_task' AND status = 'completed' "
+                        "AND timestamp >= :since AND timestamp <= :until"
+                    ),
+                    {"since": since_ts, "until": until_ts},
+                )
+                summary.successful_tasks = res.scalar() or 0
+
+                res = conn.execute(
+                    text(
+                        "SELECT COUNT(*) FROM task_feedback "
+                        "WHERE rating = 'good' "
+                        "AND recorded_at >= :since AND recorded_at <= :until"
+                    ),
+                    {"since": since_ts, "until": until_ts},
+                )
+                summary.feedback_good = res.scalar() or 0
+
+                res = conn.execute(
+                    text(
+                        "SELECT COUNT(*) FROM task_feedback "
+                        "WHERE rating = 'bad' "
+                        "AND recorded_at >= :since AND recorded_at <= :until"
+                    ),
+                    {"since": since_ts, "until": until_ts},
+                )
+                summary.feedback_bad = res.scalar() or 0
+        except Exception:
+            logger.exception("Failed to query extra metrics in SQLiteObservabilityStore.summary")
 
         summary.estimated_cost_usd = round(summary.estimated_cost_usd, 4)
         return summary

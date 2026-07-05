@@ -126,6 +126,52 @@ class TaskQueueWorker:
                                 thread_ts=task.thread_ts,
                                 text=delivery.text,
                             )
+
+                        # Randomly ask for feedback (1 out of 20 = 5% chance)
+                        import random
+                        if random.random() < 0.05:
+                            try:
+                                client.chat_postMessage(
+                                    channel=task.channel_id,
+                                    thread_ts=task.thread_ts,
+                                    text="Did Alfred do good or bad?",
+                                    blocks=[
+                                        {
+                                            "type": "section",
+                                            "text": {
+                                                "type": "mrkdwn",
+                                                "text": "Did Alfred do good or bad?"
+                                            }
+                                        },
+                                        {
+                                            "type": "actions",
+                                            "elements": [
+                                                {
+                                                    "type": "button",
+                                                    "text": {
+                                                        "type": "plain_text",
+                                                        "text": "Good 👍",
+                                                        "emoji": True
+                                                    },
+                                                    "value": task.id,
+                                                    "action_id": "feedback_good"
+                                                },
+                                                {
+                                                    "type": "button",
+                                                    "text": {
+                                                        "type": "plain_text",
+                                                        "text": "Bad 👎",
+                                                        "emoji": True
+                                                    },
+                                                    "value": task.id,
+                                                    "action_id": "feedback_bad"
+                                                }
+                                            ]
+                                        }
+                                    ]
+                                )
+                            except Exception:
+                                logger.exception("Failed to send Slack feedback poll")
                     elif task.source == "ui":
                         # For UI Chat, processor.process(task) automatically appends the exchange to SessionStore
                         pass

@@ -782,10 +782,17 @@ export type ObservabilitySummary = {
   completion_tokens: number;
   total_tokens: number;
   estimated_cost_usd: number;
+  total_tasks?: number;
+  successful_tasks?: number;
+  plan_events?: number;
+  feedback_good?: number;
+  feedback_bad?: number;
   by_source: Record<string, number>;
   by_user: Record<string, number>;
   by_model: Record<string, number>;
   by_tool_category: Record<string, number>;
+  by_plan?: Record<string, number>;
+  by_plan_tokens?: Record<string, number>;
 };
 
 export type ObservabilityTimeseries = {

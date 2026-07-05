@@ -58,10 +58,17 @@ class UsageSummary(BaseModel):
     completion_tokens: int = 0
     total_tokens: int = 0
     estimated_cost_usd: float = 0.0
+    total_tasks: int = 0
+    successful_tasks: int = 0
+    plan_events: int = 0
+    feedback_good: int = 0
+    feedback_bad: int = 0
     by_source: dict[str, int] = Field(default_factory=dict)
     by_user: dict[str, int] = Field(default_factory=dict)
     by_model: dict[str, int] = Field(default_factory=dict)
     by_tool_category: dict[str, int] = Field(default_factory=dict)
+    by_plan: dict[str, int] = Field(default_factory=dict)
+    by_plan_tokens: dict[str, int] = Field(default_factory=dict)
 
 
 class TimeseriesPoint(BaseModel):

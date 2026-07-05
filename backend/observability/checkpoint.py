@@ -87,3 +87,42 @@ def log_checkpoint(
             conn.close()
         except Exception:
             logger.exception("Failed to write checkpoint log to database")
+
+
+def init_feedback_db(db_file: Path) -> None:
+    """Ensure the task_feedback table exists in the database."""
+    conn = sqlite3.connect(db_file, timeout=10.0)
+    cursor = conn.cursor()
+    cursor.execute(
+        """
+        CREATE TABLE IF NOT EXISTS task_feedback (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id TEXT NOT NULL UNIQUE,
+            rating TEXT NOT NULL,
+            recorded_at REAL NOT NULL
+        )
+        """
+    )
+    conn.commit()
+    conn.close()
+
+
+def save_task_feedback(data_dir: Path, task_id: str, rating: str) -> None:
+    """Save user feedback for a given task ID."""
+    db_file = db_path(data_dir)
+    init_feedback_db(db_file)
+    try:
+        conn = sqlite3.connect(db_file, timeout=10.0)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO task_feedback (task_id, rating, recorded_at)
+            VALUES (?, ?, ?)
+            """,
+            (task_id, rating, time.time()),
+        )
+        conn.commit()
+        conn.close()
+        logger.info("Saved feedback '%s' for task %s", rating, task_id)
+    except Exception:
+        logger.exception("Failed to write task feedback to database")

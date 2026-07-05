@@ -49,7 +49,12 @@ def generate_initial_plan(
             )
         ]
         
-        response = provider.chat(messages, model=model_name or None)
+        from backend.observability.context import set_call_kind
+        set_call_kind("planning")
+        try:
+            response = provider.chat(messages, model=model_name or None)
+        finally:
+            set_call_kind("chat")
         plan_content = (response.content or "").strip()
         if not plan_content:
             return None
@@ -101,7 +106,12 @@ def update_plan_progress(
             )
         ]
         
-        response = provider.chat(messages, model=model_name or None)
+        from backend.observability.context import set_call_kind
+        set_call_kind("planning")
+        try:
+            response = provider.chat(messages, model=model_name or None)
+        finally:
+            set_call_kind("chat")
         updated_content = (response.content or "").strip()
         
         # Strip any code block backticks if the LLM returned them

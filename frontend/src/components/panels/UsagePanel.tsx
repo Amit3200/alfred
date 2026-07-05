@@ -496,6 +496,14 @@ export function UsagePanel() {
     () => Object.entries(summary?.by_model ?? {}).sort((a, b) => b[1] - a[1]),
     [summary],
   );
+  const byPlanEntries = useMemo(
+    () => Object.entries(summary?.by_plan ?? {}).sort((a, b) => b[1] - a[1]),
+    [summary],
+  );
+  const byPlanTokensEntries = useMemo(
+    () => Object.entries(summary?.by_plan_tokens ?? {}).sort((a, b) => b[1] - a[1]),
+    [summary],
+  );
 
   const checkpointColumns = [
     {
@@ -724,34 +732,71 @@ export function UsagePanel() {
         </Row>
       </div>
 
-      <div className="alfred-stat-grid alfred-stat-grid-usage" style={{ marginBottom: 20 }}>
-        <div className="alfred-stat-card">
-          <div className="alfred-stat-label">LLM calls</div>
-          <div className="alfred-stat-value">{formatNumber(summary?.llm_calls ?? 0)}</div>
+      <div className="alfred-stats-section" style={{ marginBottom: 16 }}>
+        <Typography.Title level={4} style={{ margin: "0 0 12px 0", color: "var(--alfred-text)" }}>
+          Task Execution & Success
+        </Typography.Title>
+        <div className="alfred-stat-grid-5" style={{ marginBottom: 20 }}>
+          <div className="alfred-stat-card">
+            <div className="alfred-stat-label">Tasks Invoked</div>
+            <div className="alfred-stat-value">{formatNumber(summary?.total_tasks ?? 0)}</div>
+          </div>
+          <div className="alfred-stat-card">
+            <div className="alfred-stat-label">Successful Tasks</div>
+            <div className="alfred-stat-value" style={{ color: "#52c41a" }}>
+              {formatNumber(summary?.successful_tasks ?? 0)}
+            </div>
+          </div>
+          <div className="alfred-stat-card">
+            <div className="alfred-stat-label">Success Rate</div>
+            <div className="alfred-stat-value">
+              {summary?.total_tasks ? `${Math.round(((summary.successful_tasks ?? 0) / summary.total_tasks) * 100)}%` : "—"}
+            </div>
+          </div>
+          <div className="alfred-stat-card">
+            <div className="alfred-stat-label">Plan Events</div>
+            <div className="alfred-stat-value">{formatNumber(summary?.plan_events ?? 0)}</div>
+          </div>
+          <div className="alfred-stat-card">
+            <div className="alfred-stat-label">User Feedback</div>
+            <div className="alfred-stat-value" style={{ fontSize: 20, display: "flex", gap: 12, alignItems: "center", marginTop: 4 }}>
+              <span style={{ color: "#52c41a" }}>👍 {formatNumber(summary?.feedback_good ?? 0)}</span>
+              <span style={{ color: "#f5222d" }}>👎 {formatNumber(summary?.feedback_bad ?? 0)}</span>
+            </div>
+          </div>
         </div>
-        <div className="alfred-stat-card">
-          <div className="alfred-stat-label">Tool calls</div>
-          <div className="alfred-stat-value">{formatNumber(summary?.tool_calls ?? 0)}</div>
-        </div>
-        <div className="alfred-stat-card">
-          <div className="alfred-stat-label">Input tokens</div>
-          <div className="alfred-stat-value">{formatNumber(summary?.prompt_tokens ?? 0)}</div>
-        </div>
-        <div className="alfred-stat-card">
-          <div className="alfred-stat-label">Output tokens</div>
-          <div className="alfred-stat-value">{formatNumber(summary?.completion_tokens ?? 0)}</div>
-        </div>
-        <div className="alfred-stat-card">
-          <div className="alfred-stat-label">Total tokens</div>
-          <div className="alfred-stat-value">{formatNumber(summary?.total_tokens ?? 0)}</div>
-        </div>
-        <div className="alfred-stat-card">
-          <div className="alfred-stat-label">Est. cost</div>
-          <div className="alfred-stat-value">{formatCostUsd(summary?.estimated_cost_usd)}</div>
-        </div>
-        <div className="alfred-stat-card">
-          <div className="alfred-stat-label">Unique users</div>
-          <div className="alfred-stat-value">{formatNumber(byUserEntries.length)}</div>
+      </div>
+
+      <div className="alfred-stats-section" style={{ marginBottom: 16 }}>
+        <Typography.Title level={4} style={{ margin: "0 0 12px 0", color: "var(--alfred-text)" }}>
+          AI Consumption & Costs
+        </Typography.Title>
+        <div className="alfred-stat-grid-5" style={{ marginBottom: 20 }}>
+          <div className="alfred-stat-card">
+            <div className="alfred-stat-label">LLM Calls</div>
+            <div className="alfred-stat-value">{formatNumber(summary?.llm_calls ?? 0)}</div>
+          </div>
+          <div className="alfred-stat-card">
+            <div className="alfred-stat-label">Tool Calls</div>
+            <div className="alfred-stat-value">{formatNumber(summary?.tool_calls ?? 0)}</div>
+          </div>
+          <div className="alfred-stat-card">
+            <div className="alfred-stat-label">Total Tokens</div>
+            <div className="alfred-stat-value" style={{ fontSize: 22 }}>
+              {formatNumber(summary?.total_tokens ?? 0)}
+              <div style={{ fontSize: 11, color: "var(--alfred-text-muted)", fontWeight: "normal", marginTop: 2 }}>
+                {formatNumber(summary?.prompt_tokens ?? 0)} in · {formatNumber(summary?.completion_tokens ?? 0)} out
+              </div>
+            </div>
+          </div>
+          <div className="alfred-stat-card">
+            <div className="alfred-stat-label">Est. Cost</div>
+            <div className="alfred-stat-value">{formatCostUsd(summary?.estimated_cost_usd)}</div>
+          </div>
+          <div className="alfred-stat-card">
+            <div className="alfred-stat-label">Unique Users</div>
+            <div className="alfred-stat-value">{formatNumber(byUserEntries.length)}</div>
+          </div>
         </div>
       </div>
 
@@ -799,6 +844,15 @@ export function UsagePanel() {
           </Col>
         </Row>
       ) : null}
+
+      <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
+        <Col xs={24} md={12}>
+          <BreakdownChart title="By plan (tokens)" entries={byPlanTokensEntries} />
+        </Col>
+        <Col xs={24} md={12}>
+          <BreakdownChart title="By plan (calls)" entries={byPlanEntries} />
+        </Col>
+      </Row>
 
       <div className="alfred-panel" style={{ marginBottom: 20 }}>
         <Typography.Title level={5}>Task execution timeline (checkpoints)</Typography.Title>

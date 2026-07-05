@@ -102,6 +102,26 @@ def build_slack_bolt_app(
             )
             worker.start()
 
+    @app.action("feedback_good")
+    def handle_feedback_good(ack: Any, body: dict, respond: Any) -> None:
+        ack()
+        task_id = body.get("actions", [{}])[0].get("value")
+        if task_id and data_dir:
+            from pathlib import Path
+            from backend.observability.checkpoint import save_task_feedback
+            save_task_feedback(Path(data_dir), task_id, "good")
+        respond("Thank you for your feedback! (Good 👍)")
+
+    @app.action("feedback_bad")
+    def handle_feedback_bad(ack: Any, body: dict, respond: Any) -> None:
+        ack()
+        task_id = body.get("actions", [{}])[0].get("value")
+        if task_id and data_dir:
+            from pathlib import Path
+            from backend.observability.checkpoint import save_task_feedback
+            save_task_feedback(Path(data_dir), task_id, "bad")
+        respond("Thank you for your feedback! (Bad 👎)")
+
     return app
 
 
@@ -129,6 +149,52 @@ def _process_mention(
             task.cleaned_intent,
         )
         indicator.finish(delivery.text, files=delivery.files)
+
+        # Randomly ask for feedback (1 out of 20 = 5% chance)
+        import random
+        if random.random() < 0.05:
+            try:
+                client.chat_postMessage(
+                    channel=task.channel_id,
+                    thread_ts=task.thread_ts,
+                    text="Did Alfred do good or bad?",
+                    blocks=[
+                        {
+                            "type": "section",
+                            "text": {
+                                "type": "mrkdwn",
+                                "text": "Did Alfred do good or bad?"
+                            }
+                        },
+                        {
+                            "type": "actions",
+                            "elements": [
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": "Good 👍",
+                                        "emoji": True
+                                    },
+                                    "value": task.id,
+                                    "action_id": "feedback_good"
+                                },
+                                {
+                                    "type": "button",
+                                    "text": {
+                                        "type": "plain_text",
+                                        "text": "Bad 👎",
+                                        "emoji": True
+                                    },
+                                    "value": task.id,
+                                    "action_id": "feedback_bad"
+                                }
+                            ]
+                        }
+                    ]
+                )
+            except Exception:
+                logger.exception("Failed to send Slack feedback poll in direct processing")
     except Exception as exc:
         logger.exception("Failed to process Slack mention %s", task.id)
         indicator.finish(f"Sorry, I hit an error: {exc}")
