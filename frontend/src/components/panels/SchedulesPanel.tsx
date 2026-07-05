@@ -168,41 +168,50 @@ export function SchedulesPanel() {
   ];
 
   return (
-    <div style={{ padding: "24px", background: "var(--alfred-bg-component, #ffffff)", borderRadius: "8px" }}>
-      <Flex justify="space-between" align="center" style={{ marginBottom: "24px" }}>
-        <div>
-          <Typography.Title level={4} style={{ margin: 0 }}>
-            Scheduled Automations
-          </Typography.Title>
-          <Typography.Text type="secondary">
-            Manage background cron tasks and auto-generated playbook executions.
-          </Typography.Text>
-        </div>
-        <Button
-          type="primary"
-          icon={<PlayCircleOutlined />}
-          onClick={fetchSchedules}
-          loading={loading}
-        >
-          Refresh
-        </Button>
-      </Flex>
+    <div className="alfred-settings-page">
+      <Typography.Title level={3} className="alfred-page-title">
+        Schedules
+      </Typography.Title>
+      <Typography.Paragraph className="alfred-page-desc">
+        Manage background cron tasks, auto-generated playbooks, and execution history.
+      </Typography.Paragraph>
 
-      <Table
-        dataSource={schedules}
-        columns={columns}
-        rowKey="id"
-        loading={loading}
-        locale={{
-          emptyText: (
-            <Empty
-              description="No scheduled automations found"
-              image={Empty.PRESENTED_IMAGE_SIMPLE}
-            />
-          ),
-        }}
-        pagination={{ pageSize: 10, hideOnSinglePage: true }}
-      />
+      <div className="alfred-panel">
+        <Flex justify="space-between" align="center" style={{ marginBottom: "24px" }}>
+          <div>
+            <Typography.Title level={4} style={{ margin: 0, color: "var(--alfred-text)" }}>
+              Scheduled Automations
+            </Typography.Title>
+            <Typography.Text type="secondary">
+              List of configured active and inactive recurring jobs.
+            </Typography.Text>
+          </div>
+          <Button
+            type="primary"
+            icon={<PlayCircleOutlined />}
+            onClick={fetchSchedules}
+            loading={loading}
+          >
+            Refresh
+          </Button>
+        </Flex>
+
+        <Table
+          dataSource={schedules}
+          columns={columns}
+          rowKey="id"
+          loading={loading}
+          locale={{
+            emptyText: (
+              <Empty
+                description="No scheduled automations found"
+                image={Empty.PRESENTED_IMAGE_SIMPLE}
+              />
+            ),
+          }}
+          pagination={{ pageSize: 10, hideOnSinglePage: true }}
+        />
+      </div>
     </div>
   );
 }
