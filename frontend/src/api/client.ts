@@ -494,6 +494,17 @@ export const api = {
       { method: "DELETE" },
       true,
     ),
+  getSchedule: (jobId: string) =>
+    request<ScheduledJob>(`/api/observability/schedules/${encodeURIComponent(jobId)}`, {}, true),
+  updateSchedule: (
+    jobId: string,
+    body: { name?: string; cron_expression?: string; channel_id?: string | null; instructions?: string },
+  ) =>
+    request<{ status: string }>(
+      `/api/observability/schedules/${encodeURIComponent(jobId)}`,
+      { method: "PUT", body: JSON.stringify(body) },
+      true,
+    ),
 
   listPlaybooks: () => request<PlaybooksListResponse>("/api/playbooks", {}, true),
   getPlaybookExample: () => request<PlaybookExampleResponse>("/api/playbooks/example", {}, true),
@@ -947,6 +958,7 @@ export type ScheduledJob = {
   updated_at: number;
   last_run_at?: number | null;
   last_run_status?: string | null;
+  instructions?: string;
 };
 
 export type PlaybookExampleResponse = {

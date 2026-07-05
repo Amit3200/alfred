@@ -312,6 +312,109 @@ def delete_schedule(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+class UpdateScheduleRequest(BaseModel):
+    name: str | None = None
+    cron_expression: str | None = None
+    channel_id: str | None = None
+    instructions: str | None = None
+
+
+@router.get("/schedules/{job_id}")
+def get_schedule(
+    job_id: str,
+    manager: ConfigManager = Depends(require_admin),
+) -> dict[str, Any]:
+    from backend.db.sqlite_schedule import db_list_schedules
+    from backend.paths import playbooks_dir
+    try:
+        jobs = db_list_schedules(manager.data_dir)
+        target = next((j for j in jobs if j["id"] == job_id), None)
+        if not target:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        # Read instructions from playbook file
+        skill_name = target["skill_name"]
+        p_file = playbooks_dir(manager.data_dir) / f"{skill_name}.md"
+        instructions = ""
+        if p_file.exists():
+            text = p_file.read_text(encoding="utf-8")
+            parts = text.split("# Objective\n")
+            if len(parts) > 1:
+                instructions = parts[1].strip()
+
+        return {
+            **target,
+            "instructions": instructions,
+        }
+    except Exception as exc:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.put("/schedules/{job_id}")
+def update_schedule(
+    job_id: str,
+    payload: UpdateScheduleRequest,
+    manager: ConfigManager = Depends(require_admin),
+) -> dict[str, Any]:
+    from backend.db.sqlite_schedule import db_list_schedules, db_update_schedule
+    from backend.paths import playbooks_dir
+    try:
+        jobs = db_list_schedules(manager.data_dir)
+        target = next((j for j in jobs if j["id"] == job_id), None)
+        if not target:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=404, detail="Job not found")
+
+        # Update DB fields
+        desc = None
+        if payload.cron_expression is not None:
+            desc = f"Triggered by cron: {payload.cron_expression}"
+
+        db_update_schedule(
+            manager.data_dir,
+            job_id,
+            name=payload.name,
+            description=desc,
+            cron_expression=payload.cron_expression,
+            channel_id=payload.channel_id,
+        )
+
+        # Update playbook if instructions/name changed
+        if payload.instructions is not None or payload.name is not None:
+            skill_name = target["skill_name"]
+            p_file = playbooks_dir(manager.data_dir) / f"{skill_name}.md"
+
+            existing_instructions = ""
+            if p_file.exists() and payload.instructions is None:
+                text = p_file.read_text(encoding="utf-8")
+                parts = text.split("# Objective\n")
+                if len(parts) > 1:
+                    existing_instructions = parts[1].strip()
+
+            final_instructions = payload.instructions if payload.instructions is not None else existing_instructions
+            final_name = payload.name if payload.name is not None else target["name"]
+
+            content = (
+                "---\n"
+                f"name: {skill_name}\n"
+                f"description: Scheduled job to {final_name}\n"
+                "mode: workflow\n"
+                "triggers:\n"
+                f"  - run {skill_name}\n"
+                "---\n\n"
+                "# Objective\n"
+                f"{final_instructions}\n"
+            )
+            p_file.write_text(content, encoding="utf-8")
+
+        return {"status": "ok"}
+    except Exception as exc:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @router.get("/health")
 def observability_health(manager: ConfigManager = Depends(get_manager)) -> dict[str, str]:
     return {"status": "ok", "backend": "sqlite"}

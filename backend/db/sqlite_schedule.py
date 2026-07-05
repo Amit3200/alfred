@@ -140,3 +140,63 @@ def db_update_last_run(
     )
     conn.commit()
     conn.close()
+
+
+def db_update_schedule(
+    data_dir: Path | None,
+    job_id: str,
+    *,
+    name: str | None = None,
+    description: str | None = None,
+    cron_expression: str | None = None,
+    channel_id: str | None = None,
+) -> bool:
+    """Update a scheduled job configuration with the given fields."""
+    db_file = db_path(data_dir)
+    init_schedule_db(db_file)
+    conn = sqlite3.connect(db_file, timeout=10.0)
+    cursor = conn.cursor()
+
+    updates = []
+    params = []
+
+    if name is not None:
+        updates.append("name = ?")
+        params.append(name)
+    if description is not None:
+        updates.append("description = ?")
+        params.append(description)
+    if cron_expression is not None:
+        updates.append("cron_expression = ?")
+        params.append(cron_expression)
+    if channel_id is not None:
+        updates.append("channel_id = ?")
+        params.append(channel_id if channel_id else None)
+
+    if not updates:
+        conn.close()
+        return False
+
+    updates.append("updated_at = ?")
+    params.append(time.time())
+
+    params.append(job_id)
+    query = f"UPDATE scheduled_jobs SET {', '.join(updates)} WHERE id = ?"
+    cursor.execute(query, params)
+    updated = cursor.rowcount > 0
+    conn.commit()
+    conn.close()
+    return updated
+
+
+def db_get_schedule(data_dir: Path | None, job_id: str) -> dict[str, Any] | None:
+    """Retrieve a scheduled job configuration by its unique ID."""
+    db_file = db_path(data_dir)
+    init_schedule_db(db_file)
+    conn = sqlite3.connect(db_file, timeout=10.0)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    cursor.execute("SELECT * FROM scheduled_jobs WHERE id = ?", (job_id,))
+    row = cursor.fetchone()
+    conn.close()
+    return dict(row) if row else None

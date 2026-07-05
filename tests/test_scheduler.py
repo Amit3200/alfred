@@ -10,6 +10,8 @@ from backend.db.sqlite_schedule import (
     db_delete_schedule,
     db_toggle_schedule,
     db_update_last_run,
+    db_update_schedule,
+    db_get_schedule,
 )
 from backend.tools.registry import ToolRegistry
 from backend.tools.schedule_tool import register_schedule_tools
@@ -56,6 +58,26 @@ def test_db_schedule_crud():
         assert jobs[0]["status"] == "active"
         assert jobs[0]["cron_expression"] == "0 * * * *"
 
+        # Get detailed schedule
+        detail = db_get_schedule(data_dir, "test_id_1")
+        assert detail is not None
+        assert detail["name"] == "Test Job 1"
+
+        # Update schedule
+        success = db_update_schedule(
+            data_dir=data_dir,
+            job_id="test_id_1",
+            name="Updated Job Name",
+            cron_expression="*/5 * * * *",
+            channel_id="C999",
+        )
+        assert success is True
+
+        updated = db_get_schedule(data_dir, "test_id_1")
+        assert updated["name"] == "Updated Job Name"
+        assert updated["cron_expression"] == "*/5 * * * *"
+        assert updated["channel_id"] == "C999"
+
         # Toggle inactive
         success = db_toggle_schedule(data_dir, "test_id_1", False)
         assert success is True
@@ -87,8 +109,8 @@ def test_schedule_tools():
         register_schedule_tools(registry, data_dir)
 
         # Verify registration
-        schemas = registry.get_schemas(["create_schedule", "list_schedules", "toggle_schedule", "delete_schedule"])
-        assert len(schemas) == 4
+        schemas = registry.get_schemas(["create_schedule", "list_schedules", "toggle_schedule", "delete_schedule", "update_schedule"])
+        assert len(schemas) == 5
 
         # Run list_schedules tool
         res = registry.run("list_schedules", {}, allowed=["list_schedules"])
@@ -109,13 +131,27 @@ def test_schedule_tools():
         )
         assert res_create.kind == "success"
         assert "job_id" in res_create.data
+        job_id = res_create.data["job_id"]
+
+        # Run update_schedule tool
+        res_update = registry.run(
+            "update_schedule",
+            {
+                "job_id": job_id,
+                "name": "Modified Action Name",
+                "cron_expression": "0 0 * * *",
+                "instructions": "New workflow instructions content",
+            },
+            allowed=["update_schedule"],
+        )
+        assert res_update.kind == "success"
 
         # Check DB lists 1 job now
         res_list = registry.run("list_schedules", {}, allowed=["list_schedules"])
         assert len(res_list.data["schedules"]) == 1
         job = res_list.data["schedules"][0]
-        assert job["name"] == "My Scheduled Action"
-        assert job["cron_expression"] == "*/10 * * * *"
+        assert job["name"] == "Modified Action Name"
+        assert job["cron_expression"] == "0 0 * * *"
 
         # Toggle schedule tool
         res_toggle = registry.run(

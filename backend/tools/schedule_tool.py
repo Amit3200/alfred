@@ -213,7 +213,105 @@ def register_schedule_tools(registry: ToolRegistry, data_dir: Path | None) -> No
         except Exception as exc:
             return ToolResult.error(f"Failed to delete schedule: {exc}")
 
+    UPDATE_SCHEDULE = ToolSchema(
+        name="update_schedule",
+        description="Update an existing scheduled job configuration (name, cron expression, channel ID, or instructions).",
+        parameters={
+            "type": "object",
+            "properties": {
+                "job_id": {
+                    "type": "string",
+                    "description": "The unique ID of the scheduled job to update.",
+                },
+                "name": {
+                    "type": "string",
+                    "description": "Optional new name for the job.",
+                },
+                "cron_expression": {
+                    "type": "string",
+                    "description": "Optional new cron pattern (e.g. '0 12 * * *').",
+                },
+                "channel_id": {
+                    "type": "string",
+                    "description": "Optional new Slack channel ID to post results to (pass empty string or null to clear).",
+                },
+                "instructions": {
+                    "type": "string",
+                    "description": "Optional new instructions / playbook content.",
+                },
+            },
+            "required": ["job_id"],
+        },
+    )
+
+    def update_schedule_handler(args: dict[str, Any]) -> ToolResult:
+        job_id = str(args.get("job_id") or "").strip()
+        name = args.get("name")
+        cron_expr = args.get("cron_expression")
+        channel_id = args.get("channel_id")
+        instructions = args.get("instructions")
+
+        if not job_id:
+            return ToolResult.error("job_id is required.")
+
+        from backend.db.sqlite_schedule import db_update_schedule
+        try:
+            jobs = db_list_schedules(data_dir)
+            target = next((j for j in jobs if j["id"] == job_id), None)
+            if not target:
+                return ToolResult.error(f"Schedule job with ID {job_id} not found.")
+
+            desc = f"Triggered by cron: {cron_expr}" if cron_expr is not None else None
+
+            db_update_schedule(
+                data_dir=data_dir,
+                job_id=job_id,
+                name=name,
+                description=desc,
+                cron_expression=cron_expr,
+                channel_id=channel_id,
+            )
+
+            # Update playbook file if instructions or name changed
+            if instructions is not None or name is not None:
+                skill_name = target["skill_name"]
+                p_file = playbooks_dir(data_dir) / f"{skill_name}.md"
+
+                existing_instructions = ""
+                if p_file.exists() and instructions is None:
+                    text = p_file.read_text(encoding="utf-8")
+                    parts = text.split("# Objective\n")
+                    if len(parts) > 1:
+                        existing_instructions = parts[1].strip()
+
+                final_instructions = instructions if instructions is not None else existing_instructions
+                final_name = name if name is not None else target["name"]
+
+                content = (
+                    "---\n"
+                    f"name: {skill_name}\n"
+                    f"description: Scheduled job to {final_name}\n"
+                    "mode: workflow\n"
+                    "triggers:\n"
+                    f"  - run {skill_name}\n"
+                    "---\n\n"
+                    "# Objective\n"
+                    f"{final_instructions}\n"
+                )
+                p_file.write_text(content, encoding="utf-8")
+
+            return ToolResult(
+                kind="success",
+                data={
+                    "message": f"Successfully updated schedule job '{job_id}'",
+                    "job_id": job_id,
+                }
+            )
+        except Exception as exc:
+            return ToolResult.error(f"Failed to update schedule: {exc}")
+
     registry.register(CREATE_SCHEDULE, create_schedule_handler)
     registry.register(LIST_SCHEDULES, list_schedules_handler)
     registry.register(TOGGLE_SCHEDULE, toggle_schedule_handler)
     registry.register(DELETE_SCHEDULE, delete_schedule_handler)
+    registry.register(UPDATE_SCHEDULE, update_schedule_handler)

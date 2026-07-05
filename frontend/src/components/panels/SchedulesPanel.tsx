@@ -2,6 +2,7 @@ import {
   DeleteOutlined,
   CalendarOutlined,
   PlayCircleOutlined,
+  EditOutlined,
 } from "@ant-design/icons";
 import {
   Button,
@@ -13,6 +14,9 @@ import {
   Table,
   Tag,
   Typography,
+  Modal,
+  Form,
+  Input,
 } from "antd";
 import { useCallback, useEffect, useState } from "react";
 import { api, type ScheduledJob } from "../../api/client";
@@ -22,6 +26,10 @@ export function SchedulesPanel() {
   const { notify } = useApp();
   const [schedules, setSchedules] = useState<ScheduledJob[]>([]);
   const [loading, setLoading] = useState(true);
+  const [editModalOpen, setEditModalOpen] = useState(false);
+  const [editingJob, setEditingJob] = useState<ScheduledJob | null>(null);
+  const [form] = Form.useForm();
+  const [savingEdit, setSavingEdit] = useState(false);
 
   const fetchSchedules = useCallback(async () => {
     setLoading(true);
@@ -60,6 +68,48 @@ export function SchedulesPanel() {
       setSchedules((prev) => prev.filter((job) => job.id !== jobId));
     } catch (err: any) {
       notify("error", `Failed to delete schedule: ${err.message || err}`);
+    }
+  };
+
+  const handleEditClick = async (record: ScheduledJob) => {
+    try {
+      setLoading(true);
+      const detail = await api.getSchedule(record.id);
+      setEditingJob(detail);
+      form.setFieldsValue({
+        name: detail.name,
+        cron_expression: detail.cron_expression,
+        channel_id: detail.channel_id || "",
+        instructions: detail.instructions || "",
+      });
+      setEditModalOpen(true);
+    } catch (err: any) {
+      notify("error", `Failed to load schedule details: ${err.message || err}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditSave = async () => {
+    if (!editingJob) return;
+    try {
+      const values = await form.validateFields();
+      setSavingEdit(true);
+      await api.updateSchedule(editingJob.id, {
+        name: values.name,
+        cron_expression: values.cron_expression,
+        channel_id: values.channel_id || null,
+        instructions: values.instructions,
+      });
+      notify("success", "Successfully updated scheduled job.");
+      setEditModalOpen(false);
+      setEditingJob(null);
+      form.resetFields();
+      fetchSchedules();
+    } catch (err: any) {
+      notify("error", `Failed to save changes: ${err.message || err}`);
+    } finally {
+      setSavingEdit(false);
     }
   };
 
@@ -154,15 +204,23 @@ export function SchedulesPanel() {
       key: "action",
       align: "center" as const,
       render: (record: ScheduledJob) => (
-        <Popconfirm
-          title="Delete Schedule"
-          description="Are you sure you want to delete this scheduled job? This will also delete the associated custom skill playbook file."
-          onConfirm={() => handleDelete(record.id)}
-          okText="Yes"
-          cancelText="No"
-        >
-          <Button type="text" danger icon={<DeleteOutlined />} size="small" />
-        </Popconfirm>
+        <Space size="middle">
+          <Button
+            type="text"
+            icon={<EditOutlined />}
+            size="small"
+            onClick={() => handleEditClick(record)}
+          />
+          <Popconfirm
+            title="Delete Schedule"
+            description="Are you sure you want to delete this scheduled job? This will also delete the associated custom skill playbook file."
+            onConfirm={() => handleDelete(record.id)}
+            okText="Yes"
+            cancelText="No"
+          >
+            <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+          </Popconfirm>
+        </Space>
       ),
     },
   ];
@@ -212,6 +270,58 @@ export function SchedulesPanel() {
           pagination={{ pageSize: 10, hideOnSinglePage: true }}
         />
       </div>
+
+      <Modal
+        title="Edit Scheduled Job"
+        open={editModalOpen}
+        onOk={handleEditSave}
+        onCancel={() => {
+          setEditModalOpen(false);
+          setEditingJob(null);
+          form.resetFields();
+        }}
+        confirmLoading={savingEdit}
+        width={640}
+        destroyOnClose
+      >
+        <Form form={form} layout="vertical" style={{ marginTop: 16 }}>
+          <Form.Item
+            name="name"
+            label="Job Name"
+            rules={[{ required: true, message: "Please enter a job name" }]}
+          >
+            <Input placeholder="e.g. daily_grade_report" />
+          </Form.Item>
+
+          <Form.Item
+            name="cron_expression"
+            label="Cron Expression"
+            rules={[{ required: true, message: "Please enter a cron pattern" }]}
+            help="Standard 5-field cron pattern (e.g. '0 9 * * 1-5' or '*/10 * * * *')"
+          >
+            <Input placeholder="e.g. 0 9 * * 1-5" />
+          </Form.Item>
+
+          <Form.Item
+            name="channel_id"
+            label="Slack Destination (Channel ID)"
+            help="Slack channel ID to post results (e.g. C0123456789). Leave blank to disable."
+          >
+            <Input placeholder="e.g. C0123456789" />
+          </Form.Item>
+
+          <Form.Item
+            name="instructions"
+            label="Objective / Instructions"
+            rules={[{ required: true, message: "Please enter playbook instructions" }]}
+          >
+            <Input.TextArea
+              rows={8}
+              placeholder="What this scheduled playbook job should perform..."
+            />
+          </Form.Item>
+        </Form>
+      </Modal>
     </div>
   );
 }
