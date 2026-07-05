@@ -66,15 +66,25 @@ class TaskQueueWorker:
 
                     # Inline imports to avoid circular dependency rings
                     context_fetcher = None
+                    indicator = None
                     if task.source == "slack":
                         from backend.integrations.slack.context import fetch_slack_context
                         from backend.integrations.slack.emojis import slack_bot_client
+                        from backend.integrations.slack.status import ThinkingIndicator
 
                         client = slack_bot_client(config.slack.bot_token)
                         bot_user_id = client.auth_test().get("user_id", "")
                         context_fetcher = lambda t: fetch_slack_context(
                             client, t, bot_user_id=bot_user_id
                         )
+
+                        indicator = ThinkingIndicator(
+                            client,
+                            channel=task.channel_id,
+                            thread_ts=task.thread_ts,
+                            loading_messages=config.slack.loading_messages or None,
+                        )
+                        indicator.start()
 
                     processor = TaskProcessor(
                         config,
@@ -108,27 +118,18 @@ class TaskQueueWorker:
                         rendered = resolve_user_ids_in_text(rendered, resolver)
                         delivery = prepare_slack_delivery(rendered, task.cleaned_intent)
 
-                        # Post text response
-                        client.chat_postMessage(
-                            channel=task.channel_id,
-                            thread_ts=task.thread_ts,
-                            text=delivery.text,
-                        )
-
-                        # Post files
-                        for file in delivery.files:
-                            client.files_upload_v2(
+                        if indicator is not None:
+                            indicator.finish(delivery.text, files=delivery.files)
+                        else:
+                            client.chat_postMessage(
                                 channel=task.channel_id,
                                 thread_ts=task.thread_ts,
-                                title=file.title,
-                                filename=file.filename,
-                                content=file.content,
+                                text=delivery.text,
                             )
                     elif task.source == "ui":
                         # For UI Chat, processor.process(task) automatically appends the exchange to SessionStore
                         pass
                     elif task.source == "github":
-                        from backend.formatting.render import render_for_channel
                         from backend.integrations.github.client import post_pull_request_comment, REACTION_DONE
                         from backend.integrations.github.handler import _react_ack
 
@@ -156,11 +157,14 @@ class TaskQueueWorker:
                             from backend.integrations.slack.emojis import slack_bot_client
 
                             client = slack_bot_client(config.slack.bot_token)
-                            client.chat_postMessage(
-                                channel=task_dict["channel_id"],
-                                thread_ts=task_dict.get("thread_ts"),
-                                text=f"Sorry, I hit an error: {exc}",
-                            )
+                            if indicator is not None:
+                                indicator.finish(f"Sorry, I hit an error: {exc}")
+                            else:
+                                client.chat_postMessage(
+                                    channel=task_dict["channel_id"],
+                                    thread_ts=task_dict.get("thread_ts"),
+                                    text=f"Sorry, I hit an error: {exc}",
+                                )
                         except Exception:
                             logger.exception("Failed to send error details back to Slack")
                     elif task_dict.get("source") == "github" and task_dict.get("channel_id"):

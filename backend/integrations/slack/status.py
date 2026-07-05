@@ -356,6 +356,8 @@ class ThinkingIndicator:
         return kwargs
 
     def _try_assistant_status(self) -> bool:
+        if not self.channel or not self.channel.startswith("D"):
+            return False
         if not hasattr(self.client, "assistant_threads_setStatus"):
             logger.info(
                 "Slack thinking: assistant.threads.setStatus not available on client — "
