@@ -5,7 +5,7 @@ from __future__ import annotations
 import hashlib
 import hmac
 
-from backend.github.verify import verify_github_signature
+from backend.integrations.github.verify import verify_github_signature
 
 
 def _sign(body: bytes, secret: str) -> str:

@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.ingress.jira_direct import detect_jira_direct_action, looks_like_jira_question
+from backend.routing.jira_direct import detect_jira_direct_action, looks_like_jira_question
 from backend.models.config import AlfredConfig, JiraConfig
 
 

@@ -209,6 +209,48 @@ def usage_filter_options(
     return options
 
 
+@router.get("/checkpoints")
+def get_task_checkpoints(
+    task_id: str | None = Query(None),
+    manager: ConfigManager = Depends(require_admin),
+) -> dict[str, Any]:
+    import sqlite3
+    from backend.paths import db_path
+    db_file = db_path(manager.data_dir)
+
+    # Ensure database table exists
+    from backend.observability.checkpoint import init_checkpoint_db
+    init_checkpoint_db(db_file)
+
+    conn = sqlite3.connect(db_file, timeout=10.0)
+    conn.row_factory = sqlite3.Row
+    cursor = conn.cursor()
+    if task_id:
+        cursor.execute(
+            """
+            SELECT checkpoint, function_name, status, timestamp, error, error_stacktrace
+            FROM task_checkpoints
+            WHERE task_id = ?
+            ORDER BY id ASC
+            """,
+            (task_id,),
+        )
+    else:
+        cursor.execute(
+            """
+            SELECT task_id, checkpoint, function_name, status, timestamp, error, error_stacktrace
+            FROM task_checkpoints
+            ORDER BY id DESC
+            LIMIT 100
+            """
+        )
+    rows = cursor.fetchall()
+    conn.close()
+
+    checkpoints = [dict(r) for r in rows]
+    return {"checkpoints": checkpoints}
+
+
 @router.get("/health")
 def observability_health(manager: ConfigManager = Depends(get_manager)) -> dict[str, str]:
     return {"status": "ok", "backend": "sqlite"}

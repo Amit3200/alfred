@@ -1,6 +1,8 @@
 """Health and status endpoints."""
 
 from __future__ import annotations
+from backend.paths import log_path
+
 
 from fastapi import APIRouter, Depends, Request
 
@@ -14,7 +16,7 @@ router = APIRouter(tags=["health"])
 @router.get("/health")
 def health(request: Request) -> dict:
     manager = request.app.state.config_manager
-    from backend.paths import log_path
+    pass
 
     return {
         "status": "ok",

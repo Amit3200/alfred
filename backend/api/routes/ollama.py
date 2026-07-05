@@ -6,7 +6,7 @@ from fastapi import APIRouter, Request
 from pydantic import BaseModel
 
 from backend.api.deps import get_manager
-from backend.ollama import service as ollama
+from backend.integrations.ollama import service as ollama
 
 router = APIRouter(prefix="/ollama", tags=["ollama"])
 

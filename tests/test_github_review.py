@@ -6,7 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 
-from backend.github.review import parse_pr_ref, run_github_pr_review
+from backend.integrations.github.review import parse_pr_ref, run_github_pr_review
 from backend.models.config import AlfredConfig, GitConfig
 from backend.models.response import AssistantResponse
 
@@ -40,7 +40,7 @@ def test_run_github_pr_review_posts_rendered_body():
     mock_processor = MagicMock()
     mock_processor.process.return_value = AssistantResponse.from_text(review_text)
 
-    with patch("backend.github.review.post_pull_request_comment") as post:
+    with patch("backend.integrations.github.review.post_pull_request_comment") as post:
         body, status = run_github_pr_review(
             manager,
             "AcmeCorp/platform#7",

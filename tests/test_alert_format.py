@@ -1,6 +1,6 @@
 """Tests for Slack output formatting."""
 
-from backend.ingress.slack_format import format_for_slack
+from backend.formatting.strategies import format_for_slack
 
 
 def test_double_bold_to_slack():

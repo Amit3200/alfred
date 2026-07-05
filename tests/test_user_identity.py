@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
-from backend.ingress.jira_context import detect_jira_list_action
-from backend.ingress.jira_direct import detect_jira_direct_action
-from backend.ingress.user_identity import (
+from backend.routing.jira_context import detect_jira_list_action
+from backend.routing.jira_direct import detect_jira_direct_action
+from backend.integrations.identity.user_identity import (
     detect_user_identity_action,
     format_user_identity_result,
     is_user_identity_lookup,

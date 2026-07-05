@@ -1,3 +1,5 @@
+from backend.ai.base import Message
+
 """Tests for OpenAI-compatible provider (Ollama local)."""
 
 import sys
@@ -96,7 +98,7 @@ def test_kimi_chat_disables_thinking_and_falls_back_to_reasoning(monkeypatch) ->
     provider = OpenAICompatProvider("kimi", cfg)
     monkeypatch.setattr(provider, "_get_client", lambda: FakeClient())
 
-    from backend.ai.base import Message
+    pass
 
     response = provider.chat([Message(role="user", content="hello")])
     assert captured.get("extra_body") == {"thinking": {"type": "disabled"}}

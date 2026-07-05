@@ -1,6 +1,8 @@
 """Background start/stop for Alfred, Vite frontend, and optional Ollama."""
 
 from __future__ import annotations
+import requests
+
 
 import os
 import shutil
@@ -12,7 +14,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.config_manager import ConfigManager
-from backend.ollama import service as ollama_service
+from backend.integrations.ollama import service as ollama_service
 from backend.paths import ENV_DATA_DIR, log_path, run_dir
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent.parent
@@ -114,11 +116,11 @@ def _start_logged_process(
     return proc
 
 
-def _wait_for_http(url: str, *, attempts: int = 20, delay: float = 0.25) -> bool:
-    import requests
-
-    for _ in range(attempts):
-        time.sleep(delay)
+def _wait_for_http(url: str, retries: int = 15) -> bool:
+    if "://0.0.0.0:" in url:
+        url = url.replace("://0.0.0.0:", "://127.0.0.1:")
+    for _ in range(retries):
+        time.sleep(0.5)
         try:
             if requests.get(url, timeout=1).status_code == 200:
                 return True

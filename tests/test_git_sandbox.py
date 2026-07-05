@@ -2,7 +2,7 @@
 
 import pytest
 
-from backend.git.sandbox import PathSandboxError, resolve_repo_path
+from backend.integrations.git.sandbox import PathSandboxError, resolve_repo_path
 
 
 def test_resolve_repo_path_allows_relative(tmp_path):

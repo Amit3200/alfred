@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.storage.slack_user_cache import SlackUserCache
+from backend.db.slack_user_cache import SlackUserCache
 
 
 def test_slack_user_cache_remembers_and_loads(tmp_path):

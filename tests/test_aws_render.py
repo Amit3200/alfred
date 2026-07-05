@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.ingress.render import render_for_channel
+from backend.formatting.render import render_for_channel
 from backend.models.response import AssistantResponse, ResponsePayload
 
 

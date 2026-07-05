@@ -91,6 +91,10 @@ export type AlfredConfig = {
     logo_ext: string;
     setup_completed: boolean;
   };
+  orchestrator: {
+    agent_runner: "react" | "hermes";
+    self_improvement: boolean;
+  };
   _secrets_configured?: {
     slack_bot_token: boolean;
     slack_bot_token_valid?: boolean;
@@ -461,6 +465,12 @@ export const api = {
       {},
       true,
     ),
+  observabilityCheckpoints: (taskId?: string) =>
+    request<{ checkpoints: Array<{ task_id: string; checkpoint: string; function_name: string; status: string; timestamp: number; error?: string | null; error_stacktrace?: string | null }> }>(
+      `/api/observability/checkpoints${taskId ? `?task_id=${encodeURIComponent(taskId)}` : ""}`,
+      {},
+      true,
+    ),
 
   getDbStats: () => request<DbStatsResponse>("/api/storage/db", {}, true),
   cleanupDb: (body: DbCleanupRequest) =>
@@ -772,10 +782,17 @@ export type ObservabilitySummary = {
   completion_tokens: number;
   total_tokens: number;
   estimated_cost_usd: number;
+  total_tasks?: number;
+  successful_tasks?: number;
+  plan_events?: number;
+  feedback_good?: number;
+  feedback_bad?: number;
   by_source: Record<string, number>;
   by_user: Record<string, number>;
   by_model: Record<string, number>;
   by_tool_category: Record<string, number>;
+  by_plan?: Record<string, number>;
+  by_plan_tokens?: Record<string, number>;
 };
 
 export type ObservabilityTimeseries = {

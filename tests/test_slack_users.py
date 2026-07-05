@@ -2,8 +2,8 @@
 
 from unittest.mock import MagicMock
 
-from backend.ingress.slack_messages import format_slack_message
-from backend.ingress.slack_users import (
+from backend.formatting.slack_messages import format_slack_message
+from backend.integrations.slack.users import (
     SlackUserResolver,
     collect_message_user_ids,
     format_user_list,

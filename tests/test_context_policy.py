@@ -1,11 +1,11 @@
 """Tests for context fetch policy."""
 
-from backend.ingress.context_policy import (
+from backend.orchestrator.policy import (
     is_identity_question,
     needs_context_refresh,
     wants_channel_history,
 )
-from backend.ingress.slack_messages import format_slack_message
+from backend.formatting.slack_messages import format_slack_message
 
 
 def test_identity_skips_channel_history():
@@ -53,3 +53,33 @@ def test_reactions_in_message_format():
     assert "white_check_mark" in line
     assert "Alex" in line
     assert "UACK123" not in line
+
+
+def test_prune_context_stack_traces():
+    from backend.orchestrator.policy import prune_context
+
+    tb = (
+        "Traceback (most recent call last):\n"
+        "  File \"app.py\", line 10, in main\n"
+        "    run()\n"
+        "  File \"app.py\", line 15, in run\n"
+        "    execute()\n"
+        "  File \"app.py\", line 20, in execute\n"
+        "    do_work()\n"
+        "  File \"app.py\", line 25, in do_work\n"
+        "    raise ValueError(\"nested error\")\n"
+        "ValueError: nested error"
+    )
+    result = prune_context(tb)
+    assert "[Stack trace truncated for LLM readability]" in result
+    assert "Traceback (most recent call last):" in result
+    assert "ValueError: nested error" in result
+
+
+def test_prune_context_long_urls():
+    from backend.orchestrator.policy import prune_context
+
+    long_url = "https://github.com/some-org/some-repo/pull/123/files?utf8=%E2%9C%93&src=pr&ref=main&auth=true&extra_param=very_long_extra_query_parameter_value_to_bloat_url"
+    result = prune_context(f"Please check this URL: {long_url}")
+    assert "[URL truncated]" in result
+    assert "https://github.com/some-org/some-repo/pull/123/files" in result

@@ -1,6 +1,9 @@
 """Tests for approximate LLM cost estimation."""
 
 from __future__ import annotations
+from backend.observability.models import InteractionEvent, ObservabilityFilters
+from backend.observability.store import SQLiteObservabilityStore
+
 
 from backend.models.config import ModelPricingConfig, ObservabilityConfig
 from backend.observability.pricing import build_pricing_table, estimate_event_cost
@@ -45,8 +48,8 @@ def test_config_override_model_pricing():
 
 
 def test_store_summary_includes_cost(tmp_path):
-    from backend.observability.models import InteractionEvent, ObservabilityFilters
-    from backend.observability.store import SQLiteObservabilityStore
+    pass
+    pass
 
     store = SQLiteObservabilityStore(tmp_path)
     store.record(

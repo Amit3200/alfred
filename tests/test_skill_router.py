@@ -7,7 +7,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from backend.ingress.playbooks import PlaybookStore
+from backend.routing.playbooks import PlaybookStore
 from backend.models.config import AlfredConfig, SkillsConfig, default_config
 from backend.routing import RouteContext, RouteMode, SkillRouter
 from backend.routing.heuristics import route_by_heuristic

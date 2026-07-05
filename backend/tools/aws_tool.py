@@ -1,12 +1,14 @@
 """AWS tools — Athena queries and CloudWatch Logs Insights."""
 
 from __future__ import annotations
+from backend.integrations.aws.grade_events import GradeEventsClient
+
 
 from typing import Any
 
 from backend.ai.base import ToolSchema
-from backend.aws.athena import AthenaClient
-from backend.aws.cloudwatch_logs import CloudWatchLogsClient
+from backend.integrations.aws.athena import AthenaClient
+from backend.integrations.aws.cloudwatch_logs import CloudWatchLogsClient
 from backend.models.config import AlfredConfig
 from backend.tools.registry import ToolRegistry
 from backend.tools.result import ToolResult
@@ -223,7 +225,7 @@ def register_aws_tools(registry: ToolRegistry, config: AlfredConfig) -> None:
 
     def grade_events_handler(args: dict[str, Any]) -> ToolResult:
         try:
-            from backend.aws.grade_events import GradeEventsClient
+            pass
 
             client = GradeEventsClient.from_config(config)
             data = client.query(

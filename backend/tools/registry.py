@@ -1,6 +1,10 @@
 """Tool registry — schema-defined, allowlist-gated tool execution."""
 
 from __future__ import annotations
+from backend.observability.recorder import get_recorder
+from backend.routing.git_context import enrich_tool_arguments
+from backend.routing.git_direct import normalize_tool_arguments
+
 
 import logging
 from collections.abc import Callable
@@ -64,7 +68,7 @@ class ToolRegistry:
 
     def _record_tool(self, name: str, *, success: bool) -> None:
         try:
-            from backend.observability.recorder import get_recorder
+            pass
 
             data_dir = getattr(self, "data_dir", None)
             get_recorder(data_dir).record_tool_call(name, success=success)
@@ -80,8 +84,8 @@ class ToolRegistry:
         git: Any,
         session: Any | None = None,
     ) -> ToolResult:
-        from backend.ingress.git_context import enrich_tool_arguments
-        from backend.ingress.git_direct import normalize_tool_arguments
+        pass
+        pass
 
         normalized = normalize_tool_arguments(name, arguments, git)
         normalized = enrich_tool_arguments(name, normalized, git, session)

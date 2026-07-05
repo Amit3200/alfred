@@ -4,8 +4,11 @@ from __future__ import annotations
 
 import logging
 
+from typing import TYPE_CHECKING
+
 from backend.ai.registry import LLMRouter
-from backend.ingress.playbooks import PlaybookStore
+if TYPE_CHECKING:
+    from backend.routing.playbooks import PlaybookStore
 from backend.models.config import AlfredConfig
 from backend.routing.heuristics import route_by_heuristic
 from backend.routing.keyword import playbook_for_decision, route_by_keyword

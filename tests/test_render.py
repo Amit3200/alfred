@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 
-from backend.git.api import PullRequestSummary
-from backend.ingress.render import render_for_channel
+from backend.integrations.git.api import PullRequestSummary
+from backend.formatting.render import render_for_channel
 from backend.models.response import AssistantResponse
 from backend.tools.result import ToolResult
 

@@ -4,8 +4,8 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock, patch
 
-from backend.ingress.git_direct import wants_pr_code_analysis
-from backend.ingress.processor import TaskProcessor
+from backend.routing.git_direct import wants_pr_code_analysis
+from backend.orchestrator.processor import TaskProcessor
 from backend.models.config import GitConfig, default_config
 from backend.models.task import Task
 

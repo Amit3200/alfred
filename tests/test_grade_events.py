@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from datetime import UTC, datetime
 
-from backend.aws.grade_events import GradeEventsFilters, build_grade_events_sql
+from backend.integrations.aws.grade_events import GradeEventsFilters, build_grade_events_sql
 from backend.models.config import AWSConfig, AlfredConfig
 
 

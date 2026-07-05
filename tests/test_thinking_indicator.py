@@ -1,11 +1,13 @@
 """Tests for Slack thinking indicator."""
 
 from __future__ import annotations
+from slack_sdk.errors import SlackApiError
+
 
 import random
 from unittest.mock import MagicMock
 
-from backend.slack.status import (
+from backend.integrations.slack.status import (
     ASSISTANT_STATUS,
     MAX_SLACK_LOADING_MESSAGE_LENGTH,
     STATUS_LINES,
@@ -77,21 +79,21 @@ def test_slack_loading_messages_truncates_long_custom_lines():
     custom = [":this_is_fine: Everything is fine. Checking prod…"]
     sanitized = slack_loading_messages(custom)
     assert len(sanitized) == 1
-    assert sanitized[0].startswith(":this_is_fine:")
+    assert sanitized[0].startswith("🔥")
     assert len(sanitized[0]) <= MAX_SLACK_LOADING_MESSAGE_LENGTH
 
 
 def test_slack_loading_messages_keeps_short_emoji_lines():
     custom = [":doge: Much query. Very wait.", "😸 Cat is sitting on the router again…"]
     sanitized = slack_loading_messages(custom)
-    assert sanitized[0] == ":doge: Much query. Very wait."
+    assert sanitized[0] == "🐶 Much query. Very wait."
     assert sanitized[1] == "😸 Cat is sitting on the router again…"
 
 
 def test_slack_loading_messages_truncates_long_lines_but_keeps_emoji():
-    custom = [":this-is-fine-fire: This is fine. Everything is fine."]
+    custom = [":this-is-fine-fire: This is fine. Everything is fine. Truly everything is fine in the backend database server."]
     sanitized = slack_loading_messages(custom)
-    assert sanitized[0].startswith(":this-is-fine-fire:")
+    assert sanitized[0].startswith("🔥")
     assert sanitized[0].endswith("…")
     assert len(sanitized[0]) <= MAX_SLACK_LOADING_MESSAGE_LENGTH
 
@@ -104,7 +106,7 @@ def test_assistant_status_uses_unicode_loading_messages(monkeypatch):
         return []
 
     monkeypatch.setattr(
-        "backend.slack.status.loading_messages_for_slack",
+        "backend.integrations.slack.status.loading_messages_for_slack",
         lambda **kwargs: [f"{emoji} {line}" for emoji, line in STATUS_LINES[:3]],
     )
 
@@ -117,7 +119,7 @@ def test_assistant_status_uses_unicode_loading_messages(monkeypatch):
     assert all(len(message) <= MAX_SLACK_LOADING_MESSAGE_LENGTH for message in call["loading_messages"])
 
 
-def test_custom_shortcodes_use_legacy_thinking_message():
+def test_custom_shortcodes_use_native_assistant_status():
     client = MagicMock()
     client.assistant_threads_setStatus.return_value = {"ok": True}
     client.chat_postMessage.return_value = {"ts": "111"}
@@ -131,9 +133,10 @@ def test_custom_shortcodes_use_legacy_thinking_message():
     )
     indicator.start()
 
-    client.assistant_threads_setStatus.assert_not_called()
-    client.chat_postMessage.assert_called_once()
-    assert ":this_is_fine:" in client.chat_postMessage.call_args.kwargs["text"]
+    client.assistant_threads_setStatus.assert_called_once()
+    call = client.assistant_threads_setStatus.call_args.kwargs
+    assert call["loading_messages"][0].startswith("🔥")
+    client.chat_postMessage.assert_not_called()
 
 
 def test_slack_shortcode_prefix():
@@ -193,7 +196,7 @@ def test_assistant_status_on_start_and_finish():
 
 
 def test_retries_status_only_when_loading_messages_rejected():
-    from slack_sdk.errors import SlackApiError
+    pass
 
     client = MagicMock()
     response = MagicMock()
@@ -256,6 +259,7 @@ def test_legacy_rotation_updates_in_place(monkeypatch):
     )
     waits = iter([False, True])
 
+    monkeypatch.setattr(indicator, "_try_assistant_status", lambda: False)
     monkeypatch.setattr(indicator._stop_rotation, "wait", lambda _seconds: next(waits, True))
     indicator.start()
     indicator._rotation_thread.join(timeout=1.0)

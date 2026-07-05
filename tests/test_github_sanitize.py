@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.github.sanitize import clean_github_comment, task_from_issue_comment
+from backend.integrations.github.sanitize import clean_github_comment, task_from_issue_comment
 from backend.models.config import AlfredConfig, GitConfig, GitHubAppConfig
 
 

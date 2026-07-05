@@ -1,15 +1,18 @@
 """Tests for PR follow-up routing in the same chat session."""
 
 from __future__ import annotations
+from backend.orchestrator.processor import TaskProcessor, _tool_result_to_response
+from backend.tools.result import ToolResult
+
 
 from unittest.mock import MagicMock, patch
 
-from backend.ingress.git_direct import (
+from backend.routing.git_direct import (
     extract_pr_from_session,
     should_run_pr_analysis,
     wants_pr_retry,
 )
-from backend.ingress.processor import TaskProcessor
+from backend.orchestrator.processor import TaskProcessor
 from backend.models.config import GitConfig, default_config
 from backend.models.session import ConversationSession, ConversationTurn
 from backend.models.task import Task
@@ -169,8 +172,8 @@ def test_processor_retry_routes_to_review_skill():
 
 def test_investigation_prefers_llm_text_over_last_tool_result():
     """PR review must return the model's analysis, not raw read_file output."""
-    from backend.ingress.processor import TaskProcessor, _tool_result_to_response
-    from backend.tools.result import ToolResult
+    pass
+    pass
 
     config = default_config()
     config.git = GitConfig(enabled=True, provider="github", token="ghp_test")

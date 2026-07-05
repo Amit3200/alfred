@@ -1,6 +1,8 @@
 """LLM-based skill routing via the skill_matching provider."""
 
 from __future__ import annotations
+from backend.observability.context import set_call_kind
+
 
 import json
 import logging
@@ -8,7 +10,7 @@ import re
 from typing import Any
 
 from backend.ai.base import LLMProvider, Message
-from backend.ingress.playbooks import PlaybookStore
+from backend.routing.playbooks import PlaybookStore
 from backend.routing.catalog import format_catalog_for_router, list_catalog_entries
 from backend.routing.types import RouteContext, RouteDecision, RouteMode, SkillCatalogEntry
 
@@ -65,7 +67,7 @@ class LLMSkillMatcher:
 
         user_prompt = _build_user_prompt(context, entries)
         try:
-            from backend.observability.context import set_call_kind
+            pass
 
             set_call_kind("skill_matching")
             response = self._provider.chat(

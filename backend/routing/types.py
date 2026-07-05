@@ -6,7 +6,7 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any, Literal
 
-from backend.ingress.playbooks import Playbook
+from backend.routing.playbooks import Playbook
 
 RouteStrategy = Literal["keyword", "heuristic", "llm", "none"]
 

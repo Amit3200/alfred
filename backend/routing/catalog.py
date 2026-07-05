@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.ingress.playbooks import Playbook, PlaybookStore
+from backend.routing.playbooks import Playbook, PlaybookStore
 from backend.routing.types import RouteMode, SkillCatalogEntry
 
 

@@ -1,6 +1,8 @@
 """Tests for grade_events tool registration."""
 
 from __future__ import annotations
+from backend.routing.playbooks import PlaybookStore
+
 
 from unittest.mock import MagicMock, patch
 
@@ -21,7 +23,7 @@ def _config() -> AlfredConfig:
     return config
 
 
-@patch("backend.aws.grade_events.GradeEventsClient")
+@patch("backend.tools.aws_tool.GradeEventsClient")
 def test_grade_events_query_tool(mock_client_cls):
     client = MagicMock()
     mock_client_cls.from_config.return_value = client
@@ -45,7 +47,7 @@ def test_grade_events_query_tool(mock_client_cls):
 
 
 def test_grade_events_playbook_is_routable(tmp_path):
-    from backend.ingress.playbooks import PlaybookStore
+    pass
 
     playbooks = tmp_path / "playbooks"
     playbooks.mkdir()

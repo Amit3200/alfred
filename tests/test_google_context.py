@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from backend.ingress.google_context import (
+from backend.integrations.google.context import (
     format_google_context_for_prompt,
     looks_like_google_access_question,
 )
@@ -25,7 +25,7 @@ def _task(intent: str, *, raw: str = "") -> Task:
 def test_google_context_connected(monkeypatch):
     config = AlfredConfig(google=GoogleConfig(enabled=True))
     monkeypatch.setattr(
-        "backend.ingress.google_context.check_google",
+        "backend.integrations.google.context.check_google",
         lambda _config: {"ok": True, "message": "OAuth connected for Sheets and Docs"},
     )
 
@@ -39,7 +39,7 @@ def test_google_context_connected(monkeypatch):
 def test_google_context_not_connected(monkeypatch):
     config = AlfredConfig(google=GoogleConfig(enabled=True))
     monkeypatch.setattr(
-        "backend.ingress.google_context.check_google",
+        "backend.integrations.google.context.check_google",
         lambda _config: {"ok": False, "message": "OAuth client saved — click Connect Google"},
     )
 
@@ -56,7 +56,7 @@ def test_google_context_not_connected(monkeypatch):
 def test_google_context_extracts_sheet_url(monkeypatch):
     config = AlfredConfig(google=GoogleConfig(enabled=True))
     monkeypatch.setattr(
-        "backend.ingress.google_context.check_google",
+        "backend.integrations.google.context.check_google",
         lambda _config: {"ok": True, "message": "OAuth connected"},
     )
     url = "https://docs.google.com/spreadsheets/d/abc123XYZ/edit#gid=0"

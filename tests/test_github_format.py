@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.ingress.github_format import format_for_github
+from backend.formatting.strategies import format_for_github
 
 
 def test_fenced_pipe_table_becomes_gfm():

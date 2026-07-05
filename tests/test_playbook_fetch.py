@@ -6,13 +6,13 @@ from unittest.mock import patch
 
 import pytest
 
-from backend.ingress.playbook_fetch import (
+from backend.routing.playbook_fetch import (
     fetch_url_text,
     format_playbook_dynamic_context,
     html_to_text,
     validate_fetch_url,
 )
-from backend.ingress.playbooks import Playbook, PlaybookStore
+from backend.routing.playbooks import Playbook, PlaybookStore
 
 
 def test_validate_fetch_url_https_only() -> None:
@@ -43,7 +43,7 @@ def test_fetch_url_text_uses_cache(tmp_path) -> None:
         def raise_for_status() -> None:
             return None
 
-    with patch("backend.ingress.playbook_fetch.requests.get", return_value=FakeResponse()) as get:
+    with patch("backend.routing.playbook_fetch.requests.get", return_value=FakeResponse()) as get:
         text1, note1 = fetch_url_text("https://example.com", data_dir=tmp_path, ttl_minutes=60)
         text2, note2 = fetch_url_text("https://example.com", data_dir=tmp_path, ttl_minutes=60)
 
@@ -82,7 +82,7 @@ Static body.
         def raise_for_status() -> None:
             return None
 
-    with patch("backend.ingress.playbook_fetch.requests.get", return_value=FakeResponse()):
+    with patch("backend.routing.playbook_fetch.requests.get", return_value=FakeResponse()):
         prompt = store.format_for_prompt(matched, data_dir=tmp_path)
 
     assert "Static body" in prompt

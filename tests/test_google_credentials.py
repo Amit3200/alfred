@@ -6,8 +6,8 @@ import json
 
 import pytest
 
-from backend.google.credentials import credentials_json_type, parse_oauth_client_config
-from backend.google.oauth import begin_oauth, new_oauth_state, pop_oauth_session, pop_oauth_state
+from backend.integrations.google.credentials import credentials_json_type, parse_oauth_client_config
+from backend.integrations.google.oauth import begin_oauth, new_oauth_state, pop_oauth_session, pop_oauth_state
 
 
 OAUTH_WEB = {

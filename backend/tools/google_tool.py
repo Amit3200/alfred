@@ -6,9 +6,9 @@ import json
 from typing import Any
 
 from backend.ai.base import ToolSchema
-from backend.google import docs as google_docs
-from backend.google import sheets as google_sheets
-from backend.google.credentials import credentials_json_type, google_libs_available
+from backend.integrations.google import docs as google_docs
+from backend.integrations.google import sheets as google_sheets
+from backend.integrations.google.credentials import credentials_json_type, google_libs_available
 from backend.models.config import AlfredConfig
 from backend.tools.registry import ToolRegistry
 from backend.tools.result import ToolResult

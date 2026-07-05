@@ -28,7 +28,7 @@ from backend.context.graphify import (
     load_graph_report,
     record_graphify_build,
 )
-from backend.git.mirror import WorkspaceMirrorManager
+from backend.integrations.git.mirror import WorkspaceMirrorManager
 
 logger = logging.getLogger(__name__)
 

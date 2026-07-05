@@ -879,8 +879,21 @@ body,
   grid-column: span 12;
 }
 
+.alfred-stat-grid-5 {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 16px;
+  grid-column: span 12;
+}
+
 .alfred-stat-grid-usage {
   grid-template-columns: repeat(7, 1fr);
+}
+
+@media (max-width: 992px) {
+  .alfred-stat-grid-5 {
+    grid-template-columns: repeat(3, 1fr);
+  }
 }
 
 @media (max-width: 768px) {
@@ -888,8 +901,18 @@ body,
     grid-template-columns: repeat(2, 1fr);
   }
 
+  .alfred-stat-grid-5 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
   .alfred-stat-grid-usage {
     grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 480px) {
+  .alfred-stat-grid-5 {
+    grid-template-columns: 1fr;
   }
 }
 

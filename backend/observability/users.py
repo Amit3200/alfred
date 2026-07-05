@@ -1,6 +1,11 @@
 """Resolve user IDs to human-readable display names for observability."""
 
 from __future__ import annotations
+from backend.db.slack_user_cache import SlackUserCache
+from slack_sdk import WebClient
+from backend.integrations.slack.users import pick_slack_display_name
+from backend.integrations.slack.users import SlackUserResolver
+
 
 import logging
 import re
@@ -34,7 +39,7 @@ class UserLabelEnricher:
         self._slack_preloaded = False
         self._user_cache = None
         if data_dir is not None:
-            from backend.storage.slack_user_cache import SlackUserCache
+            pass
 
             self._user_cache = SlackUserCache(data_dir)
             self._cache.update(self._user_cache.get_many())
@@ -44,7 +49,7 @@ class UserLabelEnricher:
         slack_client = None
         if config.slack.enabled and config.slack.bot_token:
             try:
-                from slack_sdk import WebClient
+                pass
 
                 slack_client = WebClient(token=config.slack.bot_token)
             except Exception:
@@ -70,7 +75,7 @@ class UserLabelEnricher:
                         response.get("error"),
                     )
                     break
-                from backend.ingress.slack_users import pick_slack_display_name
+                pass
 
                 for member in response.get("members") or []:
                     if member.get("deleted") or member.get("is_bot"):
@@ -108,7 +113,7 @@ class UserLabelEnricher:
 
         slack_id = uid if looks_like_slack_user_id(uid) else label if looks_like_slack_user_id(label) else ""
         if slack_id and self._slack is not None:
-            from backend.ingress.slack_users import SlackUserResolver
+            pass
 
             resolved = SlackUserResolver(self._slack).display_name(slack_id)
             if resolved and resolved != slack_id:

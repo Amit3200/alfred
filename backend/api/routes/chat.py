@@ -10,7 +10,7 @@ from pydantic import BaseModel, Field
 
 from backend.api.deps import get_manager, require_admin
 from backend.config_manager import ConfigManager
-from backend.ingress.ui_chat import UIChatService
+from backend.api.ui_chat import UIChatService
 from backend.paths import exports_dir
 
 router = APIRouter(prefix="/chat", tags=["chat"])
@@ -28,8 +28,11 @@ class ExportChatRequest(BaseModel):
     filename: str | None = None
 
 
-def _service(manager: ConfigManager = Depends(get_manager)) -> UIChatService:
-    return UIChatService(manager)
+from fastapi import Request
+
+def _service(request: Request, manager: ConfigManager = Depends(get_manager)) -> UIChatService:
+    queue = getattr(request.app.state, "queue", None)
+    return UIChatService(manager, queue=queue)
 
 
 @router.get("/sessions")

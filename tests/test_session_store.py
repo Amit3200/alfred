@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from backend.models.session import session_key_for_task
-from backend.storage.session_store import SessionStore
+from backend.db.session_store import SessionStore
 
 
 def test_session_key_isolation():

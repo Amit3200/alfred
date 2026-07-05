@@ -7,7 +7,7 @@ import logging
 from typing import Any
 
 from backend.ai.base import LLMProvider, LLMResponse, Message, ToolCall
-from backend.ingress.git_direct import parse_text_tool_call, strip_text_tool_markup
+from backend.routing.git_direct import parse_text_tool_call, strip_text_tool_markup
 from backend.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
@@ -33,8 +33,38 @@ def run_agent_loop(
 
     conversation = list(messages)
 
+    from backend.observability.checkpoint import current_task_id, current_data_dir
+    task_id = current_task_id.get()
+    data_dir = current_data_dir.get()
+
+    def get_plan_context() -> str | None:
+        if task_id and data_dir:
+            from backend.orchestrator.planning import plans_dir
+            plan_file = plans_dir(data_dir) / f"plan_{task_id}.md"
+            if plan_file.is_file():
+                return plan_file.read_text(encoding="utf-8")
+        return None
+
     for iteration in range(max_iterations):
         logger.debug("Agent loop iteration %d", iteration + 1)
+
+        plan_content = get_plan_context()
+        if plan_content:
+            found = False
+            for idx, msg in enumerate(conversation):
+                if msg.role == "system" and "## Task Plan Checklist" in msg.content:
+                    conversation[idx] = Message(
+                        role="system",
+                        content=f"## Task Plan Checklist\n{plan_content}"
+                    )
+                    found = True
+                    break
+            if not found:
+                conversation.insert(1, Message(
+                    role="system",
+                    content=f"## Task Plan Checklist\n{plan_content}"
+                ))
+
         response = provider.chat(conversation, tools=tool_schemas, model=model)
 
         if response.tool_calls:
@@ -56,6 +86,16 @@ def run_agent_loop(
                         name=tool_call.name,
                     )
                 )
+                # Update checklist progress dynamically
+                if task_id and data_dir:
+                    try:
+                        from backend.config_manager import ConfigManager
+                        from backend.orchestrator.planning import update_plan_progress
+                        config, _ = ConfigManager(data_dir).load_merged()
+                        last_action = f"Called tool {tool_call.name} with args {tool_call.arguments}"
+                        update_plan_progress(task_id, last_action, observation, config, data_dir)
+                    except Exception:
+                        logger.exception("Failed to update plan progress in ReAct loop")
             continue
 
         content = (response.content or "").strip()
@@ -166,15 +206,35 @@ def _execute_tool(
     session: Any | None = None,
     git: Any | None = None,
 ) -> str:
-    git_cfg = git or getattr(registry, "git_config", None)
-    if git_cfg is not None:
-        result = registry.run_normalized(
-            name,
-            arguments,
-            allowed=allowed,
-            git=git_cfg,
-            session=session,
-        )
-    else:
-        result = registry.run(name, arguments, allowed=allowed)
-    return result.to_json()
+    from backend.observability.checkpoint import log_checkpoint
+
+    checkpoint_name = f"{name}_tool_call"
+    if name.startswith("jira") or name in ("add_jira_comment", "link_jira_issue", "get_jira_issue", "transition_jira_issue"):
+        checkpoint_name = "jira_tool_call"
+    elif name.startswith(("git", "github")):
+        checkpoint_name = "git_tool_call"
+    elif name.startswith(("athena", "cloudwatch", "grade_events")):
+        checkpoint_name = "aws_tool_call"
+
+    log_checkpoint(checkpoint_name, name, "started")
+    try:
+        git_cfg = git or getattr(registry, "git_config", None)
+        if git_cfg is not None:
+            result = registry.run_normalized(
+                name,
+                arguments,
+                allowed=allowed,
+                git=git_cfg,
+                session=session,
+            )
+        else:
+            result = registry.run(name, arguments, allowed=allowed)
+
+        if result.kind == "error":
+            log_checkpoint(checkpoint_name, name, "error", error=RuntimeError(result.data.get("message", "Tool execution error")))
+        else:
+            log_checkpoint(checkpoint_name, name, "completed")
+        return result.to_json()
+    except Exception as exc:
+        log_checkpoint(checkpoint_name, name, "error", error=exc)
+        raise

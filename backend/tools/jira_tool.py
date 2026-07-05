@@ -1,11 +1,14 @@
 """JIRA tools — list/get issues, transitions, comments, and Git links."""
 
 from __future__ import annotations
+from backend.integrations.identity.user_identity import build_workspace_identity_map
+from backend.integrations.identity.user_identity import lookup_user_identity
+
 
 from typing import Any
 
 from backend.ai.base import ToolSchema
-from backend.jira.api import JiraApiClient
+from backend.integrations.jira.api import JiraApiClient
 from backend.models.config import AlfredConfig
 from backend.tools.registry import ToolRegistry
 from backend.tools.result import ToolResult
@@ -227,7 +230,7 @@ JIRA_CREATE_ISSUE = ToolSchema(
 
 def register_jira_tools(registry: ToolRegistry, config: AlfredConfig) -> None:
     def workspace_identity_handler(args: dict[str, Any]) -> ToolResult:
-        from backend.ingress.user_identity import build_workspace_identity_map
+        pass
 
         data = build_workspace_identity_map(
             config,
@@ -238,7 +241,7 @@ def register_jira_tools(registry: ToolRegistry, config: AlfredConfig) -> None:
         return ToolResult(kind="user_identity", data=data)
 
     def identity_handler(args: dict[str, Any]) -> ToolResult:
-        from backend.ingress.user_identity import lookup_user_identity
+        pass
 
         data = lookup_user_identity(
             config,

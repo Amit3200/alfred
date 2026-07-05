@@ -1,12 +1,14 @@
 """Tests for JIRA API client."""
 
 from __future__ import annotations
+from backend.health import check_jira
+
 
 from unittest.mock import MagicMock, patch
 
 import pytest
 
-from backend.jira.api import JiraApiClient, extract_issue_key
+from backend.integrations.jira.api import JiraApiClient, extract_issue_key
 from backend.models.config import AlfredConfig, JiraConfig
 
 
@@ -34,7 +36,7 @@ def test_issue_allowed_blocks_other_projects():
         client._project_allowed("OPS")
 
 
-@patch("backend.jira.api.requests.Session")
+@patch("backend.integrations.jira.api.requests.Session")
 def test_search_issues_builds_jql(mock_session_cls):
     session = MagicMock()
     mock_session_cls.return_value = session
@@ -53,7 +55,7 @@ def test_search_issues_builds_jql(mock_session_cls):
     assert body["jql"].startswith('project = "ENG"')
 
 
-@patch("backend.jira.api.requests.Session")
+@patch("backend.integrations.jira.api.requests.Session")
 def test_transition_issue_picks_matching_status(mock_session_cls):
     session = MagicMock()
     mock_session_cls.return_value = session
@@ -96,7 +98,7 @@ def test_transition_issue_picks_matching_status(mock_session_cls):
 
 
 def test_check_jira_disabled():
-    from backend.health import check_jira
+    pass
 
     config = AlfredConfig()
     result = check_jira(config)

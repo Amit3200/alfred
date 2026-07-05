@@ -2,7 +2,7 @@
 
 from unittest.mock import patch
 
-from backend.ollama import service as ollama_service
+from backend.integrations.ollama import service as ollama_service
 
 
 def test_stop_ollama_when_not_installed():

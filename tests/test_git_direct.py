@@ -1,8 +1,14 @@
 """Tests for direct Git routing and text tool-call parsing."""
 
 from __future__ import annotations
+from backend.routing.git_direct import looks_like_code_investigation
+from backend.models.config import GitConfig
+from backend.routing.git_direct import wants_pr_code_analysis
+from backend.integrations.git.api import resolve_repo_slug
+from backend.routing.git_direct import normalize_tool_arguments
 
-from backend.ingress.git_direct import (
+
+from backend.routing.git_direct import (
     detect_git_direct_action,
     extract_pr_reference,
     looks_like_tool_json,
@@ -10,7 +16,7 @@ from backend.ingress.git_direct import (
     parse_text_tool_call,
     wants_pr_summary,
 )
-from backend.ingress.playbooks import Playbook
+from backend.routing.playbooks import Playbook
 from pathlib import Path
 
 
@@ -64,7 +70,7 @@ def test_parse_kimi_tool_tag():
 
 
 def test_looks_like_code_investigation():
-    from backend.ingress.git_direct import looks_like_code_investigation
+    pass
 
     assert looks_like_code_investigation(
         "Can you tell what does recalculation method does? what are steps of it?"
@@ -87,7 +93,7 @@ def test_extract_pr_from_slack_link():
 
 
 def test_detect_get_pr_from_url():
-    from backend.models.config import GitConfig
+    pass
 
     intent = "can you summarize what this PR does - https://github.com/AcmeCorp/platform/pull/1685"
     action = detect_git_direct_action(intent, _git_skill(), GitConfig(default_org="AcmeCorp"))
@@ -100,7 +106,7 @@ def test_wants_pr_summary():
 
 
 def test_wants_pr_code_analysis():
-    from backend.ingress.git_direct import wants_pr_code_analysis
+    pass
 
     assert wants_pr_code_analysis(
         "review https://github.com/AcmeCorp/adhocs/pull/91"
@@ -109,16 +115,16 @@ def test_wants_pr_code_analysis():
 
 
 def test_resolve_repo_slug_with_default_org():
-    from backend.models.config import GitConfig
-    from backend.git.api import resolve_repo_slug
+    pass
+    pass
 
     git = GitConfig(default_org="AcmeCorp", repos=["AcmeCorp/adhocs"])
     assert resolve_repo_slug("adhocs", git) == "AcmeCorp/adhocs"
 
 
 def test_normalize_tool_arguments_short_repo():
-    from backend.models.config import GitConfig
-    from backend.ingress.git_direct import normalize_tool_arguments
+    pass
+    pass
 
     git = GitConfig(default_org="AcmeCorp")
     args = normalize_tool_arguments("get_pr", {"repo": "adhocs", "number": 91}, git)

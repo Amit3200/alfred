@@ -4,14 +4,14 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-from backend.ingress.slack_lists import (
+from backend.formatting.slack_lists import (
     enrich_channel_context_with_lists,
     extract_embedded_list_records,
     extract_list_refs,
     format_list_record,
     wants_slack_list_enrichment,
 )
-from backend.ingress.slack_messages import extract_message_text
+from backend.formatting.slack_messages import extract_message_text
 
 
 def test_wants_slack_list_enrichment_for_ticket_summary():

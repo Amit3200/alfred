@@ -1,6 +1,8 @@
 """Tests for git mirror admin API."""
 
 from __future__ import annotations
+from unittest.mock import patch
+
 
 import json
 from datetime import datetime, timedelta, timezone
@@ -10,7 +12,7 @@ from fastapi.testclient import TestClient
 
 from backend.api.app import create_app
 from backend.config_manager import ConfigManager
-from backend.git.mirror import WorkspaceMirrorManager
+from backend.integrations.git.mirror import WorkspaceMirrorManager
 from backend.models.config import GitConfig
 
 
@@ -83,9 +85,9 @@ def test_list_available_repos_api(tmp_path):
     )
     manager.save_merged(config, secrets)
 
-    from unittest.mock import patch
+    pass
 
-    with patch("backend.git.api._GitHubClient.list_accessible_repos") as mock_list:
+    with patch("backend.integrations.git.api._GitHubClient.list_accessible_repos") as mock_list:
         mock_list.return_value = ["AcmeCorp/platform", "AcmeCorp/other"]
         res = client.get("/api/git/mirrors/repos/available", headers=headers)
 

@@ -1,4 +1,5 @@
 import { Button, Col, Row, Select, Table, Tooltip, Typography } from "antd";
+import { ArrowDownOutlined, ArrowUpOutlined } from "@ant-design/icons";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   api,
@@ -421,6 +422,9 @@ export function UsagePanel() {
     tool_categories: string[];
   }>({ sources: [], users: [], models: [], tool_categories: [] });
 
+  const [checkpoints, setCheckpoints] = useState<any[]>([]);
+  const [checkpointsLoading, setCheckpointsLoading] = useState(false);
+
   const query = useMemo(
     () => ({
       preset,
@@ -436,17 +440,21 @@ export function UsagePanel() {
 
   const load = useCallback(async () => {
     setLoading(true);
+    setCheckpointsLoading(true);
     try {
-      const [summaryRes, seriesRes, filtersRes] = await Promise.all([
+      const [summaryRes, seriesRes, filtersRes, checkpointsRes] = await Promise.all([
         api.observabilitySummary(query),
         api.observabilityTimeseries(query),
         api.observabilityFilters("30d"),
+        api.observabilityCheckpoints(),
       ]);
       setSummary(summaryRes.summary);
       setTimeseries(seriesRes.timeseries);
       setFilterOptions(filtersRes);
+      setCheckpoints(checkpointsRes.checkpoints || []);
     } finally {
       setLoading(false);
+      setCheckpointsLoading(false);
     }
   }, [query]);
 
@@ -489,6 +497,75 @@ export function UsagePanel() {
     () => Object.entries(summary?.by_model ?? {}).sort((a, b) => b[1] - a[1]),
     [summary],
   );
+  const byPlanEntries = useMemo(
+    () => Object.entries(summary?.by_plan ?? {}).sort((a, b) => b[1] - a[1]),
+    [summary],
+  );
+  const byPlanTokensEntries = useMemo(
+    () => Object.entries(summary?.by_plan_tokens ?? {}).sort((a, b) => b[1] - a[1]),
+    [summary],
+  );
+
+  const checkpointColumns = [
+    {
+      title: "Timestamp",
+      dataIndex: "timestamp",
+      key: "timestamp",
+      render: (value: number) => new Date(value * 1000).toLocaleString(),
+      width: 170,
+    },
+    {
+      title: "Task ID",
+      dataIndex: "task_id",
+      key: "task_id",
+      width: 150,
+      render: (val: string) => <span style={{ fontFamily: "monospace", fontSize: 12 }}>{val}</span>,
+    },
+    {
+      title: "Checkpoint Stage",
+      dataIndex: "checkpoint",
+      key: "checkpoint",
+      width: 160,
+    },
+    {
+      title: "Target / Engine",
+      dataIndex: "function_name",
+      key: "function_name",
+      width: 160,
+      render: (val: string) => {
+        if (val === "react") return <span style={{ color: "var(--alfred-accent)", fontWeight: "bold" }}>Standard ReAct</span>;
+        if (val === "hermes") return <span style={{ color: "#bd93f9", fontWeight: "bold" }}>Nous Hermes Loop</span>;
+        return val;
+      }
+    },
+    {
+      title: "Status",
+      dataIndex: "status",
+      key: "status",
+      width: 100,
+      render: (val: string) => {
+        if (val === "started") return <span style={{ color: "var(--alfred-accent)" }}>Started</span>;
+        if (val === "completed") return <span style={{ color: "#50fa7b" }}>Completed</span>;
+        if (val === "error") return <span style={{ color: "#ff5555", fontWeight: "bold" }}>Failed</span>;
+        return val;
+      }
+    },
+    {
+      title: "Diagnostic Notes",
+      dataIndex: "error",
+      key: "error",
+      render: (_: any, row: any) => {
+        if (row.error) {
+          return (
+            <Tooltip title={row.error_stacktrace}>
+              <span style={{ color: "#ff5555", cursor: "help" }}>{row.error} (Hover for traceback)</span>
+            </Tooltip>
+          );
+        }
+        return <span style={{ color: "var(--alfred-text-muted)" }}>None</span>;
+      }
+    }
+  ];
 
   const columns = [
     {
@@ -656,34 +733,75 @@ export function UsagePanel() {
         </Row>
       </div>
 
-      <div className="alfred-stat-grid alfred-stat-grid-usage" style={{ marginBottom: 20 }}>
-        <div className="alfred-stat-card">
-          <div className="alfred-stat-label">LLM calls</div>
-          <div className="alfred-stat-value">{formatNumber(summary?.llm_calls ?? 0)}</div>
+      <div className="alfred-stats-section" style={{ marginBottom: 16 }}>
+        <Typography.Title level={4} style={{ margin: "0 0 12px 0", color: "var(--alfred-text)" }}>
+          Task Execution & Success
+        </Typography.Title>
+        <div className="alfred-stat-grid-5" style={{ marginBottom: 20 }}>
+          <div className="alfred-stat-card">
+            <div className="alfred-stat-label">Tasks Invoked</div>
+            <div className="alfred-stat-value">{formatNumber(summary?.total_tasks ?? 0)}</div>
+          </div>
+          <div className="alfred-stat-card">
+            <div className="alfred-stat-label">Successful Tasks</div>
+            <div className="alfred-stat-value" style={{ color: "var(--alfred-status-ok)" }}>
+              {formatNumber(summary?.successful_tasks ?? 0)}
+            </div>
+          </div>
+          <div className="alfred-stat-card">
+            <div className="alfred-stat-label">Success Rate</div>
+            <div className="alfred-stat-value">
+              {summary?.total_tasks ? `${Math.round(((summary.successful_tasks ?? 0) / summary.total_tasks) * 100)}%` : "—"}
+            </div>
+          </div>
+          <div className="alfred-stat-card">
+            <div className="alfred-stat-label">Plan Events</div>
+            <div className="alfred-stat-value">{formatNumber(summary?.plan_events ?? 0)}</div>
+          </div>
+          <div className="alfred-stat-card">
+            <div className="alfred-stat-label">User Feedback</div>
+            <div className="alfred-stat-value" style={{ fontSize: 20, display: "flex", gap: 12, alignItems: "center", marginTop: 4 }}>
+              <span style={{ color: "var(--alfred-status-ok)", display: "flex", alignItems: "center", gap: 4 }}>
+                <ArrowUpOutlined style={{ fontSize: 18 }} /> {formatNumber(summary?.feedback_good ?? 0)}
+              </span>
+              <span style={{ color: "var(--alfred-status-fail)", display: "flex", alignItems: "center", gap: 4 }}>
+                <ArrowDownOutlined style={{ fontSize: 18 }} /> {formatNumber(summary?.feedback_bad ?? 0)}
+              </span>
+            </div>
+          </div>
         </div>
-        <div className="alfred-stat-card">
-          <div className="alfred-stat-label">Tool calls</div>
-          <div className="alfred-stat-value">{formatNumber(summary?.tool_calls ?? 0)}</div>
-        </div>
-        <div className="alfred-stat-card">
-          <div className="alfred-stat-label">Input tokens</div>
-          <div className="alfred-stat-value">{formatNumber(summary?.prompt_tokens ?? 0)}</div>
-        </div>
-        <div className="alfred-stat-card">
-          <div className="alfred-stat-label">Output tokens</div>
-          <div className="alfred-stat-value">{formatNumber(summary?.completion_tokens ?? 0)}</div>
-        </div>
-        <div className="alfred-stat-card">
-          <div className="alfred-stat-label">Total tokens</div>
-          <div className="alfred-stat-value">{formatNumber(summary?.total_tokens ?? 0)}</div>
-        </div>
-        <div className="alfred-stat-card">
-          <div className="alfred-stat-label">Est. cost</div>
-          <div className="alfred-stat-value">{formatCostUsd(summary?.estimated_cost_usd)}</div>
-        </div>
-        <div className="alfred-stat-card">
-          <div className="alfred-stat-label">Unique users</div>
-          <div className="alfred-stat-value">{formatNumber(byUserEntries.length)}</div>
+      </div>
+
+      <div className="alfred-stats-section" style={{ marginBottom: 16 }}>
+        <Typography.Title level={4} style={{ margin: "0 0 12px 0", color: "var(--alfred-text)" }}>
+          AI Consumption & Costs
+        </Typography.Title>
+        <div className="alfred-stat-grid-5" style={{ marginBottom: 20 }}>
+          <div className="alfred-stat-card">
+            <div className="alfred-stat-label">LLM Calls</div>
+            <div className="alfred-stat-value">{formatNumber(summary?.llm_calls ?? 0)}</div>
+          </div>
+          <div className="alfred-stat-card">
+            <div className="alfred-stat-label">Tool Calls</div>
+            <div className="alfred-stat-value">{formatNumber(summary?.tool_calls ?? 0)}</div>
+          </div>
+          <div className="alfred-stat-card">
+            <div className="alfred-stat-label">Total Tokens</div>
+            <div className="alfred-stat-value" style={{ fontSize: 22 }}>
+              {formatNumber(summary?.total_tokens ?? 0)}
+              <div style={{ fontSize: 11, color: "var(--alfred-text-muted)", fontWeight: "normal", marginTop: 2 }}>
+                {formatNumber(summary?.prompt_tokens ?? 0)} in · {formatNumber(summary?.completion_tokens ?? 0)} out
+              </div>
+            </div>
+          </div>
+          <div className="alfred-stat-card">
+            <div className="alfred-stat-label">Est. Cost</div>
+            <div className="alfred-stat-value">{formatCostUsd(summary?.estimated_cost_usd)}</div>
+          </div>
+          <div className="alfred-stat-card">
+            <div className="alfred-stat-label">Unique Users</div>
+            <div className="alfred-stat-value">{formatNumber(byUserEntries.length)}</div>
+          </div>
         </div>
       </div>
 
@@ -731,6 +849,28 @@ export function UsagePanel() {
           </Col>
         </Row>
       ) : null}
+
+      <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
+        <Col xs={24} md={12}>
+          <BreakdownChart title="By plan (tokens)" entries={byPlanTokensEntries} />
+        </Col>
+        <Col xs={24} md={12}>
+          <BreakdownChart title="By plan (calls)" entries={byPlanEntries} />
+        </Col>
+      </Row>
+
+      <div className="alfred-panel" style={{ marginBottom: 20 }}>
+        <Typography.Title level={5}>Task execution timeline (checkpoints)</Typography.Title>
+        <Table
+          size="small"
+          rowKey={(row) => `${row.timestamp}-${row.task_id}-${row.checkpoint}-${row.function_name}`}
+          loading={checkpointsLoading}
+          columns={checkpointColumns}
+          dataSource={checkpoints}
+          pagination={{ pageSize: 10, hideOnSinglePage: true }}
+          scroll={{ x: 960 }}
+        />
+      </div>
 
       <div className="alfred-panel">
         <Typography.Title level={5}>Recent interactions</Typography.Title>

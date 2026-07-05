@@ -280,6 +280,11 @@ class ObservabilityConfig(BaseModel):
     )
 
 
+class OrchestratorConfig(BaseModel):
+    agent_runner: Literal["react", "hermes"] = "react"
+    self_improvement: bool = True
+
+
 class AlfredConfig(BaseModel):
     """Non-secret configuration persisted to config.yaml."""
 
@@ -295,6 +300,7 @@ class AlfredConfig(BaseModel):
     skills: SkillsConfig = Field(default_factory=SkillsConfig)
     branding: BrandingConfig = Field(default_factory=BrandingConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
+    orchestrator: OrchestratorConfig = Field(default_factory=OrchestratorConfig)
 
 
 class AlfredSecrets(BaseModel):
