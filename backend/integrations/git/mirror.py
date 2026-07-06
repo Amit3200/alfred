@@ -83,7 +83,8 @@ class WorkspaceMirrorManager:
                 refreshed = True
         elif (repo_dir / ".git").exists():
             if ref:
-                self._checkout_ref(repo_dir, ref)
+                fallback_branch = _get_session_active_pr_head(self.data_dir, session_key) or stored_ref
+                self._checkout_ref(repo_dir, ref, fallback_branch=fallback_branch)
                 refreshed = True
             elif self._needs_refresh(entry):
                 self._pull(repo_dir, ref=stored_ref or _current_branch(repo_dir))
@@ -406,14 +407,36 @@ class WorkspaceMirrorManager:
                 logger.exception("Failed to force reset repo %s to FETCH_HEAD", repo_dir)
                 raise RuntimeError(f"Git pull failed and subsequent force reset failed: {reset_exc}") from exc
 
-    def _checkout_ref(self, repo_dir: Path, ref: str) -> None:
-        _run_git(["git", "-C", str(repo_dir), "fetch", "origin", ref, "--depth", "1"])
+    def _checkout_ref(self, repo_dir: Path, ref: str, fallback_branch: str | None = None) -> None:
+        fetch_ref = ref
+        is_sha = bool(re.match(r"^[0-9a-fA-F]{7,40}$", ref))
+        
+        # Git server APIs generally block fetching a commit SHA directly.
+        # If we have a fallback branch name (like the active PR branch), we fetch it to download the target commit.
+        if is_sha and fallback_branch and not re.match(r"^[0-9a-fA-F]{7,40}$", fallback_branch):
+            fetch_ref = fallback_branch
+
         try:
-            _run_git(["git", "-C", str(repo_dir), "checkout", ref])
+            _run_git(["git", "-C", str(repo_dir), "fetch", "origin", fetch_ref, "--depth", "1"])
+        except RuntimeError as fetch_exc:
+            # If fetching direct ref failed (e.g. SHA fetch blocked) and we didn't try fallback branch yet, try it
+            if fetch_ref == ref and fallback_branch and fetch_ref != fallback_branch:
+                try:
+                    _run_git(["git", "-C", str(repo_dir), "fetch", "origin", fallback_branch, "--depth", "1"])
+                except Exception:
+                    raise fetch_exc
+            else:
+                raise fetch_exc
+
+        try:
+            # If the target ref is a SHA, check it out directly. Otherwise, check out FETCH_HEAD.
+            checkout_target = ref if is_sha else "FETCH_HEAD"
+            _run_git(["git", "-C", str(repo_dir), "checkout", "--detach", checkout_target])
             _run_git(["git", "-C", str(repo_dir), "reset", "--hard", "FETCH_HEAD"])
         except RuntimeError as exc:
-            logger.warning("Standard checkout of %s failed: %s. Attempting force checkout.", ref, exc)
-            _run_git(["git", "-C", str(repo_dir), "checkout", "-f", ref])
+            logger.warning("Checkout of %s failed: %s. Attempting force checkout.", ref, exc)
+            checkout_target = ref if is_sha else "FETCH_HEAD"
+            _run_git(["git", "-C", str(repo_dir), "checkout", "-f", "--detach", checkout_target])
             _run_git(["git", "-C", str(repo_dir), "reset", "--hard", "FETCH_HEAD"])
 
     def _try_seed_from_shared(self, repo: str, dest: Path) -> bool:
@@ -493,3 +516,22 @@ def _parse_iso(value: Any) -> datetime | None:
     if parsed.tzinfo is None:
         parsed = parsed.replace(tzinfo=timezone.utc)
     return parsed
+
+
+def _get_session_active_pr_head(data_dir: Path, session_key: str) -> str | None:
+    try:
+        import sqlite3
+        from backend.paths import db_path
+        db = db_path(data_dir)
+        if not db.is_file():
+            return None
+        with sqlite3.connect(db) as conn:
+            row = conn.execute("SELECT payload FROM conversation_sessions WHERE key = ?;", (session_key,)).fetchone()
+            if row:
+                d = json.loads(row[0])
+                active = d.get("metadata", {}).get("active_pr")
+                if isinstance(active, dict) and active.get("head"):
+                    return str(active["head"])
+    except Exception:
+        pass
+    return None
