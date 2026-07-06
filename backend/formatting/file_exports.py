@@ -46,25 +46,55 @@ class TabularData:
 
 
 def prepare_slack_delivery(rendered_text: str, intent: str) -> SlackDelivery:
-    """Format reply text and optionally attach export files."""
+    """Format reply text and optionally attach export files or handle length truncation."""
     export_format = detect_export_format(intent)
-    if not export_format:
-        return SlackDelivery(text=rendered_text)
+    if export_format:
+        table = extract_tabular_data(rendered_text)
+        if table is not None and table.rows:
+            attachment = build_export_attachment(table, export_format)
+            preview = format_code_table(table.headers, table.rows[:5])
+            row_label = "row" if len(table.rows) == 1 else "rows"
+            intro = (
+                f"*Attached:* `{attachment.filename}` ({len(table.rows)} {row_label})\n\n"
+                f"*Preview:*\n{preview}"
+            )
+            if len(table.rows) > 5:
+                intro += f"\n\n_…and {len(table.rows) - 5} more in the file._"
+            return SlackDelivery(text=intro, files=[attachment])
 
-    table = extract_tabular_data(rendered_text)
-    if table is None or not table.rows:
-        return SlackDelivery(text=rendered_text)
+    # If the text is very long (exceeds 3,500 characters), attach it as a file snippet!
+    if len(rendered_text) > 3500:
+        filename = "alfred-reply.md"
+        # Use a more descriptive name if it looks like a PR review
+        if "review" in intent.lower() or "pr" in intent.lower():
+            filename = "pr-review-report.md"
+            
+        attachment = SlackFileAttachment(
+            filename=filename,
+            content=rendered_text.encode("utf-8"),
+            mime_type="text/markdown",
+            title="Alfred Report",
+        )
+        
+        # Take a short prefix of the text to show as an intro in the thread
+        lines = rendered_text.splitlines()
+        prefix_lines = []
+        char_count = 0
+        for line in lines:
+            if char_count + len(line) > 800:
+                break
+            prefix_lines.append(line)
+            char_count += len(line) + 1
+            
+        intro = (
+            f"⚠️ *Alfred Response:* This report exceeds Slack's character limit, so the full version has been attached as a file below.\n\n"
+            f"--- *Preview* ---\n"
+            + "\n".join(prefix_lines)
+            + "\n\n... (full report attached below) ..."
+        )
+        return SlackDelivery(text=intro, files=[attachment])
 
-    attachment = build_export_attachment(table, export_format)
-    preview = format_code_table(table.headers, table.rows[:5])
-    row_label = "row" if len(table.rows) == 1 else "rows"
-    intro = (
-        f"*Attached:* `{attachment.filename}` ({len(table.rows)} {row_label})\n\n"
-        f"*Preview:*\n{preview}"
-    )
-    if len(table.rows) > 5:
-        intro += f"\n\n_…and {len(table.rows) - 5} more in the file._"
-    return SlackDelivery(text=intro, files=[attachment])
+    return SlackDelivery(text=rendered_text)
 
 
 def detect_export_format(intent: str) -> ExportFormat | None:

@@ -63,7 +63,16 @@ def register_graphify_tools(
             budget=budget_int,
         )
         if not result.get("ok"):
-            return ToolResult.error(str(result.get("error") or "Graph query failed."))
+            # Return a friendly fallback answer to let the agent know to use grep_repo or read_file
+            return ToolResult(
+                kind="graph_query",
+                data={
+                    "repo": repo or "main",
+                    "question": question,
+                    "answer": f"Graphify is currently unavailable: {result.get('error')}. Please fall back to standard codebase search tools (grep_repo, read_file).",
+                    "source": "fallback_system",
+                },
+            )
         return ToolResult(
             kind="graph_query",
             data={
