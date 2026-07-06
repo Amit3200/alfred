@@ -473,10 +473,7 @@ def get_logs(
         return {"logs": []}
 
     try:
-        lines = []
-        with open(p_log, "r", encoding="utf-8", errors="ignore") as f:
-            all_lines = f.readlines()
-            lines = all_lines[-1000:]
+        lines = _tail_log_lines(p_log, 1000)
 
         log_re = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+([A-Z]+)\s+\[([^\]]+)\]\s+(.*)$")
 
@@ -539,3 +536,27 @@ def get_logs(
 @router.get("/health")
 def observability_health(manager: ConfigManager = Depends(get_manager)) -> dict[str, str]:
     return {"status": "ok", "backend": "sqlite"}
+
+
+def _tail_log_lines(filepath: Path, n: int = 1000) -> list[str]:
+    """Efficiently read the last N lines of a file by seeking from the end."""
+    if not filepath.is_file():
+        return []
+    try:
+        with open(filepath, "rb") as f:
+            f.seek(0, 2)
+            file_size = f.tell()
+            chunk_size = 8192
+            offset = 0
+            lines: list[str] = []
+            while len(lines) <= n and offset < file_size:
+                offset = min(file_size, offset + chunk_size)
+                f.seek(file_size - offset)
+                chunk = f.read(offset).decode("utf-8", errors="ignore")
+                lines = chunk.splitlines()
+            return lines[-n:]
+    except Exception:
+        # Fallback to simple read if seek fails
+        with open(filepath, "r", encoding="utf-8", errors="ignore") as f:
+            all_lines = f.readlines()
+            return all_lines[-n:]
