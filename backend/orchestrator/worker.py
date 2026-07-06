@@ -203,6 +203,31 @@ class TaskQueueWorker:
                     self.queue.ack(task_id)
                     log_checkpoint("queue_task", task_id, "completed")
 
+                    # If the task was triggered from Slack/UI and contains a PR review, mirror comments directly to GitHub
+                    if task.source != "github" and config.git.enabled and config.git.token and response.text:
+                        from backend.models.session import task_session_key
+                        session_key = task_session_key(task)
+                        session = store.get(session_key) if (session_key and store) else None
+                        active_pr = (session.metadata or {}).get("active_pr") if session else None
+                        
+                        is_pr_review = (
+                            "review" in task.cleaned_intent.lower() 
+                            or "pr" in task.cleaned_intent.lower()
+                        )
+                        if active_pr and is_pr_review:
+                            try:
+                                from backend.integrations.github.client import post_pull_request_comment
+                                body = render_for_channel(response, "github")
+                                post_pull_request_comment(
+                                    config,
+                                    repo=active_pr["repo"],
+                                    number=int(active_pr["number"]),
+                                    body=body,
+                                )
+                                logger.info("Mirrored review comments to GitHub PR #%s", active_pr["number"])
+                            except Exception as git_exc:
+                                logger.warning("Failed to auto-mirror review comments to GitHub: %s", git_exc)
+
                 except Exception as exc:
                     logger.exception("Error processing dequeued task %s", task_id)
                     self.queue.fail(task_id)
