@@ -82,16 +82,12 @@ class WorkspaceMirrorManager:
                 entry["seeded"] = False
                 refreshed = True
         elif (repo_dir / ".git").exists():
-            if ref and ref != stored_ref:
+            if ref:
                 self._checkout_ref(repo_dir, ref)
                 refreshed = True
             elif self._needs_refresh(entry):
                 self._pull(repo_dir, ref=stored_ref or _current_branch(repo_dir))
                 refreshed = True
-
-        if ref and (repo_dir / ".git").exists() and ref != stored_ref and not refreshed:
-            self._checkout_ref(repo_dir, ref)
-            refreshed = True
 
         entry["last_pulled_at"] = _now_iso()
         entry["head_sha"] = _head_sha(repo_dir)
@@ -414,6 +410,7 @@ class WorkspaceMirrorManager:
         _run_git(["git", "-C", str(repo_dir), "fetch", "origin", ref, "--depth", "1"])
         try:
             _run_git(["git", "-C", str(repo_dir), "checkout", ref])
+            _run_git(["git", "-C", str(repo_dir), "reset", "--hard", "FETCH_HEAD"])
         except RuntimeError as exc:
             logger.warning("Standard checkout of %s failed: %s. Attempting force checkout.", ref, exc)
             _run_git(["git", "-C", str(repo_dir), "checkout", "-f", ref])
