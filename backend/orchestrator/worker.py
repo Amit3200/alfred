@@ -207,7 +207,7 @@ class TaskQueueWorker:
                     if task.source != "github" and config.git.enabled and config.git.token and response.text:
                         from backend.models.session import task_session_key
                         session_key = task_session_key(task)
-                        session = store.get(session_key) if (session_key and store) else None
+                        session = store.load(session_key) if (session_key and store) else None
                         active_pr = (session.metadata or {}).get("active_pr") if session else None
                         
                         is_pr_review = (
