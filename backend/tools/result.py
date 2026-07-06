@@ -54,7 +54,12 @@ class ToolResult:
 
     @classmethod
     def athena_query(cls, data: dict[str, Any]) -> ToolResult:
-        return cls(kind="athena_query", data=data)
+        truncated_data = dict(data)
+        if "rows" in truncated_data and isinstance(truncated_data["rows"], list):
+            if len(truncated_data["rows"]) > 150:
+                truncated_data["rows"] = truncated_data["rows"][:150]
+                truncated_data["note"] = f"Truncated from {len(data['rows'])} rows to 150 rows for prompt safety."
+        return cls(kind="athena_query", data=truncated_data)
 
     @classmethod
     def cloudwatch_query(cls, data: dict[str, Any]) -> ToolResult:
@@ -66,7 +71,12 @@ class ToolResult:
 
     @classmethod
     def grade_events_query(cls, data: dict[str, Any]) -> ToolResult:
-        return cls(kind="grade_events_query", data=data)
+        truncated_data = dict(data)
+        if "rows" in truncated_data and isinstance(truncated_data["rows"], list):
+            if len(truncated_data["rows"]) > 150:
+                truncated_data["rows"] = truncated_data["rows"][:150]
+                truncated_data["note"] = f"Truncated from {len(data['rows'])} rows to 150 rows for prompt safety."
+        return cls(kind="grade_events_query", data=truncated_data)
 
 
 def pr_summary_to_dict(pr: PullRequestSummary) -> dict[str, Any]:
