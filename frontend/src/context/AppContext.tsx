@@ -68,8 +68,20 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [dataDir, setDataDir] = useState("");
   const [initialized, setInitialized] = useState(false);
   const [branding, setBranding] = useState<PublicBranding>(defaultPublicBranding());
-  const [view, setView] = useState<AppView>("home");
-  const [settingsPage, setSettingsPage] = useState<SettingsPage>("ai");
+  const parsePath = useCallback((): { view: AppView; settingsPage: SettingsPage } => {
+    const path = window.location.pathname;
+    if (path.startsWith("/chat")) {
+      return { view: "chat", settingsPage: "ai" };
+    }
+    if (path.startsWith("/settings/")) {
+      const page = path.substring("/settings/".length) as SettingsPage;
+      return { view: "settings", settingsPage: page };
+    }
+    return { view: "home", settingsPage: "ai" };
+  }, []);
+
+  const [view, setView] = useState<AppView>(() => parsePath().view);
+  const [settingsPage, setSettingsPage] = useState<SettingsPage>(() => parsePath().settingsPage);
 
   const notify = useCallback((type: "error" | "success", text: string) => {
     showToast(type, text);
@@ -157,9 +169,31 @@ export function AppProvider({ children }: { children: ReactNode }) {
     load();
   }, [load]);
 
+  useEffect(() => {
+    const handlePopState = () => {
+      const current = parsePath();
+      setView(current.view);
+      setSettingsPage(current.settingsPage);
+    };
+    window.addEventListener("popstate", handlePopState);
+    return () => window.removeEventListener("popstate", handlePopState);
+  }, [parsePath]);
+
   const navigate = (nextView: AppView, page?: SettingsPage) => {
     setView(nextView);
     if (page) setSettingsPage(page);
+    
+    // Sync browser URL history
+    let path = "/";
+    if (nextView === "chat") {
+      path = "/chat";
+    } else if (nextView === "settings") {
+      path = `/settings/${page || settingsPage}`;
+    }
+    
+    if (window.location.pathname !== path) {
+      window.history.pushState(null, "", path);
+    }
   };
 
   const saveToken = () => {
