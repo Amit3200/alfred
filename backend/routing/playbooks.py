@@ -222,12 +222,10 @@ class PlaybookStore:
         repo: str = "",
         data_dir: Path | None = None,
     ) -> str:
-        """Catalog (always) + full body for the single routed playbook (when matched)."""
-        parts = [
-            self.format_catalog_for_prompt(channel_id=channel_id, repo=repo),
-            self.format_for_prompt([active], data_dir=data_dir) if active else "",
-        ]
-        return "\n\n".join(part for part in parts if part).strip()
+        """Body for the active playbook if matched; otherwise catalog only."""
+        if active:
+            return self.format_for_prompt([active], data_dir=data_dir)
+        return self.format_catalog_for_prompt(channel_id=channel_id, repo=repo)
 
     def _passes_catalog_filters(
         self,

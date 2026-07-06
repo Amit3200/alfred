@@ -33,7 +33,7 @@ def build_alfred_system_prompt(config: AlfredConfig | None = None, model_name: s
     cfg = config or ConfigModel()
     identity = branding_identity_line(cfg.branding)
     
-    prompt = f"{identity}\n\n{SLACK_FORMAT_RULES}"
+    prompt = f"{identity}\n\n{ALFRED_IDENTITY}\n\n{SLACK_FORMAT_RULES}"
     
     if model_name:
         model_lower = model_name.lower()

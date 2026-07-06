@@ -56,9 +56,11 @@ class ToolResult:
     def athena_query(cls, data: dict[str, Any]) -> ToolResult:
         truncated_data = dict(data)
         if "rows" in truncated_data and isinstance(truncated_data["rows"], list):
-            if len(truncated_data["rows"]) > 150:
-                truncated_data["rows"] = truncated_data["rows"][:150]
+            rows = truncated_data["rows"]
+            if len(rows) > 150:
+                rows = rows[:150]
                 truncated_data["note"] = f"Truncated from {len(data['rows'])} rows to 150 rows for prompt safety."
+            truncated_data["rows"] = _truncate_row_fields(rows)
         return cls(kind="athena_query", data=truncated_data)
 
     @classmethod
@@ -73,10 +75,26 @@ class ToolResult:
     def grade_events_query(cls, data: dict[str, Any]) -> ToolResult:
         truncated_data = dict(data)
         if "rows" in truncated_data and isinstance(truncated_data["rows"], list):
-            if len(truncated_data["rows"]) > 150:
-                truncated_data["rows"] = truncated_data["rows"][:150]
+            rows = truncated_data["rows"]
+            if len(rows) > 150:
+                rows = rows[:150]
                 truncated_data["note"] = f"Truncated from {len(data['rows'])} rows to 150 rows for prompt safety."
+            truncated_data["rows"] = _truncate_row_fields(rows)
         return cls(kind="grade_events_query", data=truncated_data)
+
+
+def _truncate_row_fields(rows: list[dict[str, Any]], max_field_len: int = 500) -> list[dict[str, Any]]:
+    truncated = []
+    for row in rows:
+        new_row = {}
+        for k, v in row.items():
+            val_str = str(v)
+            if len(val_str) > max_field_len:
+                new_row[k] = val_str[:max_field_len] + f"... [Field truncated, original len: {len(val_str)}]"
+            else:
+                new_row[k] = v
+        truncated.append(new_row)
+    return truncated
 
 
 def pr_summary_to_dict(pr: PullRequestSummary) -> dict[str, Any]:
