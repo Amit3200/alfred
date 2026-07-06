@@ -120,7 +120,16 @@ class SchedulerService:
             if not cron_expr:
                 continue
 
-            if cron_matches(cron_expr, dt):
+            tz_name = job.get("timezone") or "Asia/Kolkata"
+            try:
+                from zoneinfo import ZoneInfo
+                local_dt = dt.astimezone()
+                tz_dt = local_dt.astimezone(ZoneInfo(tz_name))
+            except Exception:
+                logger.exception("Failed to evaluate timezone %s, using server local time", tz_name)
+                tz_dt = dt
+
+            if cron_matches(cron_expr, tz_dt):
                 job_id = job["id"]
                 skill_name = job["skill_name"]
                 channel_id = job.get("channel_id")

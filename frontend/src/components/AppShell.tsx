@@ -14,6 +14,7 @@ import { PlaybooksPanel } from "./panels/PlaybooksPanel";
 import { SecretsPanel } from "./panels/SecretsPanel";
 import { UsagePanel } from "./panels/UsagePanel";
 import { SchedulesPanel } from "./panels/SchedulesPanel";
+import { LogsPanel } from "./panels/LogsPanel";
 import { useApp } from "../context/AppContext";
 
 const { Content } = Layout;
@@ -40,6 +41,8 @@ function SettingsContent() {
       return <UsagePanel />;
     case "schedules":
       return <SchedulesPanel />;
+    case "logs":
+      return <LogsPanel />;
     default:
       return <AISettingsPanel />;
   }

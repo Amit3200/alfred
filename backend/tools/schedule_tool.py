@@ -46,6 +46,10 @@ CREATE_SCHEDULE = ToolSchema(
                 "type": "string",
                 "description": "Optional Slack channel ID to post the execution result to.",
             },
+            "timezone": {
+                "type": "string",
+                "description": "Optional timezone to evaluate the cron expression (e.g. 'Asia/Kolkata', 'UTC'). Default is 'Asia/Kolkata'.",
+            },
         },
         "required": ["name", "cron_expression", "instructions"],
     },
@@ -104,6 +108,7 @@ def register_schedule_tools(registry: ToolRegistry, data_dir: Path | None) -> No
         cron_expr = str(args.get("cron_expression") or "").strip()
         instructions = str(args.get("instructions") or "").strip()
         channel_id = args.get("channel_id")
+        timezone = str(args.get("timezone") or "Asia/Kolkata").strip()
 
         if not name or not cron_expr or not instructions:
             return ToolResult.error("name, cron_expression, and instructions are required.")
@@ -140,6 +145,12 @@ def register_schedule_tools(registry: ToolRegistry, data_dir: Path | None) -> No
 
         # Save to database
         try:
+            # Overwrite existing schedule if it shares the same skill_name to avoid duplicates
+            jobs = db_list_schedules(data_dir)
+            existing = next((j for j in jobs if j["skill_name"] == skill_name), None)
+            if existing:
+                job_id = existing["id"]
+
             db_create_schedule(
                 data_dir=data_dir,
                 job_id=job_id,
@@ -149,6 +160,7 @@ def register_schedule_tools(registry: ToolRegistry, data_dir: Path | None) -> No
                 skill_name=skill_name,
                 channel_id=channel_id,
                 user_id="scheduler",
+                timezone=timezone,
             )
         except Exception as exc:
             # Clean up playbook file on DB failure
@@ -215,7 +227,7 @@ def register_schedule_tools(registry: ToolRegistry, data_dir: Path | None) -> No
 
     UPDATE_SCHEDULE = ToolSchema(
         name="update_schedule",
-        description="Update an existing scheduled job configuration (name, cron expression, channel ID, or instructions).",
+        description="Update an existing scheduled job configuration (name, cron expression, channel ID, timezone, or instructions).",
         parameters={
             "type": "object",
             "properties": {
@@ -239,6 +251,10 @@ def register_schedule_tools(registry: ToolRegistry, data_dir: Path | None) -> No
                     "type": "string",
                     "description": "Optional new instructions / playbook content.",
                 },
+                "timezone": {
+                    "type": "string",
+                    "description": "Optional new timezone to evaluate the cron expression in (e.g. 'UTC').",
+                },
             },
             "required": ["job_id"],
         },
@@ -250,6 +266,7 @@ def register_schedule_tools(registry: ToolRegistry, data_dir: Path | None) -> No
         cron_expr = args.get("cron_expression")
         channel_id = args.get("channel_id")
         instructions = args.get("instructions")
+        timezone = args.get("timezone")
 
         if not job_id:
             return ToolResult.error("job_id is required.")
@@ -270,6 +287,7 @@ def register_schedule_tools(registry: ToolRegistry, data_dir: Path | None) -> No
                 description=desc,
                 cron_expression=cron_expr,
                 channel_id=channel_id,
+                timezone=timezone,
             )
 
             # Update playbook file if instructions or name changed

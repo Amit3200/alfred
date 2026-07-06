@@ -50,6 +50,7 @@ def test_db_schedule_crud():
             skill_name="test_skill_1",
             channel_id="C12345",
             user_id="U999",
+            timezone="UTC",
         )
 
         jobs = db_list_schedules(data_dir)
@@ -57,6 +58,7 @@ def test_db_schedule_crud():
         assert jobs[0]["id"] == "test_id_1"
         assert jobs[0]["status"] == "active"
         assert jobs[0]["cron_expression"] == "0 * * * *"
+        assert jobs[0]["timezone"] == "UTC"
 
         # Get detailed schedule
         detail = db_get_schedule(data_dir, "test_id_1")
@@ -70,6 +72,7 @@ def test_db_schedule_crud():
             name="Updated Job Name",
             cron_expression="*/5 * * * *",
             channel_id="C999",
+            timezone="America/New_York",
         )
         assert success is True
 
@@ -77,6 +80,7 @@ def test_db_schedule_crud():
         assert updated["name"] == "Updated Job Name"
         assert updated["cron_expression"] == "*/5 * * * *"
         assert updated["channel_id"] == "C999"
+        assert updated["timezone"] == "America/New_York"
 
         # Toggle inactive
         success = db_toggle_schedule(data_dir, "test_id_1", False)
@@ -126,6 +130,7 @@ def test_schedule_tools():
                 "cron_expression": "*/10 * * * *",
                 "instructions": "Log the current load and CPU usage",
                 "channel_id": "C555",
+                "timezone": "Europe/London",
             },
             allowed=["create_schedule"],
         )
@@ -141,6 +146,7 @@ def test_schedule_tools():
                 "name": "Modified Action Name",
                 "cron_expression": "0 0 * * *",
                 "instructions": "New workflow instructions content",
+                "timezone": "UTC",
             },
             allowed=["update_schedule"],
         )
@@ -152,6 +158,7 @@ def test_schedule_tools():
         job = res_list.data["schedules"][0]
         assert job["name"] == "Modified Action Name"
         assert job["cron_expression"] == "0 0 * * *"
+        assert job["timezone"] == "UTC"
 
         # Toggle schedule tool
         res_toggle = registry.run(

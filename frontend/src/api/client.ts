@@ -488,6 +488,12 @@ export const api = {
       { method: "POST", body: JSON.stringify({ active }) },
       true,
     ),
+  triggerSchedule: (jobId: string) =>
+    request<{ status: string }>(
+      `/api/observability/schedules/${encodeURIComponent(jobId)}/trigger`,
+      { method: "POST" },
+      true,
+    ),
   deleteSchedule: (jobId: string) =>
     request<{ status: string }>(
       `/api/observability/schedules/${encodeURIComponent(jobId)}`,
@@ -498,13 +504,17 @@ export const api = {
     request<ScheduledJob>(`/api/observability/schedules/${encodeURIComponent(jobId)}`, {}, true),
   updateSchedule: (
     jobId: string,
-    body: { name?: string; cron_expression?: string; channel_id?: string | null; instructions?: string },
+    body: { name?: string; cron_expression?: string; channel_id?: string | null; instructions?: string; timezone?: string },
   ) =>
     request<{ status: string }>(
       `/api/observability/schedules/${encodeURIComponent(jobId)}`,
       { method: "PUT", body: JSON.stringify(body) },
       true,
     ),
+  getLogs: (search?: string) => {
+    const query = search ? `?search=${encodeURIComponent(search)}` : "";
+    return request<{ logs: LogEvent[] }>(`/api/observability/logs${query}`, {}, true);
+  },
 
   listPlaybooks: () => request<PlaybooksListResponse>("/api/playbooks", {}, true),
   getPlaybookExample: () => request<PlaybookExampleResponse>("/api/playbooks/example", {}, true),
@@ -959,6 +969,15 @@ export type ScheduledJob = {
   last_run_at?: number | null;
   last_run_status?: string | null;
   instructions?: string;
+  timezone?: string;
+};
+
+export type LogEvent = {
+  timestamp: string;
+  level: string;
+  module: string;
+  message: string;
+  category: "slack" | "git" | "system";
 };
 
 export type PlaybookExampleResponse = {

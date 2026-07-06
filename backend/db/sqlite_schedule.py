@@ -31,10 +31,16 @@ def init_schedule_db(db_file: Path) -> None:
             created_at REAL NOT NULL,
             updated_at REAL NOT NULL,
             last_run_at REAL,
-            last_run_status TEXT
+            last_run_status TEXT,
+            timezone TEXT NOT NULL DEFAULT 'Asia/Kolkata'
         )
         """
     )
+    # Ensure timezone column exists (migration for existing DBs)
+    try:
+        cursor.execute("ALTER TABLE scheduled_jobs ADD COLUMN timezone TEXT NOT NULL DEFAULT 'Asia/Kolkata'")
+    except sqlite3.OperationalError:
+        pass
     conn.commit()
     conn.close()
 
@@ -48,6 +54,7 @@ def db_create_schedule(
     skill_name: str,
     channel_id: str | None,
     user_id: str | None,
+    timezone: str = "Asia/Kolkata",
 ) -> None:
     """Insert a new scheduled job or replace an existing one."""
     db_file = db_path(data_dir)
@@ -59,8 +66,8 @@ def db_create_schedule(
         """
         INSERT OR REPLACE INTO scheduled_jobs (
             id, name, description, cron_expression, skill_name,
-            channel_id, user_id, status, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            channel_id, user_id, status, created_at, updated_at, timezone
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         """,
         (
             job_id,
@@ -73,6 +80,7 @@ def db_create_schedule(
             "active",
             now,
             now,
+            timezone,
         ),
     )
     conn.commit()
@@ -150,6 +158,7 @@ def db_update_schedule(
     description: str | None = None,
     cron_expression: str | None = None,
     channel_id: str | None = None,
+    timezone: str | None = None,
 ) -> bool:
     """Update a scheduled job configuration with the given fields."""
     db_file = db_path(data_dir)
@@ -172,6 +181,9 @@ def db_update_schedule(
     if channel_id is not None:
         updates.append("channel_id = ?")
         params.append(channel_id if channel_id else None)
+    if timezone is not None:
+        updates.append("timezone = ?")
+        params.append(timezone)
 
     if not updates:
         conn.close()

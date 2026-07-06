@@ -116,7 +116,7 @@ class PlaybookStore:
             channel_id=channel_id,
             repo=repo,
             modes=("investigation", "workflow"),
-            require_tools=True,
+            require_tools=False,
         )
 
     def _pick_best(

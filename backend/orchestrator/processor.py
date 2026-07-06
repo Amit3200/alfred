@@ -272,7 +272,7 @@ class TaskProcessor:
                 bool(investigation),
             )
 
-            if investigation and investigation.allowed_tools and (
+            if investigation and (
                 self.config.git.enabled or self.config.jira.enabled or self.config.google.enabled
             ):
                 set_call_kind("investigation")
@@ -554,9 +554,13 @@ class TaskProcessor:
         runner = self.config.orchestrator.agent_runner
         log_checkpoint("agent_loop_start", runner, "started")
 
+        allowed_tools = skill.allowed_tools
+        if not allowed_tools:
+            allowed_tools = list(registry._tools.keys())
+
         if skill.mode in ("investigation", "workflow"):
             from backend.orchestrator.planning import generate_initial_plan
-            generate_initial_plan(task, skill.allowed_tools, self.config, data_dir=self._data_dir)
+            generate_initial_plan(task, allowed_tools, self.config, data_dir=self._data_dir)
 
         try:
             if runner == "hermes":
@@ -565,7 +569,7 @@ class TaskProcessor:
                     provider,
                     messages,
                     registry,
-                    skill.allowed_tools,
+                    allowed_tools,
                     model=model or None,
                     session=session,
                     git=self.config.git,
@@ -575,7 +579,7 @@ class TaskProcessor:
                     provider,
                     messages,
                     registry,
-                    skill.allowed_tools,
+                    allowed_tools,
                     model=model or None,
                     session=session,
                     git=self.config.git,

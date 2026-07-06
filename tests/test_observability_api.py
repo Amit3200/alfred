@@ -51,3 +51,20 @@ def test_observability_summary_requires_admin(client):
     body = ok.json()
     assert body["summary"]["llm_calls"] == 1
     assert body["summary"]["total_tokens"] == 42
+
+
+def test_observability_logs_and_trigger(client):
+    test_client, admin_token = client
+    headers = {"X-Alfred-Token": admin_token}
+    
+    # Test logs endpoint
+    resp = test_client.get("/api/observability/logs", headers=headers)
+    assert resp.status_code == 200
+    assert "logs" in resp.json()
+
+    # Test trigger endpoint with dummy ID
+    resp_trigger = test_client.post(
+        "/api/observability/schedules/dummy_job_id/trigger",
+        headers=headers,
+    )
+    assert resp_trigger.status_code == 404

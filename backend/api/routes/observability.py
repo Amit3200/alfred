@@ -285,6 +285,49 @@ def toggle_schedule(
         raise HTTPException(status_code=500, detail=str(exc))
 
 
+@router.post("/schedules/{job_id}/trigger")
+def trigger_schedule(
+    job_id: str,
+    manager: ConfigManager = Depends(require_admin),
+) -> dict[str, Any]:
+    from backend.db.sqlite_schedule import db_list_schedules, db_update_last_run
+    from backend.db.sqlite_queue import SQLiteQueue
+    from backend.models.task import Task
+    from fastapi import HTTPException
+    try:
+        jobs = db_list_schedules(manager.data_dir)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+    job = next((j for j in jobs if j["id"] == job_id), None)
+    if not job:
+        raise HTTPException(status_code=404, detail="Job not found")
+
+    try:
+        skill_name = job["skill_name"]
+        channel_id = job.get("channel_id")
+        user_id = job.get("user_id") or "admin_ui"
+
+        task = Task(
+            source="scheduler",
+            user_id=user_id,
+            channel_id=channel_id or "",
+            raw_text=f"Manually triggered job {job['name']}",
+            cleaned_intent=f"run {skill_name}",
+            metadata={
+                "job_id": job_id,
+                "job_name": job["name"],
+                "manual": True,
+            },
+        )
+        queue = SQLiteQueue(manager.data_dir)
+        queue.push(task.model_dump())
+        db_update_last_run(manager.data_dir, job_id, "triggered")
+        return {"status": "ok"}
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
 @router.delete("/schedules/{job_id}")
 def delete_schedule(
     job_id: str,
@@ -317,6 +360,7 @@ class UpdateScheduleRequest(BaseModel):
     cron_expression: str | None = None
     channel_id: str | None = None
     instructions: str | None = None
+    timezone: str | None = None
 
 
 @router.get("/schedules/{job_id}")
@@ -379,6 +423,7 @@ def update_schedule(
             description=desc,
             cron_expression=payload.cron_expression,
             channel_id=payload.channel_id,
+            timezone=payload.timezone,
         )
 
         # Update playbook if instructions/name changed
@@ -410,6 +455,82 @@ def update_schedule(
             p_file.write_text(content, encoding="utf-8")
 
         return {"status": "ok"}
+    except Exception as exc:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/logs")
+def get_logs(
+    manager: ConfigManager = Depends(require_admin),
+    limit: int = 500,
+    search: str | None = None,
+) -> dict[str, Any]:
+    from backend.paths import log_path
+    import re
+    p_log = log_path(manager.data_dir)
+    if not p_log.is_file():
+        return {"logs": []}
+
+    try:
+        lines = []
+        with open(p_log, "r", encoding="utf-8", errors="ignore") as f:
+            all_lines = f.readlines()
+            lines = all_lines[-1000:]
+
+        log_re = re.compile(r"^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2})\s+([A-Z]+)\s+\[([^\]]+)\]\s+(.*)$")
+
+        parsed_logs = []
+        current_log = None
+
+        for line in lines:
+            line_str = line.rstrip("\n")
+            if not line_str.strip():
+                continue
+            match = log_re.match(line_str)
+            if match:
+                if current_log:
+                    parsed_logs.append(current_log)
+                timestamp, level, logger_name, message = match.groups()
+
+                category = "system"
+                lower_log = logger_name.lower() + " " + message.lower()
+                if "slack" in lower_log or "bolt" in lower_log:
+                    category = "slack"
+                elif "git" in lower_log or "github" in lower_log or "gitlab" in lower_log:
+                    category = "git"
+
+                current_log = {
+                    "timestamp": timestamp,
+                    "level": level,
+                    "module": logger_name,
+                    "message": message,
+                    "category": category,
+                }
+            else:
+                if current_log:
+                    current_log["message"] += "\n" + line_str
+                else:
+                    parsed_logs.append({
+                        "timestamp": "",
+                        "level": "INFO",
+                        "module": "system",
+                        "message": line_str,
+                        "category": "system",
+                    })
+
+        if current_log:
+            parsed_logs.append(current_log)
+
+        if search:
+            search_lower = search.lower()
+            parsed_logs = [
+                log for log in parsed_logs
+                if search_lower in log["message"].lower() or search_lower in log["module"].lower()
+            ]
+
+        # Return logs in reverse chronological order (newest first)
+        return {"logs": parsed_logs[::-1]}
     except Exception as exc:
         from fastapi import HTTPException
         raise HTTPException(status_code=500, detail=str(exc))

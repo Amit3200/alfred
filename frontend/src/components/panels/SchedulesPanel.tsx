@@ -3,6 +3,7 @@ import {
   CalendarOutlined,
   PlayCircleOutlined,
   EditOutlined,
+  SyncOutlined,
 } from "@ant-design/icons";
 import {
   Button,
@@ -17,6 +18,7 @@ import {
   Modal,
   Form,
   Input,
+  Select,
 } from "antd";
 import { useCallback, useEffect, useState } from "react";
 import { api, type ScheduledJob } from "../../api/client";
@@ -61,6 +63,16 @@ export function SchedulesPanel() {
     }
   };
 
+  const handleTrigger = async (jobId: string) => {
+    try {
+      await api.triggerSchedule(jobId);
+      notify("success", "Successfully triggered schedule on demand.");
+      fetchSchedules();
+    } catch (err: any) {
+      notify("error", `Failed to trigger schedule: ${err.message || err}`);
+    }
+  };
+
   const handleDelete = async (jobId: string) => {
     try {
       await api.deleteSchedule(jobId);
@@ -81,6 +93,7 @@ export function SchedulesPanel() {
         cron_expression: detail.cron_expression,
         channel_id: detail.channel_id || "",
         instructions: detail.instructions || "",
+        timezone: detail.timezone || "Asia/Kolkata",
       });
       setEditModalOpen(true);
     } catch (err: any) {
@@ -100,6 +113,7 @@ export function SchedulesPanel() {
         cron_expression: values.cron_expression,
         channel_id: values.channel_id || null,
         instructions: values.instructions,
+        timezone: values.timezone,
       });
       notify("success", "Successfully updated scheduled job.");
       setEditModalOpen(false);
@@ -135,10 +149,13 @@ export function SchedulesPanel() {
       title: "Cron Expression",
       dataIndex: "cron_expression",
       key: "cron_expression",
-      render: (text: string) => (
-        <Tag icon={<CalendarOutlined />} color="default" style={{ padding: "2px 8px" }}>
-          <code>{text}</code>
-        </Tag>
+      render: (text: string, record: ScheduledJob) => (
+        <Space size="small">
+          <Tag icon={<CalendarOutlined />} color="default" style={{ padding: "2px 8px" }}>
+            <code>{text}</code>
+          </Tag>
+          <Tag color="blue">{record.timezone || "Asia/Kolkata"}</Tag>
+        </Space>
       ),
     },
     {
@@ -205,11 +222,26 @@ export function SchedulesPanel() {
       align: "center" as const,
       render: (record: ScheduledJob) => (
         <Space size="middle">
+          <Popconfirm
+            title="Trigger Job"
+            description="Are you sure you want to run this scheduled job right now on demand?"
+            onConfirm={() => handleTrigger(record.id)}
+            okText="Yes"
+            cancelText="No"
+          >
+            <Button
+              type="text"
+              icon={<PlayCircleOutlined style={{ color: "var(--alfred-primary, #1890ff)" }} />}
+              size="small"
+              title="Run job on demand"
+            />
+          </Popconfirm>
           <Button
             type="text"
             icon={<EditOutlined />}
             size="small"
             onClick={() => handleEditClick(record)}
+            title="Edit scheduled job"
           />
           <Popconfirm
             title="Delete Schedule"
@@ -218,7 +250,7 @@ export function SchedulesPanel() {
             okText="Yes"
             cancelText="No"
           >
-            <Button type="text" danger icon={<DeleteOutlined />} size="small" />
+            <Button type="text" danger icon={<DeleteOutlined />} size="small" title="Delete scheduled job" />
           </Popconfirm>
         </Space>
       ),
@@ -231,7 +263,7 @@ export function SchedulesPanel() {
         Schedules
       </Typography.Title>
       <Typography.Paragraph className="alfred-page-desc">
-        Manage background cron tasks, auto-generated playbooks, and execution history.
+        Manage background cron tasks, auto-generated playbooks, and execution history. Note: All cron expressions evaluate in the job's specified timezone (Default: Asia/Kolkata / IST).
       </Typography.Paragraph>
 
       <div className="alfred-panel">
@@ -246,7 +278,7 @@ export function SchedulesPanel() {
           </div>
           <Button
             type="primary"
-            icon={<PlayCircleOutlined />}
+            icon={<SyncOutlined />}
             onClick={fetchSchedules}
             loading={loading}
           >
@@ -308,6 +340,23 @@ export function SchedulesPanel() {
             help="Slack channel ID to post results (e.g. C0123456789). Leave blank to disable."
           >
             <Input placeholder="e.g. C0123456789" />
+          </Form.Item>
+
+          <Form.Item
+            name="timezone"
+            label="Execution Timezone"
+            rules={[{ required: true, message: "Please select a timezone" }]}
+            help="The timezone used to evaluate the cron expression. Default is Asia/Kolkata (IST)."
+          >
+            <Select
+              options={[
+                { label: "Asia/Kolkata (IST)", value: "Asia/Kolkata" },
+                { label: "Coordinated Universal Time (UTC)", value: "UTC" },
+                { label: "America/New_York (EST/EDT)", value: "America/New_York" },
+                { label: "Europe/London (GMT/BST)", value: "Europe/London" },
+                { label: "Asia/Singapore (SGT)", value: "Asia/Singapore" },
+              ]}
+            />
           </Form.Item>
 
           <Form.Item
