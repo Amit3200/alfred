@@ -11,9 +11,10 @@ if TYPE_CHECKING:
     from backend.routing.playbooks import PlaybookStore
 from backend.models.config import AlfredConfig
 from backend.routing.bm25 import route_by_bm25
-from backend.routing.heuristics import route_by_heuristic
+from backend.routing.heuristics import create_pr_route_decision, route_by_heuristic
 from backend.routing.keyword import playbook_for_decision, route_by_keyword
 from backend.routing.llm import LLMSkillMatcher
+from backend.routing.tool_availability import playbook_has_runnable_tools
 from backend.routing.types import RouteContext, RouteDecision, RouteMode, RouteResult
 
 logger = logging.getLogger(__name__)
@@ -36,18 +37,36 @@ class SkillRouter:
 
     def route(self, context: RouteContext) -> RouteResult:
         """Resolve the best playbook for *context* using layered strategies."""
+        if context.mode == RouteMode.INVESTIGATION:
+            create_pr = create_pr_route_decision(context, self._store, self._config)
+            if create_pr.matched:
+                playbook = playbook_for_decision(create_pr, self._store)
+                if playbook is not None and playbook_has_runnable_tools(
+                    playbook.allowed_tools, self._config
+                ):
+                    logger.debug("Skill route: %s via create-pr priority", playbook.name)
+                    return RouteResult(playbook=playbook, decision=create_pr)
+
         keyword = route_by_keyword(context, self._store)
         if keyword.matched:
             playbook = playbook_for_decision(keyword, self._store)
             if playbook is not None:
-                logger.debug("Skill route: %s via keyword", playbook.name)
-                return RouteResult(playbook=playbook, decision=keyword)
+                if playbook_has_runnable_tools(playbook.allowed_tools, self._config):
+                    logger.debug("Skill route: %s via keyword", playbook.name)
+                    return RouteResult(playbook=playbook, decision=keyword)
+                logger.warning(
+                    "Skipping keyword match for %s — no runnable tools in %s",
+                    playbook.name,
+                    playbook.allowed_tools,
+                )
 
         if context.mode == RouteMode.INVESTIGATION:
             heuristic = route_by_heuristic(context, self._store, self._config)
             if heuristic.matched:
                 playbook = playbook_for_decision(heuristic, self._store)
-                if playbook is not None:
+                if playbook is not None and playbook_has_runnable_tools(
+                    playbook.allowed_tools, self._config
+                ):
                     logger.debug("Skill route: %s via heuristic", playbook.name)
                     return RouteResult(playbook=playbook, decision=heuristic)
 
@@ -55,7 +74,9 @@ class SkillRouter:
             bm25 = route_by_bm25(context, self._store, self._config)
             if bm25.matched:
                 playbook = playbook_for_decision(bm25, self._store)
-                if playbook is not None:
+                if playbook is not None and playbook_has_runnable_tools(
+                    playbook.allowed_tools, self._config
+                ):
                     logger.debug("Skill route: %s via BM25", playbook.name)
                     return RouteResult(playbook=playbook, decision=bm25)
 
@@ -63,7 +84,9 @@ class SkillRouter:
             llm = self._route_by_llm(context)
             if llm.matched:
                 playbook = playbook_for_decision(llm, self._store)
-                if playbook is not None:
+                if playbook is not None and playbook_has_runnable_tools(
+                    playbook.allowed_tools, self._config
+                ):
                     return RouteResult(playbook=playbook, decision=llm)
 
         return RouteResult.none(reason="no keyword, heuristic, BM25, or LLM match")

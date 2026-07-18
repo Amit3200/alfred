@@ -26,6 +26,7 @@ PayloadKind = Literal[
     "google_sheet",
     "google_doc",
     "web_search",
+    "pr_created",
 ]
 
 

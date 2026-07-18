@@ -72,6 +72,44 @@ def delete_session(
     return {"ok": True}
 
 
+@router.get("/sessions/{chat_id}/active-task")
+def get_active_task(
+    chat_id: str,
+    _: ConfigManager = Depends(require_admin),
+    service: UIChatService = Depends(_service),
+):
+    result = service.active_task_for_chat(chat_id)
+    if result is None:
+        return {"task_id": None, "status": None}
+    return result
+
+
+@router.get("/tasks/{task_id}/status")
+def get_task_status(
+    task_id: str,
+    _: ConfigManager = Depends(require_admin),
+    service: UIChatService = Depends(_service),
+):
+    result = service.task_status(task_id)
+    if result is None:
+        raise HTTPException(status_code=404, detail="Task not found")
+    return result
+
+
+@router.post("/tasks/{task_id}/cancel")
+def cancel_task(
+    task_id: str,
+    _: ConfigManager = Depends(require_admin),
+    service: UIChatService = Depends(_service),
+):
+    try:
+        return service.cancel_task(task_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except RuntimeError as exc:
+        raise HTTPException(status_code=503, detail=str(exc)) from exc
+
+
 @router.post("/sessions/{chat_id}/messages")
 def send_message(
     chat_id: str,

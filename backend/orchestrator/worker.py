@@ -105,7 +105,7 @@ class TaskQueueWorker:
 
                     response = processor.process(task)
 
-                    if config.orchestrator.self_improvement and response.text:
+                    if config.orchestrator.self_improvement and response.text and not self.queue.is_cancelled(task_id):
                         from backend.orchestrator.learning import analyze_and_generate_playbook
                         analyze_and_generate_playbook(
                             task,
@@ -194,7 +194,7 @@ class TaskQueueWorker:
                                 logger.exception("Failed to update last run status to success for job %s", job_id)
 
                     elif task.source == "ui":
-                        # For UI Chat, processor.process(task) automatically appends the exchange to SessionStore
+                        # processor.process(task) appends the assistant reply on success
                         pass
                     elif task.source == "github":
                         from backend.integrations.github.client import post_pull_request_comment, REACTION_DONE
@@ -210,8 +210,11 @@ class TaskQueueWorker:
                         )
                         _react_ack(config, task, REACTION_DONE)
 
-                    self.queue.ack(task_id)
-                    log_checkpoint("queue_task", task_id, "completed")
+                    if self.queue.is_cancelled(task_id):
+                        log_checkpoint("queue_task", task_id, "cancelled")
+                    else:
+                        self.queue.ack(task_id)
+                        log_checkpoint("queue_task", task_id, "completed")
 
                     # If the task was triggered from Slack/UI and contains a PR review, mirror comments directly to GitHub
                     if task.source != "github" and config.git.enabled and config.git.token and response.text:
@@ -267,6 +270,28 @@ class TaskQueueWorker:
                                 )
                         except Exception:
                             logger.exception("Failed to send error details back to Slack")
+                    elif task_dict.get("source") == "ui" and task_dict.get("channel_id"):
+                        try:
+                            from backend.api.ui_chat import UI_SOURCE, ui_session_key
+                            from backend.models.response import ResponsePayload
+
+                            chat_id = str(task_dict["channel_id"])
+                            store = SessionStore(self.manager.data_dir)
+                            store.append_assistant_turn(
+                                ui_session_key(chat_id),
+                                source=UI_SOURCE,
+                                scope_id=chat_id,
+                                thread_id=chat_id,
+                                assistant_content=(
+                                    f"Sorry, I hit an error while processing your request: {exc}"
+                                ),
+                                assistant_payload=ResponsePayload(
+                                    kind="error",
+                                    data={"message": str(exc)},
+                                ),
+                            )
+                        except Exception:
+                            logger.exception("Failed to append UI chat error reply")
                     elif task_dict.get("source") == "github" and task_dict.get("channel_id"):
                         try:
                             from backend.integrations.github.client import post_pull_request_comment, REACTION_FAILED

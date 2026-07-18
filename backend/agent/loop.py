@@ -34,6 +34,8 @@ def run_agent_loop(
     conversation = list(messages)
 
     from backend.observability.checkpoint import current_task_id, current_data_dir
+    from backend.orchestrator.task_cancel import raise_if_cancelled
+
     task_id = current_task_id.get()
     data_dir = current_data_dir.get()
 
@@ -45,6 +47,7 @@ def run_agent_loop(
         return None
 
     for iteration in range(max_iterations):
+        raise_if_cancelled(data_dir, task_id)
         logger.debug("Agent loop iteration %d", iteration + 1)
 
         plan_content = get_plan_context()

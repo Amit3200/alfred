@@ -30,6 +30,18 @@ _PLAN_HANDOFF = re.compile(
     r"\b(?:implement|execute|continue(?:\s+with)?|start|run|open\s+pr\s+for)\s+(?:the\s+)?plan\b",
     re.IGNORECASE,
 )
+_PROCEED_CONFIRMATION = re.compile(
+    r"^(?:yes(?:,\s*proceed)?|proceed|go ahead|do it|sure|ok|yep|please proceed)\.?$",
+    re.IGNORECASE,
+)
+_PROCEED_WITH_PR = re.compile(
+    r"\b(?:yes,?\s*proceed|push(?:\s+and\s+create)?|open(?:ing)?\s+(?:the\s+)?draft\s+pr|raise(?:\s+this)?|can we raise)\b",
+    re.IGNORECASE,
+)
+_AFFIRMATIVE_ONLY = re.compile(
+    r"^(?:yes(?:,\s*proceed)?|proceed|go ahead|do it|sure|ok|yep)\.?$",
+    re.IGNORECASE,
+)
 
 _TECH_SIGNALS = (
     "error",
@@ -135,6 +147,32 @@ def _detect_repo(
     return None
 
 
+def _looks_like_proceed_confirmation(intent: str) -> bool:
+    text = intent.strip()
+    if not text:
+        return False
+    if _PROCEED_CONFIRMATION.match(text):
+        return True
+    return bool(_PROCEED_WITH_PR.search(text) and len(text) < 240)
+
+
+def _goal_from_session_turns(session: ConversationSession | None) -> str:
+    if not session or not session.turns:
+        return ""
+    for turn in reversed(session.turns):
+        if turn.role != "user":
+            continue
+        content = (turn.content or "").strip()
+        if len(content) < 20 or _AFFIRMATIVE_ONLY.match(content):
+            continue
+        if _looks_like_proceed_confirmation(content):
+            continue
+        if _CREATE_PR_BARE.match(content):
+            continue
+        return content[:500]
+    return ""
+
+
 def _goal_text(
     intent: str,
     *,
@@ -145,7 +183,10 @@ def _goal_text(
         return str(draft["goal"]).strip()
     remainder = _strip_command_prefix(intent)
     if remainder and not _CREATE_PR_BARE.match(intent) and not _PLAN_BARE.match(intent):
-        return remainder
+        if _AFFIRMATIVE_ONLY.match(remainder.strip()):
+            return ""
+        if len(remainder.strip()) >= 12:
+            return remainder
     if slack_context:
         for line in slack_context.splitlines():
             lower = line.lower()
@@ -168,7 +209,14 @@ def _merge_draft_from_message(
     if field == "repo" and text.lower() in ("use default", "default"):
         updated.pop("awaiting", None)
         return updated
-    updated[field] = text
+    if field == "repo":
+        match = _REPO_SLUG_RE.search(text)
+        if match:
+            updated["repo"] = match.group(1)
+        else:
+            updated[field] = text
+    else:
+        updated[field] = text
     updated["awaiting"] = awaiting[1:]
     return updated
 
@@ -263,6 +311,39 @@ def gate_create_pr(
 
     draft = _workflow_draft(session, "workflow_create_pr")
     draft = _merge_plan_workflow_draft(draft, session)
+
+    if _looks_like_proceed_confirmation(task.cleaned_intent):
+        if not draft.get("goal") or len(str(draft.get("goal") or "")) < 12:
+            plan_goal = _goal_from_session_plan(session)
+            if plan_goal:
+                draft["goal"] = plan_goal
+        if not draft.get("goal") or len(str(draft.get("goal") or "")) < 12:
+            turn_goal = _goal_from_session_turns(session)
+            if turn_goal:
+                draft["goal"] = turn_goal
+        if not draft.get("repo"):
+            detected = _detect_repo(
+                task.cleaned_intent,
+                config,
+                slack_context=slack_context,
+                draft=draft,
+                task=task,
+            )
+            if detected:
+                draft["repo"] = detected
+        if draft.get("repo") and draft.get("goal") and len(str(draft.get("goal") or "")) >= 12:
+            draft.pop("awaiting", None)
+            draft["ready"] = True
+            enriched = (
+                f"Push the committed branch and create a draft PR on {draft['repo']}: {draft['goal']}. "
+                "Use git_push_branch then create_pull_request — do not re-implement from scratch."
+            )
+            return WorkflowGateResult(
+                ready=True,
+                enriched_intent=enriched,
+                metadata_patch={"workflow_create_pr": draft},
+            )
+
     awaiting = list(draft.get("awaiting") or [])
     if awaiting and session and session.turns:
         draft = _merge_draft_from_message(draft, task.cleaned_intent, awaiting=awaiting)

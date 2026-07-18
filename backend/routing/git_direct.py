@@ -267,6 +267,10 @@ _CODE_INVESTIGATION_HINTS = (
     "which file",
     "find in code",
     "handled in",
+    "integrate",
+    "libs/",
+    "in cipher",
+    "cipher repo",
 )
 
 

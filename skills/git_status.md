@@ -3,12 +3,15 @@ name: git_status
 description: List and inspect pull requests via GitHub or GitLab API
 mode: investigation
 trigger_keywords:
-  - pr
-  - pull request
-  - merge request
   - my prs
   - open prs
   - my pull requests
+  - list prs
+  - list pull requests
+  - show prs
+  - what prs
+  - any open prs
+  - merge request
 allowed_channels:
   - "*"
 allowed_tools:

@@ -701,6 +701,98 @@ body,
   overflow: hidden;
 }
 
+.alfred-main-inner:has(.alfred-usage-page) {
+  padding: 20px 24px 16px;
+  height: 100vh;
+  min-height: 0;
+  overflow: auto;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+}
+
+.alfred-usage-page {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: calc(100vh - 48px);
+  gap: 12px;
+}
+
+.alfred-usage-header {
+  flex: 0 0 auto;
+}
+
+.alfred-usage-subtitle {
+  font-size: 13px;
+}
+
+.alfred-usage-filters {
+  flex: 0 0 auto;
+  align-self: stretch;
+  height: auto !important;
+  padding: 10px 14px !important;
+}
+
+.alfred-usage-filters .ant-row {
+  row-gap: 8px !important;
+}
+
+.alfred-usage-filters .alfred-field-label {
+  margin-bottom: 4px;
+}
+
+.alfred-usage-tabs-shell {
+  flex: 1 1 auto;
+  min-height: 420px;
+  display: flex;
+  flex-direction: column;
+}
+
+.alfred-usage-tabs {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.alfred-usage-tabs .ant-tabs-nav {
+  margin-bottom: 8px !important;
+}
+
+.alfred-usage-tabs .ant-tabs-content-holder {
+  min-height: 360px;
+}
+
+.alfred-usage-tab-body {
+  min-height: 360px;
+}
+
+.alfred-usage-tab-overview {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding-bottom: 8px;
+}
+
+.alfred-usage-stat-row {
+  margin-bottom: 0 !important;
+}
+
+.alfred-usage-chart-row {
+  margin-bottom: 0 !important;
+}
+
+.alfred-usage-chart-card-compact {
+  padding: 12px 14px !important;
+}
+
+.alfred-usage-tab-table {
+  padding: 0 !important;
+}
+
+.alfred-usage-tab-table .ant-table-body {
+  max-height: calc(100vh - 360px);
+}
+
 .alfred-settings-page {
   width: 100%;
   max-width: none;
@@ -1526,6 +1618,29 @@ body,
 
 .alfred-chat-bubble-assistant .alfred-chat-bubble-body {
   white-space: normal;
+}
+
+.alfred-chat-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.alfred-chat-progress-steps {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.alfred-chat-progress-step {
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--alfred-surface);
+  color: var(--alfred-text-faint);
+  text-transform: capitalize;
 }
 
 .alfred-chat-markdown {

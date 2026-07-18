@@ -1,5 +1,4 @@
-import { Button, Col, Row, Select, Table, Tooltip, Typography } from "antd";
-import { ArrowDownOutlined, ArrowUpOutlined } from "@ant-design/icons";
+import { Button, Col, Row, Select, Table, Tabs, Tooltip, Typography } from "antd";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   api,
@@ -10,6 +9,7 @@ import {
 
 type Preset = "24h" | "7d" | "30d" | "month";
 type Bucket = "hour" | "day" | "month";
+type UsageTab = "overview" | "interactions" | "tasks";
 const EVENTS_PAGE_SIZE = 20;
 
 function formatNumber(value: number): string {
@@ -408,6 +408,7 @@ export function UsagePanel() {
   const [model, setModel] = useState<string | undefined>();
   const [eventType, setEventType] = useState<"llm_call" | "tool_call" | undefined>();
   const [toolCategory, setToolCategory] = useState<string | undefined>();
+  const [activeTab, setActiveTab] = useState<UsageTab>("overview");
   const [loading, setLoading] = useState(false);
   const [summary, setSummary] = useState<ObservabilitySummary | null>(null);
   const [timeseries, setTimeseries] = useState<ObservabilityTimeseries | null>(null);
@@ -415,6 +416,7 @@ export function UsagePanel() {
   const [eventsTotal, setEventsTotal] = useState(0);
   const [eventsPage, setEventsPage] = useState(1);
   const [eventsLoading, setEventsLoading] = useState(false);
+  const [interactionsLoaded, setInteractionsLoaded] = useState(false);
   const [filterOptions, setFilterOptions] = useState<{
     sources: string[];
     users: string[];
@@ -424,6 +426,7 @@ export function UsagePanel() {
 
   const [checkpoints, setCheckpoints] = useState<any[]>([]);
   const [checkpointsLoading, setCheckpointsLoading] = useState(false);
+  const [tasksLoaded, setTasksLoaded] = useState(false);
 
   const query = useMemo(
     () => ({
@@ -438,25 +441,31 @@ export function UsagePanel() {
     [preset, bucket, source, user, model, eventType, toolCategory],
   );
 
-  const load = useCallback(async () => {
+  const loadOverview = useCallback(async () => {
     setLoading(true);
-    setCheckpointsLoading(true);
     try {
-      const [summaryRes, seriesRes, filtersRes, checkpointsRes] = await Promise.all([
+      const [summaryRes, seriesRes, filtersRes] = await Promise.all([
         api.observabilitySummary(query),
         api.observabilityTimeseries(query),
         api.observabilityFilters("30d"),
-        api.observabilityCheckpoints(),
       ]);
       setSummary(summaryRes.summary);
       setTimeseries(seriesRes.timeseries);
       setFilterOptions(filtersRes);
-      setCheckpoints(checkpointsRes.checkpoints || []);
     } finally {
       setLoading(false);
-      setCheckpointsLoading(false);
     }
   }, [query]);
+
+  const loadCheckpoints = useCallback(async () => {
+    setCheckpointsLoading(true);
+    try {
+      const checkpointsRes = await api.observabilityCheckpoints();
+      setCheckpoints(checkpointsRes.checkpoints || []);
+    } finally {
+      setCheckpointsLoading(false);
+    }
+  }, []);
 
   const loadEvents = useCallback(async () => {
     setEventsLoading(true);
@@ -475,15 +484,54 @@ export function UsagePanel() {
 
   useEffect(() => {
     setEventsPage(1);
-  }, [query]);
+    setInteractionsLoaded(activeTab === "interactions");
+    setTasksLoaded(activeTab === "tasks");
+  }, [query, activeTab]);
 
   useEffect(() => {
-    void load();
-  }, [load]);
+    void loadOverview();
+  }, [loadOverview]);
 
   useEffect(() => {
-    void loadEvents();
-  }, [loadEvents]);
+    if (interactionsLoaded) {
+      void loadEvents();
+    }
+  }, [interactionsLoaded, loadEvents]);
+
+  useEffect(() => {
+    if (tasksLoaded) {
+      void loadCheckpoints();
+    }
+  }, [tasksLoaded, loadCheckpoints]);
+
+  const refreshActive = useCallback(() => {
+    void loadOverview();
+    if (activeTab === "interactions") {
+      if (!interactionsLoaded) {
+        setInteractionsLoaded(true);
+      } else {
+        void loadEvents();
+      }
+    }
+    if (activeTab === "tasks") {
+      if (!tasksLoaded) {
+        setTasksLoaded(true);
+      } else {
+        void loadCheckpoints();
+      }
+    }
+  }, [activeTab, interactionsLoaded, tasksLoaded, loadOverview, loadEvents, loadCheckpoints]);
+
+  const onTabChange = useCallback((key: string) => {
+    const tab = key as UsageTab;
+    setActiveTab(tab);
+    if (tab === "interactions" && !interactionsLoaded) {
+      setInteractionsLoaded(true);
+    }
+    if (tab === "tasks" && !tasksLoaded) {
+      setTasksLoaded(true);
+    }
+  }, [interactionsLoaded, tasksLoaded]);
 
   const byUserEntries = useMemo(
     () => Object.entries(summary?.by_user ?? {}).sort((a, b) => b[1] - a[1]),
@@ -499,10 +547,6 @@ export function UsagePanel() {
   );
   const byPlanEntries = useMemo(
     () => Object.entries(summary?.by_plan ?? {}).sort((a, b) => b[1] - a[1]),
-    [summary],
-  );
-  const byPlanTokensEntries = useMemo(
-    () => Object.entries(summary?.by_plan_tokens ?? {}).sort((a, b) => b[1] - a[1]),
     [summary],
   );
 
@@ -626,19 +670,19 @@ export function UsagePanel() {
   ];
 
   return (
-    <div className="alfred-settings-page">
-      <Typography.Title level={3} className="alfred-page-title">
-        Usage & observability
-      </Typography.Title>
-      <Typography.Paragraph className="alfred-page-desc">
-        Track AI calls, token usage, estimated cost, tools, and who triggered them. Slack users show
-        display names when the bot token can resolve them; add manual aliases in{" "}
-        <Typography.Text code>observability.user_labels</Typography.Text> in config.yaml. Cost uses
-        approximate per-model rates — override via{" "}
-        <Typography.Text code>observability.model_pricing</Typography.Text>.
-      </Typography.Paragraph>
+    <div className="alfred-settings-page alfred-usage-page">
+      <div className="alfred-usage-header">
+        <div>
+          <Typography.Title level={3} className="alfred-page-title" style={{ marginBottom: 4 }}>
+            Usage & observability
+          </Typography.Title>
+          <Typography.Text type="secondary" className="alfred-usage-subtitle">
+            AI calls, tokens, cost, and task diagnostics. Table tabs load on demand.
+          </Typography.Text>
+        </div>
+      </div>
 
-      <div className="alfred-panel" style={{ marginBottom: 20 }}>
+      <div className="alfred-panel alfred-usage-filters">
         <Row gutter={[12, 12]}>
           <Col xs={24} md={6}>
             <label className="alfred-field-label">Range</label>
@@ -726,172 +770,143 @@ export function UsagePanel() {
             />
           </Col>
           <Col xs={24} md={6} style={{ display: "flex", alignItems: "flex-end" }}>
-            <Button type="primary" onClick={() => void load()} loading={loading}>
+            <Button type="primary" onClick={() => void refreshActive()} loading={loading}>
               Refresh
             </Button>
           </Col>
         </Row>
       </div>
 
-      <div className="alfred-stats-section" style={{ marginBottom: 16 }}>
-        <Typography.Title level={4} style={{ margin: "0 0 12px 0", color: "var(--alfred-text)" }}>
-          Task Execution & Success
-        </Typography.Title>
-        <div className="alfred-stat-grid-5" style={{ marginBottom: 20 }}>
-          <div className="alfred-stat-card">
-            <div className="alfred-stat-label">Tasks Invoked</div>
-            <div className="alfred-stat-value">{formatNumber(summary?.total_tasks ?? 0)}</div>
-          </div>
-          <div className="alfred-stat-card">
-            <div className="alfred-stat-label">Successful Tasks</div>
-            <div className="alfred-stat-value" style={{ color: "var(--alfred-status-ok)" }}>
-              {formatNumber(summary?.successful_tasks ?? 0)}
-            </div>
-          </div>
-          <div className="alfred-stat-card">
-            <div className="alfred-stat-label">Success Rate</div>
-            <div className="alfred-stat-value">
-              {summary?.total_tasks ? `${Math.round(((summary.successful_tasks ?? 0) / summary.total_tasks) * 100)}%` : "—"}
-            </div>
-          </div>
-          <div className="alfred-stat-card">
-            <div className="alfred-stat-label">Plan Events</div>
-            <div className="alfred-stat-value">{formatNumber(summary?.plan_events ?? 0)}</div>
-          </div>
-          <div className="alfred-stat-card">
-            <div className="alfred-stat-label">User Feedback</div>
-            <div className="alfred-stat-value" style={{ fontSize: 20, display: "flex", gap: 12, alignItems: "center", marginTop: 4 }}>
-              <span style={{ color: "var(--alfred-status-ok)", display: "flex", alignItems: "center", gap: 4 }}>
-                <ArrowUpOutlined style={{ fontSize: 18 }} /> {formatNumber(summary?.feedback_good ?? 0)}
-              </span>
-              <span style={{ color: "var(--alfred-status-fail)", display: "flex", alignItems: "center", gap: 4 }}>
-                <ArrowDownOutlined style={{ fontSize: 18 }} /> {formatNumber(summary?.feedback_bad ?? 0)}
-              </span>
-            </div>
-          </div>
-        </div>
-      </div>
+      <div className="alfred-usage-tabs-shell">
+        <Tabs
+          className="alfred-usage-tabs"
+          activeKey={activeTab}
+          onChange={onTabChange}
+          destroyInactiveTabPane
+          items={[
+          {
+            key: "overview",
+            label: "Overview",
+            children: (
+              <div className="alfred-usage-tab-body alfred-usage-tab-overview">
+                <div className="alfred-stat-grid-5 alfred-usage-stat-row">
+                  <div className="alfred-stat-card">
+                    <div className="alfred-stat-label">Tasks</div>
+                    <div className="alfred-stat-value">{formatNumber(summary?.total_tasks ?? 0)}</div>
+                  </div>
+                  <div className="alfred-stat-card">
+                    <div className="alfred-stat-label">Success rate</div>
+                    <div className="alfred-stat-value" style={{ color: "var(--alfred-status-ok)" }}>
+                      {summary?.total_tasks
+                        ? `${Math.round(((summary.successful_tasks ?? 0) / summary.total_tasks) * 100)}%`
+                        : "—"}
+                    </div>
+                  </div>
+                  <div className="alfred-stat-card">
+                    <div className="alfred-stat-label">LLM calls</div>
+                    <div className="alfred-stat-value">{formatNumber(summary?.llm_calls ?? 0)}</div>
+                  </div>
+                  <div className="alfred-stat-card">
+                    <div className="alfred-stat-label">Tokens</div>
+                    <div className="alfred-stat-value" style={{ fontSize: 20 }}>
+                      {formatNumber(summary?.total_tokens ?? 0)}
+                    </div>
+                  </div>
+                  <div className="alfred-stat-card">
+                    <div className="alfred-stat-label">Est. cost</div>
+                    <div className="alfred-stat-value">{formatCostUsd(summary?.estimated_cost_usd)}</div>
+                  </div>
+                </div>
 
-      <div className="alfred-stats-section" style={{ marginBottom: 16 }}>
-        <Typography.Title level={4} style={{ margin: "0 0 12px 0", color: "var(--alfred-text)" }}>
-          AI Consumption & Costs
-        </Typography.Title>
-        <div className="alfred-stat-grid-5" style={{ marginBottom: 20 }}>
-          <div className="alfred-stat-card">
-            <div className="alfred-stat-label">LLM Calls</div>
-            <div className="alfred-stat-value">{formatNumber(summary?.llm_calls ?? 0)}</div>
-          </div>
-          <div className="alfred-stat-card">
-            <div className="alfred-stat-label">Tool Calls</div>
-            <div className="alfred-stat-value">{formatNumber(summary?.tool_calls ?? 0)}</div>
-          </div>
-          <div className="alfred-stat-card">
-            <div className="alfred-stat-label">Total Tokens</div>
-            <div className="alfred-stat-value" style={{ fontSize: 22 }}>
-              {formatNumber(summary?.total_tokens ?? 0)}
-              <div style={{ fontSize: 11, color: "var(--alfred-text-muted)", fontWeight: "normal", marginTop: 2 }}>
-                {formatNumber(summary?.prompt_tokens ?? 0)} in · {formatNumber(summary?.completion_tokens ?? 0)} out
+                <Row gutter={[12, 12]} className="alfred-usage-chart-row">
+                  <Col xs={24} lg={8}>
+                    <div className="alfred-panel alfred-usage-chart-card alfred-usage-chart-card-compact">
+                      <UsageLineChart
+                        title="LLM calls"
+                        points={timeseries?.points ?? []}
+                        metric="llm_calls"
+                        bucket={bucket}
+                      />
+                    </div>
+                  </Col>
+                  <Col xs={24} lg={8}>
+                    <div className="alfred-panel alfred-usage-chart-card alfred-usage-chart-card-compact">
+                      <UsageLineChart
+                        title="Tool calls"
+                        points={timeseries?.points ?? []}
+                        metric="tool_calls"
+                        bucket={bucket}
+                      />
+                    </div>
+                  </Col>
+                  <Col xs={24} lg={8}>
+                    <div className="alfred-panel alfred-usage-chart-card alfred-usage-chart-card-compact">
+                      <TokenStackedBarChart points={timeseries?.points ?? []} bucket={bucket} />
+                    </div>
+                  </Col>
+                </Row>
+
+                <Row gutter={[12, 12]}>
+                  <Col xs={24} md={12} lg={6}>
+                    <BreakdownChart title="By user" entries={byUserEntries} />
+                  </Col>
+                  <Col xs={24} md={12} lg={6}>
+                    <BreakdownChart title="By source" entries={bySourceEntries} />
+                  </Col>
+                  <Col xs={24} md={12} lg={6}>
+                    <BreakdownChart title="By model" entries={byModelEntries} />
+                  </Col>
+                  <Col xs={24} md={12} lg={6}>
+                    <BreakdownChart title="By plan" entries={byPlanEntries} />
+                  </Col>
+                </Row>
               </div>
-            </div>
-          </div>
-          <div className="alfred-stat-card">
-            <div className="alfred-stat-label">Est. Cost</div>
-            <div className="alfred-stat-value">{formatCostUsd(summary?.estimated_cost_usd)}</div>
-          </div>
-          <div className="alfred-stat-card">
-            <div className="alfred-stat-label">Unique Users</div>
-            <div className="alfred-stat-value">{formatNumber(byUserEntries.length)}</div>
-          </div>
-        </div>
-      </div>
-
-      <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
-        <Col xs={24} lg={8}>
-          <div className="alfred-panel alfred-usage-chart-card">
-            <UsageLineChart
-              title="LLM calls"
-              points={timeseries?.points ?? []}
-              metric="llm_calls"
-              bucket={bucket}
-            />
-          </div>
-        </Col>
-        <Col xs={24} lg={8}>
-          <div className="alfred-panel alfred-usage-chart-card">
-            <UsageLineChart
-              title="Tool calls"
-              points={timeseries?.points ?? []}
-              metric="tool_calls"
-              bucket={bucket}
-            />
-          </div>
-        </Col>
-        <Col xs={24} lg={8}>
-          <div className="alfred-panel alfred-usage-chart-card">
-            <TokenStackedBarChart points={timeseries?.points ?? []} bucket={bucket} />
-          </div>
-        </Col>
-      </Row>
-
-      <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
-        <Col xs={24} md={12}>
-          <BreakdownChart title="By user" entries={byUserEntries} />
-        </Col>
-        <Col xs={24} md={12}>
-          <BreakdownChart title="By source" entries={bySourceEntries} />
-        </Col>
-      </Row>
-
-      {byModelEntries.length > 0 ? (
-        <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
-          <Col xs={24}>
-            <BreakdownChart title="By model" entries={byModelEntries} />
-          </Col>
-        </Row>
-      ) : null}
-
-      <Row gutter={[16, 16]} style={{ marginBottom: 20 }}>
-        <Col xs={24} md={12}>
-          <BreakdownChart title="By plan (tokens)" entries={byPlanTokensEntries} />
-        </Col>
-        <Col xs={24} md={12}>
-          <BreakdownChart title="By plan (calls)" entries={byPlanEntries} />
-        </Col>
-      </Row>
-
-      <div className="alfred-panel" style={{ marginBottom: 20 }}>
-        <Typography.Title level={5}>Task execution timeline (checkpoints)</Typography.Title>
-        <Table
-          size="small"
-          rowKey={(row) => `${row.timestamp}-${row.task_id}-${row.checkpoint}-${row.function_name}`}
-          loading={checkpointsLoading}
-          columns={checkpointColumns}
-          dataSource={checkpoints}
-          pagination={{ pageSize: 10, hideOnSinglePage: true }}
-          scroll={{ x: 960 }}
-        />
-      </div>
-
-      <div className="alfred-panel">
-        <Typography.Title level={5}>Recent interactions</Typography.Title>
-        <Table
-          size="small"
-          rowKey={(row) =>
-            `${row.recorded_at}-${row.event_type}-${row.task_id || ""}-${row.tool_name || row.model || ""}`
-          }
-          loading={eventsLoading}
-          columns={columns}
-          dataSource={events}
-          pagination={{
-            current: eventsPage,
-            pageSize: EVENTS_PAGE_SIZE,
-            total: eventsTotal,
-            showSizeChanger: false,
-            hideOnSinglePage: true,
-            showTotal: (total) => `${total.toLocaleString()} interactions`,
-            onChange: (page) => setEventsPage(page),
-          }}
-          scroll={{ x: 960 }}
+            ),
+          },
+          {
+            key: "interactions",
+            label: "Recent interactions",
+            children: (
+              <div className="alfred-panel alfred-usage-tab-body alfred-usage-tab-table">
+                <Table
+                  size="small"
+                  rowKey={(row) =>
+                    `${row.recorded_at}-${row.event_type}-${row.task_id || ""}-${row.tool_name || row.model || ""}`
+                  }
+                  loading={eventsLoading}
+                  columns={columns}
+                  dataSource={events}
+                  pagination={{
+                    current: eventsPage,
+                    pageSize: EVENTS_PAGE_SIZE,
+                    total: eventsTotal,
+                    showSizeChanger: false,
+                    showTotal: (total) => `${total.toLocaleString()} interactions`,
+                    onChange: (page) => setEventsPage(page),
+                  }}
+                  scroll={{ x: 960, y: "calc(100vh - 340px)" }}
+                />
+              </div>
+            ),
+          },
+          {
+            key: "tasks",
+            label: "Task execution",
+            children: (
+              <div className="alfred-panel alfred-usage-tab-body alfred-usage-tab-table">
+                <Table
+                  size="small"
+                  rowKey={(row) => `${row.timestamp}-${row.task_id}-${row.checkpoint}-${row.function_name}`}
+                  loading={checkpointsLoading}
+                  columns={checkpointColumns}
+                  dataSource={checkpoints}
+                  pagination={{ pageSize: 15, showSizeChanger: false }}
+                  scroll={{ x: 960, y: "calc(100vh - 380px)" }}
+                />
+              </div>
+            ),
+          },
+        ]}
         />
       </div>
     </div>

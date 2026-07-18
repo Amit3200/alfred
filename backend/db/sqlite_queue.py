@@ -108,3 +108,50 @@ class SQLiteQueue(BaseQueue):
         row = cursor.fetchone()
         conn.close()
         return row[0] if row else None
+
+    def is_cancelled(self, task_id: str) -> bool:
+        return self.get_status(task_id) == "cancelled"
+
+    def cancel(self, task_id: str) -> bool:
+        """Mark a pending or running task as cancelled."""
+        status = self.get_status(task_id)
+        if status not in ("pending", "running"):
+            return False
+        now = time.time()
+        conn = sqlite3.connect(self.db_file, timeout=10.0)
+        cursor = conn.cursor()
+        cursor.execute(
+            "UPDATE task_queue SET status = 'cancelled', updated_at = ? WHERE id = ?",
+            (now, task_id),
+        )
+        conn.commit()
+        conn.close()
+        logger.info("Cancelled task %s (was %s)", task_id, status)
+        return True
+
+    def find_active_task(
+        self,
+        *,
+        source: str,
+        channel_id: str,
+    ) -> str | None:
+        """Return the newest pending/running task id for a source channel, if any."""
+        conn = sqlite3.connect(self.db_file, timeout=10.0)
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            SELECT id, payload FROM task_queue
+            WHERE status IN ('pending', 'running')
+            ORDER BY created_at DESC
+            """
+        )
+        rows = cursor.fetchall()
+        conn.close()
+        for task_id, payload in rows:
+            try:
+                task = json.loads(payload)
+            except json.JSONDecodeError:
+                continue
+            if task.get("source") == source and str(task.get("channel_id") or "") == channel_id:
+                return str(task_id)
+        return None

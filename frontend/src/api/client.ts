@@ -390,6 +390,28 @@ export const api = {
       { method: "POST", body: JSON.stringify({ content }) },
       true,
     ),
+  getChatTaskStatus: (taskId: string) =>
+    request<{
+      task_id: string;
+      status: string;
+      progress_label?: string;
+      current_tool?: string | null;
+      recent_tools?: string[];
+    }>(`/api/chat/tasks/${taskId}/status`, {}, true),
+  getChatActiveTask: (chatId: string) =>
+    request<{
+      task_id: string | null;
+      status: string | null;
+      progress_label?: string;
+      current_tool?: string | null;
+      recent_tools?: string[];
+    }>(`/api/chat/sessions/${encodeURIComponent(chatId)}/active-task`, {}, true),
+  cancelChatTask: (taskId: string) =>
+    request<{ task_id: string; status: string }>(
+      `/api/chat/tasks/${taskId}/cancel`,
+      { method: "POST" },
+      true,
+    ),
   exportChatSession: (id: string, filename?: string) =>
     request<ChatExportResult>(
       `/api/chat/sessions/${id}/export`,
@@ -699,6 +721,8 @@ export type ChatMessageResponse = {
   payload?: ResponsePayload;
   chat: ChatSessionDetail;
   export?: { filename: string; path: string };
+  pending?: boolean;
+  task_id?: string;
 };
 
 export type ChatExportResult = {

@@ -21,21 +21,61 @@ from backend.models.config import GitConfig
 logger = logging.getLogger(__name__)
 
 
+def _remote_branch_exists(repo_dir: Path, branch: str) -> bool:
+    try:
+        _run_git(["git", "-C", str(repo_dir), "rev-parse", "--verify", f"origin/{branch}"])
+        return True
+    except RuntimeError:
+        return False
+
+
 def _detect_default_base_branch(repo_dir: Path, git: GitConfig) -> str:
     configured = (git.default_base_branch or "").strip()
-    if configured:
+    if configured and _remote_branch_exists(repo_dir, configured):
         return configured
-    for candidate in ("main", "master", "develop"):
-        try:
-            _run_git(["git", "-C", str(repo_dir), "rev-parse", "--verify", f"origin/{candidate}"])
-            return candidate
-        except RuntimeError:
-            continue
+    if configured:
+        logger.warning(
+            "Configured git.default_base_branch %r not found on origin; auto-detecting",
+            configured,
+        )
+
     try:
         ref = _run_git(["git", "-C", str(repo_dir), "symbolic-ref", "refs/remotes/origin/HEAD"])
-        return ref.replace("refs/remotes/origin/", "").strip()
+        branch = ref.replace("refs/remotes/origin/", "").strip()
+        if branch and _remote_branch_exists(repo_dir, branch):
+            return branch
     except RuntimeError:
-        return "main"
+        pass
+
+    for candidate in ("main", "master", "dev", "develop"):
+        if _remote_branch_exists(repo_dir, candidate):
+            return candidate
+    return "main"
+
+
+def _resolve_base_branch(repo_dir: Path, git: GitConfig, base_branch: str | None) -> str:
+    requested = (base_branch or "").strip()
+    if requested:
+        if _remote_branch_exists(repo_dir, requested):
+            return requested
+        detected = _detect_default_base_branch(repo_dir, git)
+        logger.warning(
+            "Base branch %r not found on origin for %s; using %r instead",
+            requested,
+            repo_dir.name,
+            detected,
+        )
+        return detected
+    return _detect_default_base_branch(repo_dir, git)
+
+
+def _sync_repo_to_remote_base(repo_dir: Path, base: str, *, depth: str) -> None:
+    """Discard local workspace changes and align the checkout with origin/<base>."""
+    git_c = ["git", "-C", str(repo_dir)]
+    _run_git([*git_c, "fetch", "origin", base, "--depth", depth])
+    _run_git([*git_c, "reset", "--hard", f"origin/{base}"])
+    _run_git([*git_c, "clean", "-fd"])
+    _run_git([*git_c, "checkout", "-B", base, f"origin/{base}"])
 
 
 def prepare_write_branch(
@@ -56,17 +96,16 @@ def prepare_write_branch(
     if not (repo_dir / ".git").exists():
         raise RuntimeError(f"Repository mirror missing at {repo_dir}")
 
-    base = (base_branch or _detect_default_base_branch(repo_dir, git)).strip()
+    base = _resolve_base_branch(repo_dir, git, base_branch).strip()
     if base.lower() in protected_branches(git):
         pass  # base is allowed to be protected
     else:
         validate_branch_name(git, base)
 
     depth = str(max(50, git.mirror_shallow_depth))
-    _run_git(["git", "-C", str(repo_dir), "fetch", "origin", base, "--depth", depth])
-    _run_git(["git", "-C", str(repo_dir), "checkout", "-B", base, f"origin/{base}"])
-    _run_git(["git", "-C", str(repo_dir), "pull", "--ff-only", "origin", base])
-    _run_git(["git", "-C", str(repo_dir), "checkout", "-b", branch])
+    _sync_repo_to_remote_base(repo_dir, base, depth=depth)
+    # Always branch fresh from the synced base — discard any prior local feature branch.
+    _run_git(["git", "-C", str(repo_dir), "checkout", "-B", branch])
 
     head = _head_sha(repo_dir)
     mirror._update_repo_ref(session_key, slug, ref=branch, head_sha=head)

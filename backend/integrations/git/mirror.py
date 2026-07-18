@@ -395,6 +395,20 @@ class WorkspaceMirrorManager:
     def _pull(self, repo_dir: Path, *, ref: str | None = None) -> None:
         depth = str(max(1, self.git.mirror_shallow_depth))
         branch = ref or _current_branch(repo_dir)
+        if not _remote_branch_exists(repo_dir, branch):
+            if _local_branch_exists(repo_dir, branch):
+                logger.debug(
+                    "Skipping remote pull for %s — ref %r exists locally but not on origin.",
+                    repo_dir,
+                    branch,
+                )
+                return
+            logger.warning(
+                "Skipping remote pull for %s — ref %r not found locally or on origin.",
+                repo_dir,
+                branch,
+            )
+            return
         try:
             _run_git(["git", "-C", str(repo_dir), "fetch", "origin", branch, "--depth", depth])
             _run_git(["git", "-C", str(repo_dir), "pull", "--ff-only", "origin", branch])
@@ -402,10 +416,12 @@ class WorkspaceMirrorManager:
             logger.warning("Fast-forward pull failed for %s ref=%s: %s. Attempting hard reset.", repo_dir, branch, exc)
             try:
                 _run_git(["git", "-C", str(repo_dir), "fetch", "origin", branch, "--depth", depth])
-                _run_git(["git", "-C", str(repo_dir), "reset", "--hard", "FETCH_HEAD"])
+                _run_git(["git", "-C", str(repo_dir), "reset", "--hard", f"origin/{branch}"])
             except Exception as reset_exc:
-                logger.exception("Failed to force reset repo %s to FETCH_HEAD", repo_dir)
-                raise RuntimeError(f"Git pull failed and subsequent force reset failed: {reset_exc}") from exc
+                logger.exception("Failed to force reset repo %s to origin/%s", repo_dir, branch)
+                raise RuntimeError(
+                    f"Git pull failed and subsequent force reset failed: {reset_exc}"
+                ) from exc
 
     def _checkout_ref(self, repo_dir: Path, ref: str, fallback_branch: str | None = None) -> None:
         fetch_ref = ref
@@ -474,6 +490,22 @@ class WorkspaceMirrorManager:
 
 def _repo_dir_name(repo: str) -> str:
     return repo.replace("/", "__")
+
+
+def _remote_branch_exists(repo_dir: Path, branch: str) -> bool:
+    try:
+        _run_git(["git", "-C", str(repo_dir), "rev-parse", "--verify", f"origin/{branch}"])
+        return True
+    except RuntimeError:
+        return False
+
+
+def _local_branch_exists(repo_dir: Path, branch: str) -> bool:
+    try:
+        _run_git(["git", "-C", str(repo_dir), "rev-parse", "--verify", branch])
+        return True
+    except RuntimeError:
+        return False
 
 
 def _dir_size_bytes(path: Path) -> int:

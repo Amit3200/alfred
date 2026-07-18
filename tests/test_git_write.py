@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
@@ -39,11 +40,112 @@ def test_debug_script_path_and_content():
     rel = assert_write_path_allowed(git, "scripts/alfred_debug/inspect.py", debug_script=True)
     assert rel.endswith("inspect.py")
     validate_readonly_script_content("print(open('foo').read())")
+    validate_readonly_script_content(
+        "import subprocess\nout = subprocess.run(['python3', '-c', 'print(1)'], capture_output=True, text=True)\nprint(out.stdout)"
+    )
     with pytest.raises(ValueError, match="write mode"):
         validate_readonly_script_content("open('out.txt', 'w').write('x')")
+    with pytest.raises(ValueError, match="shell=True"):
+        validate_readonly_script_content("subprocess.run('ls', shell=True)")
 
 
-def test_write_tools_not_registered_when_disabled(tmp_path: Path):
+def test_prepare_write_branch_resets_dirty_workspace(tmp_path: Path):
+    import subprocess
+
+    from backend.integrations.git.mirror import WorkspaceMirrorManager
+    from backend.integrations.git.write_ops import prepare_write_branch
+
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "test",
+        "GIT_AUTHOR_EMAIL": "test@example.com",
+        "GIT_COMMITTER_NAME": "test",
+        "GIT_COMMITTER_EMAIL": "test@example.com",
+    }
+
+    bare = tmp_path / "remote.git"
+    repo = tmp_path / "FlexyPe__cipher"
+    bare.mkdir()
+    subprocess.run(["git", "init", "--bare", "-b", "dev"], cwd=bare, check=True, capture_output=True, env=env)
+    subprocess.run(["git", "clone", str(bare), str(repo)], check=True, capture_output=True, env=env)
+    subprocess.run(["git", "config", "user.email", "a@b.c"], cwd=repo, check=True, capture_output=True, env=env)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=repo, check=True, capture_output=True, env=env)
+    (repo / "apps" / "cipher" / "src").mkdir(parents=True)
+    tracked = repo / "apps" / "cipher" / "src" / "main.ts"
+    tracked.write_text("original\n", encoding="utf-8")
+    subprocess.run(["git", "add", "."], cwd=repo, check=True, capture_output=True, env=env)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True, capture_output=True, env=env)
+    subprocess.run(["git", "push", "-u", "origin", "dev"], cwd=repo, check=True, capture_output=True, env=env)
+
+    tracked.write_text("dirty local edit\n", encoding="utf-8")
+    (repo / "untracked.txt").write_text("leftover\n", encoding="utf-8")
+    subprocess.run(["git", "checkout", "-b", "alfred/pr/old-attempt"], cwd=repo, check=True, capture_output=True, env=env)
+
+    git = GitConfig(enabled=True, token="x", write_enabled=True, mirror_shallow_depth=50)
+    mirror = MagicMock(spec=WorkspaceMirrorManager)
+    mirror.git = git
+    mirror.ensure_repo.return_value = MagicMock(path=repo)
+    mirror._update_repo_ref = MagicMock()
+
+    result = prepare_write_branch(
+        mirror,
+        "ui:chat:1",
+        "FlexyPe/cipher",
+        branch_name="alfred/pr/new-change",
+        base_branch="dev",
+    )
+
+    assert result["branch"] == "alfred/pr/new-change"
+    assert result["base_branch"] == "dev"
+    assert tracked.read_text(encoding="utf-8") == "original\n"
+    assert not (repo / "untracked.txt").exists()
+    current_branch = subprocess.run(
+        ["git", "branch", "--show-current"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    ).stdout.strip()
+    assert current_branch == "alfred/pr/new-change"
+
+
+def test_resolve_base_branch_falls_back_from_missing_main(tmp_path: Path):
+    import subprocess
+
+    from backend.integrations.git.write_ops import _detect_default_base_branch, _resolve_base_branch
+
+    repo = tmp_path / "FlexyPe__cipher"
+    repo.mkdir()
+    subprocess.run(["git", "init", "-b", "dev"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.email", "a@b.c"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=repo, check=True, capture_output=True)
+    subprocess.run(["git", "commit", "--allow-empty", "-m", "init"], cwd=repo, check=True, capture_output=True)
+    head = subprocess.run(
+        ["git", "rev-parse", "HEAD"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+        text=True,
+    ).stdout.strip()
+    subprocess.run(
+        ["git", "update-ref", "refs/remotes/origin/dev", head],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+    subprocess.run(
+        ["git", "symbolic-ref", "refs/remotes/origin/HEAD", "refs/remotes/origin/dev"],
+        cwd=repo,
+        check=True,
+        capture_output=True,
+    )
+
+    git = GitConfig(enabled=True, token="x", write_enabled=True)
+    assert _detect_default_base_branch(repo, git) == "dev"
+    assert _resolve_base_branch(repo, git, "main") == "dev"
+    assert _resolve_base_branch(repo, git, None) == "dev"
+
     registry = ToolRegistry()
     registry.workspace_id = "slack:C1:123"
     config = MagicMock()

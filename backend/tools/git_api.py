@@ -3,6 +3,7 @@
 from __future__ import annotations
 from backend.tools.catalog import (
     AWS_TOOLS,
+    COMPANY_SCRIPT_TOOLS,
     GIT_API_TOOLS,
     GIT_LOCAL_TOOLS,
     GIT_TOOLS,

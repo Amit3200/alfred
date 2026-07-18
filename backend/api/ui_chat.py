@@ -105,26 +105,20 @@ class UIChatService:
             metadata={"chat_id": chat_id, "user_label": "Admin UI"},
         )
         if self.queue is not None:
+            self.store.append_user_turn(
+                ui_session_key(chat_id),
+                source=UI_SOURCE,
+                scope_id=chat_id,
+                thread_id=chat_id,
+                user_content=stripped,
+            )
             task_id = self.queue.push(task.model_dump())
-            import time
-            start_time = time.time()
-            # Poll for background task completion
-            while time.time() - start_time < 90.0:
-                status = self.queue.get_status(task_id)
-                if status in ("completed", "failed"):
-                    break
-                time.sleep(0.5)
-
-            session = self.store.load(ui_session_key(chat_id))
-            if session and session.turns:
-                last_turn = session.turns[-1]
-                if last_turn.role == "assistant":
-                    return {
-                        "reply": last_turn.content,
-                        "payload": last_turn.payload.model_dump() if last_turn.payload else None,
-                        "chat": self._detail(session),
-                    }
-            raise RuntimeError("Task processing timed out or failed in the background queue")
+            return {
+                "pending": True,
+                "task_id": task_id,
+                "reply": "",
+                "chat": self.get_chat(chat_id),
+            }
         else:
             response = self.processor.process(task)
             if response.payload.kind in STRUCTURED_TOOL_KINDS and response.text:
@@ -132,10 +126,50 @@ class UIChatService:
             else:
                 reply = render_for_channel(response, "ui")
             return {
+                "pending": False,
                 "reply": reply,
                 "payload": response.payload.model_dump(),
                 "chat": self.get_chat(chat_id),
             }
+
+    def task_status(self, task_id: str) -> dict[str, Any] | None:
+        if self.queue is None:
+            return None
+        status = self.queue.get_status(task_id)
+        if status is None:
+            return None
+        from backend.observability.task_progress import latest_task_progress
+
+        progress = latest_task_progress(self.manager.data_dir, task_id, task_status=status)
+        return {
+            "task_id": task_id,
+            "status": status,
+            **progress,
+        }
+
+    def cancel_task(self, task_id: str) -> dict[str, Any]:
+        if self.queue is None:
+            raise RuntimeError("Task queue is not available")
+        if not self.queue.cancel(task_id):
+            status = self.queue.get_status(task_id)
+            raise ValueError(f"Task cannot be cancelled (status={status or 'missing'})")
+        return {"task_id": task_id, "status": "cancelled"}
+
+    def active_task_for_chat(self, chat_id: str) -> dict[str, Any] | None:
+        if self.queue is None:
+            return None
+        task_id = self.queue.find_active_task(source=UI_SOURCE, channel_id=chat_id)
+        if not task_id:
+            return None
+        status = self.queue.get_status(task_id)
+        from backend.observability.task_progress import latest_task_progress
+
+        progress = latest_task_progress(self.manager.data_dir, task_id, task_status=status)
+        return {
+            "task_id": task_id,
+            "status": status,
+            **progress,
+        }
 
     def export_chat(self, chat_id: str, *, filename: str | None = None) -> dict[str, Any]:
         session = self.store.load(ui_session_key(chat_id))

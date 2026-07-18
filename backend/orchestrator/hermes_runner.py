@@ -40,7 +40,9 @@ def run_hermes_loop(
     if not tool_schemas:
         raise RuntimeError("No tools available for the matched skill.")
 
-    from backend.observability.checkpoint import current_task_id, current_data_dir
+    from backend.observability.checkpoint import current_task_id, current_data_dir, log_checkpoint
+    from backend.orchestrator.task_cancel import raise_if_cancelled
+
     task_id = current_task_id.get()
     data_dir = current_data_dir.get()
 
@@ -52,6 +54,7 @@ def run_hermes_loop(
         return None
 
     for iteration in range(max_iterations):
+        raise_if_cancelled(data_dir, task_id)
         logger.debug("Hermes loop iteration %d", iteration + 1)
 
         plan_content = get_plan_context()

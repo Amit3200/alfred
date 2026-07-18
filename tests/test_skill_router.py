@@ -122,6 +122,7 @@ body
     llm_router.resolve_task.return_value = ("kimi", provider, "m")
 
     config = default_config()
+    config.google.enabled = True
     router = SkillRouter(config, store, llm_router=llm_router)
     result = router.route_investigation(
         RouteContext(intent="put this in a google doc", mode=RouteMode.INVESTIGATION)
@@ -143,6 +144,7 @@ def test_hybrid_llm_fallback_when_keywords_miss(tmp_path: Path):
     llm_router.resolve_task.return_value = ("kimi", provider, "m")
 
     config = AlfredConfig(skills=SkillsConfig(agentic_routing=True, bm25_routing=False))
+    config.google.enabled = True
     router = SkillRouter(config, store, llm_router=llm_router)
     result = router.route_investigation(
         RouteContext(

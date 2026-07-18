@@ -428,7 +428,7 @@ code {
 </tr>
 <tr>
 <td><strong>AWS (read-only)</strong></td>
-<td><code>athena_query</code>, <code>cloudwatch_query</code>, <code>list_cloudwatch_log_groups</code>; domain <strong><code>grade_events_query</code></strong> via local playbooks with guardrails (LIMIT, partition windows).</td>
+<td><code>athena_query</code>, <code>cloudwatch_query</code>, <code>list_cloudwatch_log_groups</code>; domain <strong><code>athena_query</code></strong> via local playbooks with guardrails (LIMIT, partition windows).</td>
 </tr>
 <tr>
 <td><strong>Graphify</strong></td>
@@ -701,7 +701,7 @@ alfred stop          <span class="hljs-comment"># stop background processes</spa
 </tr>
 <tr>
 <td>AWS</td>
-<td><code>@alfred pull grade events for fp_id …</code> (with playbook + config)</td>
+<td><code>@alfred pull athena checkout_events for order_id …</code> (with playbook + config)</td>
 </tr>
 <tr>
 <td>Usage</td>
@@ -734,7 +734,7 @@ alfred stop          <span class="hljs-comment"># stop background processes</spa
 <td>Discover log group paths</td>
 </tr>
 <tr>
-<td><code>grade_events_query</code></td>
+<td><code>athena_query</code></td>
 <td>Guardrailed queries on a configured event table (via company playbook)</td>
 </tr>
 </tbody>
@@ -755,23 +755,23 @@ alfred stop          <span class="hljs-comment"># stop background processes</spa
   <span class="hljs-attr">athena_output_location:</span> <span class="hljs-string">s3://your-bucket/athena/queries/</span>
   <span class="hljs-attr">log_group_map:</span>
     <span class="hljs-attr">checkout-api:</span> <span class="hljs-string">/ecs/checkout-api</span>
-  <span class="hljs-attr">grade_events_table:</span> <span class="hljs-string">grade_events</span>
-  <span class="hljs-attr">grade_events_s3_location:</span> <span class="hljs-string">s3://your-data-bucket/path/</span>   <span class="hljs-comment"># documentation / validation</span>
+  <span class="hljs-attr">athena_database:</span> <span class="hljs-string">athena</span>
+  <span class="hljs-attr">athena_output_location:</span> <span class="hljs-string">s3://your-data-bucket/path/</span>   <span class="hljs-comment"># documentation / validation</span>
 </div></code></pre>
 <p><strong>Secrets:</strong> optional <code>aws_access_key_id</code> / <code>aws_secret_access_key</code> in Admin → Secrets. Profile takes precedence when configured on the host.</p>
 <h3 id="domain-event-tables-playbooks">Domain event tables (playbooks)</h3>
 <p>Generic AWS querying is in <code>skills/aws_query.md</code>. <strong>Company-specific tables</strong> (partition columns, filter semantics, response format) belong in <strong><code>.alfred/playbooks/</code></strong>:</p>
 <pre class="hljs"><code><div><span class="hljs-meta">---</span>
-<span class="hljs-attr">name:</span> <span class="hljs-string">grade_events</span>
+<span class="hljs-attr">name:</span> <span class="hljs-string">athena</span>
 <span class="hljs-attr">mode:</span> <span class="hljs-string">investigation</span>
 <span class="hljs-attr">triggers:</span>
   <span class="hljs-bullet">-</span> <span class="hljs-string">grade</span> <span class="hljs-string">events</span>
   <span class="hljs-bullet">-</span> <span class="hljs-string">checkout</span> <span class="hljs-string">events</span>
 <span class="hljs-attr">allowed_tools:</span>
-  <span class="hljs-bullet">-</span> <span class="hljs-string">grade_events_query</span>
+  <span class="hljs-bullet">-</span> <span class="hljs-string">athena_query</span>
 <span class="hljs-meta">---</span>
 </div></code></pre>
-<p>Document database, table, S3 path, partition keys (<code>date</code>, <code>hour</code>), and which IDs to filter on (<code>fp_id</code>, <code>session_id</code>, <code>merchant_id</code>).</p>
+<p>Document database, table, S3 path, partition keys (<code>date</code>, <code>hour</code>), and which IDs to filter on (<code>order_id</code>, <code>session_id</code>, <code>merchant_id</code>).</p>
 <h3 id="health-check">Health check</h3>
 <p>Admin → Health → <strong>AWS</strong> runs STS <code>GetCallerIdentity</code> when enabled.</p>
 <hr>
@@ -978,7 +978,7 @@ Optional: <strong><code>emoji:read</code></strong> (for <code>alfred slack emoji
 │   ├── agent/                 # ReAct loop
 │   ├── ai/                    # LLM adapters, routing, instrumentation
 │   ├── api/                   # FastAPI routes (health, chat, config, …)
-│   ├── aws/                   # Session, Athena, CloudWatch, grade_events guardrails
+│   ├── aws/                   # Session, Athena, CloudWatch, Athena guardrails
 │   ├── context/               # Repo context generator, Graphify
 │   ├── git/                   # Mirrors, sandbox, GitHub/GitLab API
 │   ├── github/                # GitHub App webhook handler
@@ -1088,7 +1088,7 @@ Optional: <strong><code>emoji:read</code></strong> (for <code>alfred slack emoji
 @alfred where is duplicate order handled in backend?
 @alfred list my open TECH tickets
 @alfred status of TECH-123
-@alfred pull grade events for fp_id 019ee783-2bf1-76ab-a65d-f6f18a9272e7
+@alfred pull athena checkout_events for order_id abc-123
 @alfred query cloudwatch logs for checkout-api errors in the last hour
 @alfred map all slack users to jira and github
 </div></code></pre>

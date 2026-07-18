@@ -96,7 +96,13 @@ class SessionStore:
         )
         if metadata_patch:
             session.metadata.update(metadata_patch)
-        session.turns.append(ConversationTurn(role="user", content=user_content))
+        user_already_persisted = (
+            session.turns
+            and session.turns[-1].role == "user"
+            and session.turns[-1].content == user_content
+        )
+        if not user_already_persisted:
+            session.turns.append(ConversationTurn(role="user", content=user_content))
         session.turns.append(
             ConversationTurn(
                 role="assistant",
@@ -106,6 +112,61 @@ class SessionStore:
         )
         if context_snapshot:
             session.context_snapshot = context_snapshot
+        self.save(session)
+        return session
+
+    def append_user_turn(
+        self,
+        key: str,
+        *,
+        source: str,
+        scope_id: str,
+        thread_id: str,
+        user_content: str,
+    ) -> ConversationSession:
+        """Persist the user message immediately (async UI enqueue)."""
+        session = self.load(key) or ConversationSession(
+            key=key,
+            source=source,
+            scope_id=scope_id,
+            thread_id=thread_id,
+        )
+        if (
+            session.turns
+            and session.turns[-1].role == "user"
+            and session.turns[-1].content == user_content
+        ):
+            return session
+        session.turns.append(ConversationTurn(role="user", content=user_content))
+        self.save(session)
+        return session
+
+    def append_assistant_turn(
+        self,
+        key: str,
+        *,
+        source: str,
+        scope_id: str,
+        thread_id: str,
+        assistant_content: str,
+        assistant_payload: ResponsePayload | None = None,
+        metadata_patch: dict[str, Any] | None = None,
+    ) -> ConversationSession:
+        session = self.load(key) or ConversationSession(
+            key=key,
+            source=source,
+            scope_id=scope_id,
+            thread_id=thread_id,
+        )
+        if metadata_patch:
+            session.metadata.update(metadata_patch)
+        session.turns.append(
+            ConversationTurn(
+                role="assistant",
+                content=assistant_content,
+                payload=assistant_payload,
+            )
+        )
         self.save(session)
         return session
 

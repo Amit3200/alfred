@@ -43,6 +43,18 @@ def setup_logging(data_dir: Path | None = None, *, console_level: int = logging.
 
     for name in ("httpx", "httpcore", "uvicorn.access"):
         logging.getLogger(name).setLevel(logging.WARNING)
+    for name in (
+        "duckduckgo_search",
+        "primp",
+        "hyper",
+        "hyper_util",
+        "h2",
+        "rustls",
+        "hickory_proto",
+        "hickory_net",
+        "cookie_store",
+    ):
+        logging.getLogger(name).setLevel(logging.WARNING)
     logging.getLogger("slack_sdk").setLevel(logging.INFO)
 
     _configured = True

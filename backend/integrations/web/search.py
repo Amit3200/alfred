@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 import requests
@@ -10,6 +11,9 @@ import requests
 from backend.models.config import WebSearchConfig
 
 logger = logging.getLogger(__name__)
+
+_LIVE_PING_CACHE: dict[str, tuple[float, dict[str, Any]]] = {}
+_LIVE_PING_TTL_SECONDS = 300
 
 
 class WebSearchClient:
@@ -30,9 +34,58 @@ class WebSearchClient:
             return self._search_tavily(text, max_results=limit)
         return self._search_duckduckgo(text, max_results=limit)
 
-    def ping(self) -> dict[str, Any]:
-        data = self.search("Alfred agent test", max_results=1)
-        return {"provider": data.get("provider"), "result_count": len(data.get("results") or [])}
+    def ping(self, *, live: bool = False) -> dict[str, Any]:
+        """Check readiness.
+
+        ``live=False`` (default for dashboard health polls) avoids outbound search traffic.
+        ``live=True`` runs one sample query — used by Integrations → Test connection, cached 5 min.
+        """
+        if not live:
+            return self._ping_configured()
+        return self._ping_live()
+
+    def _ping_configured(self) -> dict[str, Any]:
+        provider = (self._config.provider or "duckduckgo").lower()
+        if provider == "tavily":
+            api_key = (self._config.api_key or "").strip()
+            if not api_key:
+                raise RuntimeError("Tavily API key not configured — add it under Admin → Secrets.")
+            return {
+                "provider": "tavily",
+                "mode": "configured",
+                "message": "Tavily API key configured (live search on demand)",
+            }
+        try:
+            import duckduckgo_search  # noqa: F401
+        except ImportError as exc:
+            raise RuntimeError(
+                "duckduckgo-search is not installed. Run: uv sync --extra web"
+            ) from exc
+        return {
+            "provider": "duckduckgo",
+            "mode": "configured",
+            "message": "duckduckgo-search installed (live search on demand)",
+        }
+
+    def _ping_live(self) -> dict[str, Any]:
+        provider = (self._config.provider or "duckduckgo").lower()
+        cache_key = f"{provider}:{hash((self._config.api_key or '').strip())}"
+        now = time.monotonic()
+        cached = _LIVE_PING_CACHE.get(cache_key)
+        if cached and now - cached[0] < _LIVE_PING_TTL_SECONDS:
+            payload = dict(cached[1])
+            payload["cached"] = True
+            return payload
+
+        data = self.search("Alfred agent health check", max_results=1)
+        result = {
+            "provider": data.get("provider"),
+            "mode": "live",
+            "result_count": len(data.get("results") or []),
+            "cached": False,
+        }
+        _LIVE_PING_CACHE[cache_key] = (now, result)
+        return result
 
     def _search_duckduckgo(self, query: str, *, max_results: int) -> dict[str, Any]:
         try:

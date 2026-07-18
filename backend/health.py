@@ -207,7 +207,7 @@ def check_google(config: AlfredConfig) -> dict:
         return {"ok": False, "message": str(exc)}
 
 
-def check_web_search(config: AlfredConfig) -> dict:
+def check_web_search(config: AlfredConfig, *, live: bool = False) -> dict:
     if not config.web_search.enabled:
         return {"ok": False, "skipped": True, "message": "Web search disabled"}
     if config.web_search.provider == "tavily" and not (config.web_search.api_key or "").strip():
@@ -216,10 +216,14 @@ def check_web_search(config: AlfredConfig) -> dict:
         from backend.integrations.web.search import WebSearchClient
 
         client = WebSearchClient.from_config(config.web_search)
-        meta = client.ping()
+        meta = client.ping(live=live)
         provider = meta.get("provider") or config.web_search.provider
-        count = meta.get("result_count", 0)
-        return {"ok": True, "message": f"{provider} search OK ({count} sample result(s))"}
+        if live:
+            count = meta.get("result_count", 0)
+            suffix = " (cached)" if meta.get("cached") else ""
+            return {"ok": True, "message": f"{provider} live search OK ({count} sample result(s){suffix})"}
+        message = str(meta.get("message") or f"{provider} ready")
+        return {"ok": True, "message": message}
     except RuntimeError as exc:
         return {"ok": False, "message": str(exc)}
     except Exception as exc:
@@ -283,5 +287,5 @@ def run_integration_check(
     if name == "google":
         return check_google(config)
     if name == "web_search":
-        return check_web_search(config)
+        return check_web_search(config, live=True)
     raise ValueError(f"Unknown integration: {name}")

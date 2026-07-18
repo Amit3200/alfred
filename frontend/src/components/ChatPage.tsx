@@ -3,6 +3,7 @@ import {
   DownloadOutlined,
   PlusOutlined,
   SendOutlined,
+  StopOutlined,
 } from "@ant-design/icons";
 import { Button, Empty, Input, Spin, Typography } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
@@ -18,19 +19,242 @@ import { useApp } from "../context/AppContext";
 
 const { Text } = Typography;
 const { TextArea } = Input;
+const ACTIVE_CHAT_STORAGE_KEY = "alfred_active_chat_id";
+const REPLY_POLL_MS = 2000;
+const REPLY_POLL_MAX_MS = 15 * 60 * 1000;
+
+function sleepInterruptible(ms: number, shouldStop: () => boolean) {
+  return new Promise<void>((resolve) => {
+    const started = Date.now();
+    const tick = () => {
+      if (shouldStop()) {
+        resolve();
+        return;
+      }
+      if (Date.now() - started >= ms) {
+        resolve();
+        return;
+      }
+      setTimeout(tick, Math.min(200, ms));
+    };
+    tick();
+  });
+}
+
+function lastMessageIsUser(chat: ChatSessionDetail | null): boolean {
+  const last = chat?.messages[chat.messages.length - 1];
+  return last?.role === "user";
+}
+
+function readStoredActiveId(): string | null {
+  try {
+    return sessionStorage.getItem(ACTIVE_CHAT_STORAGE_KEY);
+  } catch {
+    return null;
+  }
+}
+
+function storeActiveId(id: string | null) {
+  try {
+    if (id) sessionStorage.setItem(ACTIVE_CHAT_STORAGE_KEY, id);
+    else sessionStorage.removeItem(ACTIVE_CHAT_STORAGE_KEY);
+  } catch {
+    // ignore storage failures
+  }
+}
+
+function pickInitialSessionId(
+  sessions: ChatSessionSummary[],
+  current: string | null,
+): string | null {
+  if (current && sessions.some((session) => session.id === current)) {
+    return current;
+  }
+  const stored = readStoredActiveId();
+  if (stored && sessions.some((session) => session.id === stored)) {
+    return stored;
+  }
+  return sessions[0]?.id ?? null;
+}
 
 export function ChatPage() {
   const { notify, tokenInput } = useApp();
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
-  const [activeId, setActiveId] = useState<string | null>(null);
+  const [activeId, setActiveIdState] = useState<string | null>(() => readStoredActiveId());
   const [chat, setChat] = useState<ChatSessionDetail | null>(null);
   const [draft, setDraft] = useState("");
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingChat, setLoadingChat] = useState(false);
   const [sending, setSending] = useState(false);
+  const [progressLabel, setProgressLabel] = useState<string | null>(null);
+  const [recentTools, setRecentTools] = useState<string[]>([]);
   const threadRef = useRef<HTMLDivElement>(null);
+  const activeIdRef = useRef<string | null>(activeId);
+  const pollChatIdRef = useRef<string | null>(null);
+  const pollAbortRef = useRef(false);
+  const activeTaskIdRef = useRef<string | null>(null);
+  const userStoppedPollRef = useRef<Set<string>>(new Set());
 
   const hasToken = Boolean((tokenInput || getAdminToken()).trim());
+
+  const applyChatDetail = useCallback((detail: ChatSessionDetail) => {
+    setChat(detail);
+    setSessions((prev) => {
+      const others = prev.filter((session) => session.id !== detail.id);
+      return [
+        {
+          id: detail.id,
+          title: detail.title,
+          message_count: detail.message_count,
+          updated_at: detail.updated_at,
+          created_at: detail.created_at,
+        },
+        ...others,
+      ];
+    });
+  }, []);
+
+  const waitForAssistantReply = useCallback(
+    async (chatId: string, taskId?: string) => {
+      if (pollChatIdRef.current === chatId) {
+        return;
+      }
+      pollChatIdRef.current = chatId;
+      pollAbortRef.current = false;
+      setSending(true);
+      setProgressLabel("Thinking…");
+      setRecentTools([]);
+      let resolvedTaskId = taskId ?? activeTaskIdRef.current ?? undefined;
+      if (!resolvedTaskId) {
+        try {
+          const active = await api.getChatActiveTask(chatId);
+          resolvedTaskId = active.task_id ?? undefined;
+        } catch {
+          // keep polling session only
+        }
+      }
+      if (resolvedTaskId) {
+        activeTaskIdRef.current = resolvedTaskId;
+      }
+      const shouldStop = () =>
+        pollAbortRef.current || activeIdRef.current !== chatId || userStoppedPollRef.current.has(chatId);
+      const deadline = Date.now() + REPLY_POLL_MAX_MS;
+      try {
+        while (Date.now() < deadline) {
+          if (shouldStop()) {
+            return;
+          }
+          await sleepInterruptible(REPLY_POLL_MS, shouldStop);
+          if (shouldStop()) {
+            return;
+          }
+          if (resolvedTaskId) {
+            try {
+              const status = await api.getChatTaskStatus(resolvedTaskId);
+              if (status.progress_label) {
+                setProgressLabel(status.progress_label);
+              }
+              if (status.recent_tools) {
+                setRecentTools(status.recent_tools);
+              }
+              if (status.status === "failed" || status.status === "cancelled") {
+                break;
+              }
+            } catch {
+              // task status may expire; keep polling session
+            }
+          }
+          const detail = await api.getChatSession(chatId);
+          if (shouldStop()) {
+            return;
+          }
+          applyChatDetail(detail);
+          const last = detail.messages[detail.messages.length - 1];
+          if (last?.role === "assistant") {
+            userStoppedPollRef.current.delete(chatId);
+            scrollToBottom();
+            return;
+          }
+        }
+        if (!shouldStop()) {
+          notify(
+            "success",
+            "Alfred is still working — keep this chat open; the reply will appear when ready.",
+          );
+        }
+      } finally {
+        if (pollChatIdRef.current === chatId) {
+          pollChatIdRef.current = null;
+        }
+        if (!pollAbortRef.current) {
+          activeTaskIdRef.current = null;
+        }
+        setSending(false);
+        setProgressLabel(null);
+        setRecentTools([]);
+      }
+    },
+    [applyChatDetail, notify],
+  );
+
+  const onStop = useCallback(async () => {
+    pollAbortRef.current = true;
+    const chatId = activeIdRef.current;
+    let taskId = activeTaskIdRef.current;
+    if (chatId) {
+      userStoppedPollRef.current.add(chatId);
+    }
+    setSending(false);
+    setProgressLabel(null);
+    setRecentTools([]);
+    if (chatId && !taskId) {
+      try {
+        const active = await api.getChatActiveTask(chatId);
+        taskId = active.task_id ?? null;
+      } catch {
+        // no active task metadata
+      }
+    }
+    if (taskId) {
+      try {
+        await api.cancelChatTask(taskId);
+      } catch (err) {
+        notify("error", err instanceof Error ? err.message : "Could not stop task");
+      }
+    }
+    if (chatId) {
+      pollChatIdRef.current = null;
+      activeTaskIdRef.current = null;
+      for (let attempt = 0; attempt < 8; attempt += 1) {
+        if (pollAbortRef.current && activeIdRef.current !== chatId) {
+          break;
+        }
+        try {
+          const detail = await api.getChatSession(chatId);
+          if (activeIdRef.current === chatId) {
+            applyChatDetail(detail);
+          }
+          const last = detail.messages[detail.messages.length - 1];
+          if (last?.role === "assistant") {
+            break;
+          }
+        } catch {
+          // keep trying briefly for "Request stopped."
+        }
+        await sleepInterruptible(500, () => activeIdRef.current !== chatId);
+      }
+    }
+  }, [applyChatDetail, notify]);
+
+  const setActiveId = useCallback((id: string | null) => {
+    activeIdRef.current = id;
+    storeActiveId(id);
+    setActiveIdState(id);
+  }, []);
+
+  useEffect(() => {
+    activeIdRef.current = activeId;
+  }, [activeId]);
 
   const scrollToBottom = () => {
     requestAnimationFrame(() => {
@@ -48,41 +272,65 @@ export function ChatPage() {
     try {
       const data = await api.listChatSessions();
       setSessions(data.sessions);
-      if (!activeId && data.sessions.length > 0) {
-        setActiveId(data.sessions[0].id);
-      }
+      setActiveId(pickInitialSessionId(data.sessions, activeIdRef.current));
     } catch (err) {
       notify("error", err instanceof Error ? err.message : "Failed to load chats");
     } finally {
       setLoadingSessions(false);
     }
-  }, [activeId, hasToken, notify]);
-
-  const loadChat = useCallback(
-    async (id: string) => {
-      if (!hasToken) return;
-      setLoadingChat(true);
-      try {
-        const detail = await api.getChatSession(id);
-        setChat(detail);
-        scrollToBottom();
-      } catch (err) {
-        notify("error", err instanceof Error ? err.message : "Failed to load chat");
-      } finally {
-        setLoadingChat(false);
-      }
-    },
-    [hasToken, notify],
-  );
+  }, [hasToken, notify, setActiveId]);
 
   useEffect(() => {
-    loadSessions();
+    void loadSessions();
   }, [loadSessions]);
 
   useEffect(() => {
-    if (activeId) loadChat(activeId);
-    else setChat(null);
-  }, [activeId, loadChat]);
+    if (!activeId || !hasToken) {
+      setChat(null);
+      setLoadingChat(false);
+      return;
+    }
+
+    let cancelled = false;
+    setLoadingChat(true);
+    setChat(null);
+
+    void (async () => {
+      try {
+        const detail = await api.getChatSession(activeId);
+        if (cancelled || activeIdRef.current !== activeId) return;
+        setChat(detail);
+        scrollToBottom();
+      } catch (err) {
+        if (cancelled || activeIdRef.current !== activeId) return;
+        notify("error", err instanceof Error ? err.message : "Failed to load chat");
+        setChat(null);
+      } finally {
+        if (!cancelled && activeIdRef.current === activeId) {
+          setLoadingChat(false);
+        }
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [activeId, hasToken, notify]);
+
+  const activeSession = sessions.find((session) => session.id === activeId) ?? null;
+  const visibleChat = chat && chat.id === activeId ? chat : null;
+
+  useEffect(() => {
+    if (!visibleChat || loadingChat || sending || !hasToken) {
+      return;
+    }
+    if (userStoppedPollRef.current.has(visibleChat.id)) {
+      return;
+    }
+    if (lastMessageIsUser(visibleChat)) {
+      void waitForAssistantReply(visibleChat.id);
+    }
+  }, [visibleChat, loadingChat, sending, hasToken, waitForAssistantReply]);
 
   const onNewChat = async () => {
     if (!hasToken) {
@@ -120,39 +368,48 @@ export function ChatPage() {
       notify("error", "Admin token required.");
       return;
     }
+    const chatId = activeId;
+    userStoppedPollRef.current.delete(chatId);
     setSending(true);
     setDraft("");
-    setChat((prev) =>
-      prev
-        ? { ...prev, messages: [...prev.messages, { role: "user", content: text }] }
-        : prev,
-    );
-    scrollToBottom();
     try {
-      const result = await api.sendChatMessage(activeId, text);
-      setChat(result.chat);
-      setSessions((prev) => {
-        const others = prev.filter((s) => s.id !== result.chat.id);
-        return [
-          {
-            id: result.chat.id,
-            title: result.chat.title,
-            message_count: result.chat.message_count,
-            updated_at: result.chat.updated_at,
-            created_at: result.chat.created_at,
-          },
-          ...others,
-        ];
-      });
+      const result = await api.sendChatMessage(chatId, text);
+      if (activeIdRef.current !== chatId) return;
+      applyChatDetail(result.chat);
+      scrollToBottom();
       if (result.export?.filename) {
         notify("success", `Exported ${result.export.filename}`);
+        return;
       }
-      scrollToBottom();
+      if (result.pending) {
+        activeTaskIdRef.current = result.task_id ?? null;
+        await waitForAssistantReply(chatId, result.task_id);
+        return;
+      }
+      activeTaskIdRef.current = null;
+      if (result.reply) {
+        scrollToBottom();
+      }
     } catch (err) {
       notify("error", err instanceof Error ? err.message : "Send failed");
       setDraft(text);
+      if (activeIdRef.current === chatId) {
+        try {
+          const detail = await api.getChatSession(chatId);
+          if (activeIdRef.current === chatId) {
+            applyChatDetail(detail);
+            if (lastMessageIsUser(detail)) {
+              void waitForAssistantReply(chatId);
+            }
+          }
+        } catch {
+          // keep existing state if reload fails
+        }
+      }
     } finally {
-      setSending(false);
+      if (pollChatIdRef.current !== chatId) {
+        setSending(false);
+      }
     }
   };
 
@@ -245,13 +502,17 @@ export function ChatPage() {
             <header className="alfred-chat-header">
               <div>
                 <Typography.Title level={4} style={{ margin: 0 }}>
-                  {chat?.title || "Chat"}
+                  {visibleChat?.title || activeSession?.title || "Chat"}
                 </Typography.Title>
                 <Text type="secondary" style={{ fontSize: 12 }}>
-                  Separate memory · try &quot;export to markdown&quot; when done
+                  Separate memory · say &quot;export to markdown&quot; or use Export MD to save
                 </Text>
               </div>
-              <Button icon={<DownloadOutlined />} onClick={onExport} disabled={!chat?.messages.length}>
+              <Button
+                icon={<DownloadOutlined />}
+                onClick={onExport}
+                disabled={!visibleChat?.messages.length}
+              >
                 Export MD
               </Button>
             </header>
@@ -259,12 +520,12 @@ export function ChatPage() {
             <div className="alfred-chat-thread" ref={threadRef}>
               {loadingChat ? (
                 <div className="alfred-chat-center">
-                  <Spin />
+                  <Spin tip="Loading messages…" />
                 </div>
-              ) : chat?.messages.length ? (
-                chat.messages.map((msg, index) => (
+              ) : visibleChat?.messages.length ? (
+                visibleChat.messages.map((msg, index) => (
                   <div
-                    key={`${index}-${msg.role}`}
+                    key={`${index}-${msg.role}-${msg.content.slice(0, 24)}`}
                     className={`alfred-chat-bubble alfred-chat-bubble-${msg.role}`}
                   >
                     <div className="alfred-chat-bubble-label">
@@ -288,7 +549,18 @@ export function ChatPage() {
                 <div className="alfred-chat-bubble alfred-chat-bubble-assistant">
                   <div className="alfred-chat-bubble-label">Alfred</div>
                   <div className="alfred-chat-bubble-body">
-                    <Spin size="small" /> Thinking…
+                    <div className="alfred-chat-progress">
+                      <Spin size="small" /> {progressLabel || "Thinking…"}
+                    </div>
+                    {recentTools.length > 0 && (
+                      <div className="alfred-chat-progress-steps">
+                        {recentTools.map((tool) => (
+                          <span key={tool} className="alfred-chat-progress-step">
+                            {tool.replace(/_/g, " ")}
+                          </span>
+                        ))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -308,15 +580,20 @@ export function ChatPage() {
                 }}
                 disabled={sending}
               />
-              <Button
-                type="primary"
-                icon={<SendOutlined />}
-                onClick={onSend}
-                loading={sending}
-                disabled={!draft.trim()}
-              >
-                Send
-              </Button>
+              {sending ? (
+                <Button danger icon={<StopOutlined />} onClick={() => void onStop()}>
+                  Stop
+                </Button>
+              ) : (
+                <Button
+                  type="primary"
+                  icon={<SendOutlined />}
+                  onClick={onSend}
+                  disabled={!draft.trim()}
+                >
+                  Send
+                </Button>
+              )}
             </footer>
           </>
         )}

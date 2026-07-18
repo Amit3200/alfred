@@ -34,6 +34,7 @@ from backend.config_manager import ConfigManager
 from backend.logging_config import setup_logging
 from backend.paths import bundled_web_dist
 from backend.integrations.slack.listener import SlackSocketRunner
+from backend.routing.playbook_store_registry import get_playbook_store
 
 logger = logging.getLogger(__name__)
 
@@ -66,15 +67,23 @@ async def _lifespan(app: FastAPI):
 
     try:
         config, _ = manager.load_merged()
-        get_playbook_store(manager.data_dir, disabled_skills=config.skills.disabled)
-        if config.git.enabled:
-            pass
-
-            removed = WorkspaceMirrorManager(config.git, manager.data_dir).cleanup_expired()
-            if removed:
-                logger.info("Cleaned up %d expired repo mirror workspace(s)", len(removed))
     except Exception:
-        logger.exception("Mirror workspace cleanup failed")
+        logger.exception("Failed to load config during startup warmup")
+        config = None
+
+    if config is not None:
+        try:
+            get_playbook_store(manager.data_dir, disabled_skills=config.skills.disabled)
+        except Exception:
+            logger.exception("Playbook store warmup failed")
+
+        try:
+            if config.git.enabled:
+                removed = WorkspaceMirrorManager(config.git, manager.data_dir).cleanup_expired()
+                if removed:
+                    logger.info("Cleaned up %d expired repo mirror workspace(s)", len(removed))
+        except Exception:
+            logger.exception("Mirror workspace cleanup failed")
 
     yield
     slack_runner.stop()

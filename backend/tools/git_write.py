@@ -29,7 +29,7 @@ ALFRED_PR_LABEL_PLAN = "alfred-plan"
 GIT_PREPARE_BRANCH = ToolSchema(
     name="git_prepare_branch",
     description=(
-        "Fetch latest base branch (default main) and create a new feature branch in this "
+        "Fetch latest base branch (auto-detects origin default, e.g. dev or main) and create a "
         "conversation's isolated workspace. Call this before any file writes."
     ),
     parameters={
@@ -52,7 +52,10 @@ GIT_PREPARE_BRANCH = ToolSchema(
             },
             "base_branch": {
                 "type": "string",
-                "description": "Base branch to pull (default: git.default_base_branch or main).",
+                "description": (
+                    "Base branch to pull. Omit to use git.default_base_branch or the remote "
+                    "default (origin/HEAD)."
+                ),
             },
         },
         "required": ["repo"],
@@ -84,7 +87,7 @@ WRITE_DEBUG_SCRIPT = ToolSchema(
     name="write_debug_script",
     description=(
         "Write a read-only Python debug script under scripts/alfred_debug/. "
-        "Script must only read data (no writes, network, or subprocess)."
+        "Script must only read data (no file writes, network, shell=True, or os.system)."
     ),
     parameters={
         "type": "object",
@@ -315,7 +318,11 @@ def register_git_write_tools(
             return ToolResult.error("repo, title, and head are required.")
         try:
             slug = resolve_repo_slug(repo, config.git)
-            base = str(args.get("base") or config.git.default_base_branch or "main").strip()
+            from backend.integrations.git.write_ops import _resolve_base_branch
+
+            state = mirror.ensure_repo(_session_key(), slug)
+            base_arg = str(args.get("base") or config.git.default_base_branch or "").strip() or None
+            base = _resolve_base_branch(state.path, config.git, base_arg)
             normalized_head = resolve_alfred_pr_branch_name(branch_name=head)
             labels = alfred_pr_labels_for_registry(registry, data_dir)
             detail = client.create_pull_request(

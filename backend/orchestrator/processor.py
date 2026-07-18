@@ -12,6 +12,7 @@ from backend.orchestrator.policy import (
     needs_context_refresh,
     omit_assistant_session_history,
 )
+from backend.orchestrator.task_cancel import TaskCancelledError, raise_if_cancelled
 from backend.routing.playbook_store_registry import get_playbook_store
 from backend.routing.playbooks import Playbook, PlaybookStore
 from backend.orchestrator.prompts import GITHUB_COMMENT_RULES, build_alfred_system_prompt, build_slack_user_message
@@ -89,6 +90,21 @@ class TaskProcessor:
                 response = self._process_task(task, set_call_kind=set_call_kind, set_skill_name=set_skill_name)
                 log_checkpoint("process_task", task.id, "completed")
                 return response
+        except TaskCancelledError:
+            log_checkpoint("process_task", task.id, "cancelled")
+            response = AssistantResponse.from_text("Request stopped.")
+            session_key = task_session_key(task)
+            if session_key and self.session_store:
+                rendered = render_for_channel(response, _task_channel(task))
+                self.session_store.append_assistant_turn(
+                    session_key,
+                    source=task.source,
+                    scope_id=task.channel_id,
+                    thread_id=task.thread_ts or "",
+                    assistant_content=rendered,
+                    assistant_payload=response.payload,
+                )
+            return response
         except Exception as exc:
             log_checkpoint("process_task", task.id, "error", error=exc)
             raise
@@ -100,6 +116,8 @@ class TaskProcessor:
         set_call_kind: Any,
         set_skill_name: Any,
     ) -> AssistantResponse:
+        raise_if_cancelled(self._data_dir_path(), task.id)
+
         session_key = task_session_key(task)
         session = self._load_session(session_key)
         channel = _task_channel(task)
@@ -401,6 +419,7 @@ class TaskProcessor:
                     )
 
         if session_key and self.session_store:
+            raise_if_cancelled(self._data_dir_path(), task.id)
             if response.payload.kind in STRUCTURED_TOOL_KINDS and response.text:
                 rendered = response.text
             else:
@@ -700,6 +719,43 @@ class TaskProcessor:
             return structured, patch
         return None, patch
 
+    def _investigation_failure_response(
+        self,
+        skill: Playbook,
+        allowed_tools: list[str],
+        exc: Exception,
+    ) -> AssistantResponse:
+        from backend.routing.tool_availability import resolvable_playbook_tools
+        from backend.tools.catalog import GIT_WRITE_TOOLS
+
+        message = str(exc)
+        if "No tools available for the matched skill" in message:
+            available, unknown, disabled = resolvable_playbook_tools(
+                allowed_tools,
+                self.config,
+            )
+            parts = [
+                f"I couldn't run skill **{skill.name}**: none of its allowed tools are registered.",
+            ]
+            if unknown:
+                parts.append(
+                    f"Unknown or removed tools: {', '.join(unknown)}. "
+                    "Update the playbook allowlist under `.alfred/playbooks/`."
+                )
+            if disabled:
+                parts.append(f"Disabled by current config: {', '.join(disabled)}.")
+            if any(name in GIT_WRITE_TOOLS for name in allowed_tools) and not self.config.git.write_enabled:
+                parts.append(
+                    "Enable **git.write_enabled** in Admin → Integrations to use PR/write tools."
+                )
+            if not self.config.git.enabled:
+                parts.append("Enable **git.enabled** and set a valid token in Admin → Secrets.")
+            return AssistantResponse.from_text(" ".join(parts))
+
+        return AssistantResponse.from_text(
+            f"I couldn't complete skill **{skill.name}**: {exc}."
+        )
+
     def _run_investigation(
         self,
         skill: Playbook,
@@ -759,15 +815,11 @@ class TaskProcessor:
                     session=session,
                     git=self.config.git,
                 )
+        except TaskCancelledError:
+            raise
         except Exception as exc:
             logger.exception("Investigation loop failed")
-            return (
-                AssistantResponse.from_text(
-                    f"I couldn't complete the Git investigation: {exc}. "
-                    "Check that Git is enabled and your token is valid in Admin → Secrets."
-                ),
-                None,
-            )
+            return self._investigation_failure_response(skill, allowed_tools, exc), None
 
         patch = None
         if registry.last_result and registry.last_tool_name:

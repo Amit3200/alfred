@@ -60,6 +60,66 @@ def test_seed_workspace_from_shared_copy(tmp_path):
     assert again.path == state.path
 
 
+def test_pull_skips_local_only_feature_branch(tmp_path: Path):
+    import os
+    import subprocess
+
+    env = {
+        **os.environ,
+        "GIT_AUTHOR_NAME": "test",
+        "GIT_AUTHOR_EMAIL": "test@example.com",
+        "GIT_COMMITTER_NAME": "test",
+        "GIT_COMMITTER_EMAIL": "test@example.com",
+    }
+
+    bare = tmp_path / "remote.git"
+    bare.mkdir()
+    subprocess.run(["git", "init", "--bare", "-b", "dev"], cwd=bare, check=True, capture_output=True, env=env)
+    workspace = tmp_path / "workspace"
+    repo = workspace / "acme__backend"
+    subprocess.run(["git", "clone", str(bare), str(repo)], check=True, capture_output=True, env=env)
+    subprocess.run(["git", "config", "user.email", "a@b.c"], cwd=repo, check=True, capture_output=True, env=env)
+    subprocess.run(["git", "config", "user.name", "t"], cwd=repo, check=True, capture_output=True, env=env)
+    (repo / "README.md").write_text("hello\n", encoding="utf-8")
+    subprocess.run(["git", "add", "README.md"], cwd=repo, check=True, capture_output=True, env=env)
+    subprocess.run(["git", "commit", "-m", "init"], cwd=repo, check=True, capture_output=True, env=env)
+    subprocess.run(["git", "push", "-u", "origin", "dev"], cwd=repo, check=True, capture_output=True, env=env)
+    subprocess.run(["git", "checkout", "-b", "alfred/pr/local-only"], cwd=repo, check=True, capture_output=True, env=env)
+    (repo / "feature.txt").write_text("local\n", encoding="utf-8")
+    subprocess.run(["git", "add", "feature.txt"], cwd=repo, check=True, capture_output=True, env=env)
+    subprocess.run(["git", "commit", "-m", "local work"], cwd=repo, check=True, capture_output=True, env=env)
+
+    manager = WorkspaceMirrorManager(_git_config(), tmp_path)
+    ws = manager.workspaces_root / workspace_dir_name("ui:chat1:chat1")
+    ws.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(repo, ws / "acme__backend", dirs_exist_ok=True)
+    now = datetime.now(timezone.utc).isoformat()
+    manifest = {
+        "session_key": "ui:chat1:chat1",
+        "last_used_at": now,
+        "repos": {
+            "acme/backend": {
+                "ref": "alfred/pr/local-only",
+                "last_pulled_at": "2020-01-01T00:00:00+00:00",
+            }
+        },
+    }
+    (ws / "manifest.json").write_text(json.dumps(manifest), encoding="utf-8")
+
+    state = manager.ensure_repo("ui:chat1:chat1", "acme/backend")
+    assert state.path.is_dir()
+    assert (state.path / "feature.txt").is_file()
+    branch = subprocess.run(
+        ["git", "branch", "--show-current"],
+        cwd=state.path,
+        check=True,
+        capture_output=True,
+        text=True,
+        env=env,
+    ).stdout.strip()
+    assert branch == "alfred/pr/local-only"
+
+
 def test_different_sessions_get_isolated_copies(tmp_path):
     fixture = Path(__file__).resolve().parent / "fixtures" / "sample-repo"
     manager = WorkspaceMirrorManager(_git_config(), tmp_path)

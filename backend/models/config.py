@@ -94,7 +94,7 @@ class GitConfig(BaseModel):
     )
     default_base_branch: str = Field(
         default="",
-        description="Base branch for write flow (e.g. main). Empty auto-detects main/master.",
+        description="Base branch for write flow (e.g. dev or main). Empty uses origin/HEAD from the mirror.",
     )
     protected_branches: list[str] = Field(
         default_factory=lambda: ["main", "master", "production", "prod"],

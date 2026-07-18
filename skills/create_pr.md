@@ -10,8 +10,16 @@ trigger_keywords:
   - open a pull request
   - make a pr
   - submit pr
+  - raise a pr
+  - raise pr
+  - creating pr
+  - creating a pr
+  - trigger pr
+  - trigger the pr
+  - proceed with pr
   - implement and pr
   - write a fix and pr
+  - create_pr
 allowed_channels:
   - "*"
 allowed_tools:
@@ -53,7 +61,7 @@ Each Slack thread / UI chat has its own git workspace — never assume another c
 - Direct commits or pushes to `main`, `master`, `production`, or other protected branches
 - Modifying infra, lockfiles, CI, Docker, secrets, or `.env` paths (tool-enforced blocklist)
 - Force-push, rewriting history, or merging PRs
-- Debug scripts that write files, use network, or spawn subprocesses
+- Debug scripts that write files, use network, shell=True, or os.system
 
 When unsure, **stop and ask** in the thread rather than guessing.
 
@@ -84,11 +92,11 @@ Call `git_prepare_branch` with:
 
 - `repo` — full slug (`owner/name`)
 - `branch_context` — short slug, e.g. `instrument-checkout-handler` or `fix-null-fp-id` (branch becomes `alfred/pr/<slug>`)
-- `base_branch` — use `git.default_base_branch` from config when set; otherwise `main`
+- `base_branch` — use `git.default_base_branch` when set; otherwise **omit** so Alfred uses the repo's remote default (`origin/HEAD`, e.g. `dev` for FlexyPe/cipher)
 
 Optional: pass `branch_name` only when you need an explicit `alfred/pr/<slug>` (normally use `branch_context`).
 
-This fetches latest `main` (or configured base) and creates an isolated feature branch in **this conversation's workspace only**.
+This fetches latest `dev` (or the repo's remote default), **discards any leftover local edits** in the session workspace, and creates a fresh `alfred/pr/<slug>` branch from that base.
 
 ## Step 2 — Write the implementation plan (in thread + PR body)
 
