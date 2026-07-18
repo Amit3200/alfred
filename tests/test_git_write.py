@@ -9,6 +9,8 @@ import pytest
 
 from backend.integrations.git.guardrails import (
     assert_write_path_allowed,
+    format_alfred_pr_branch_name,
+    resolve_alfred_pr_branch_name,
     validate_branch_name,
     validate_readonly_script_content,
 )
@@ -21,7 +23,7 @@ def test_validate_branch_rejects_protected():
     git = GitConfig(enabled=True, token="x", write_enabled=True)
     with pytest.raises(ValueError, match="protected"):
         validate_branch_name(git, "main")
-    assert validate_branch_name(git, "alfred/fix-null-fp") == "alfred/fix-null-fp"
+    assert validate_branch_name(git, "alfred/pr/fix-null-fp") == "alfred/pr/fix-null-fp"
 
 
 def test_write_path_blocks_infra():
@@ -71,6 +73,13 @@ def test_create_pr_skill_bundled(tmp_path: Path):
     assert "create_pull_request" in skill.allowed_tools
 
 
+def test_resolve_alfred_pr_branch_name():
+    assert format_alfred_pr_branch_name("Instrument Checkout Handler") == "alfred/pr/instrument-checkout-handler"
+    assert resolve_alfred_pr_branch_name(branch_context="fix null fp") == "alfred/pr/fix-null-fp"
+    assert resolve_alfred_pr_branch_name(branch_name="alfred/pr/custom-branch") == "alfred/pr/custom-branch"
+    assert resolve_alfred_pr_branch_name(branch_name="alfred/legacy-name") == "alfred/pr/legacy-name"
+
+
 def test_create_pull_request_github_api():
     from backend.integrations.git.api import GitApiClient
 
@@ -82,18 +91,85 @@ def test_create_pull_request_github_api():
             "title": "fix: test",
             "state": "open",
             "html_url": "https://github.com/org/cipher/pull/99",
-            "head": {"ref": "alfred/fix"},
+            "head": {"ref": "alfred/pr/fix"},
             "base": {"ref": "main"},
             "draft": True,
         }
         detail = client.create_pull_request(
             "org/cipher",
             title="fix: test",
-            head="alfred/fix",
+            head="alfred/pr/fix",
             base="main",
             body="plan",
             draft=True,
+            labels=["alfred-generated", "alfred-plan"],
         )
     assert detail["number"] == 99
     assert detail["url"].endswith("/pull/99")
-    mock_post.assert_called_once()
+    assert detail["labels"] == ["alfred-generated", "alfred-plan"]
+    assert mock_post.call_count == 2
+    label_call = mock_post.call_args_list[1]
+    assert "issues/99/labels" in label_call.args[0]
+    assert label_call.kwargs["json"]["labels"] == ["alfred-generated", "alfred-plan"]
+
+
+def test_create_pull_request_applies_labels_from_governance(tmp_path: Path):
+    from backend.governance.context import GovernanceContext
+    from backend.models.config import AlfredConfig, GovernanceConfig
+    from backend.models.task import Task
+    from backend.tools.git_write import ALFRED_PR_LABEL_PLAN, alfred_pr_labels_for_registry, register_git_write_tools
+
+    plans = tmp_path / "plans"
+    plans.mkdir()
+    task = Task(
+        source="slack",
+        user_id="U1",
+        channel_id="C1",
+        thread_ts="1",
+        raw_text="alfred pr",
+        cleaned_intent="fix bug",
+    )
+    (plans / f"plan_{task.id}.md").write_text("# Task Plan\n", encoding="utf-8")
+
+    registry = ToolRegistry()
+    registry.workspace_id = "slack:C1:1"
+    registry.governance = GovernanceContext(
+        AlfredConfig(governance=GovernanceConfig()),
+        task,
+        data_dir=tmp_path,
+    )
+    assert alfred_pr_labels_for_registry(registry, tmp_path) == ["alfred-generated", ALFRED_PR_LABEL_PLAN]
+
+    config = AlfredConfig(
+        git=GitConfig(
+            enabled=True,
+            provider="github",
+            token="ghp_test",
+            write_enabled=True,
+            main_repo="org/cipher",
+        ),
+        governance=GovernanceConfig(enabled=False),
+    )
+    registry.governance = GovernanceContext(config, task, data_dir=tmp_path)
+    with patch("backend.tools.git_write.GitApiClient") as mock_client_cls, patch(
+        "backend.tools.git_write.WorkspaceMirrorManager"
+    ):
+        mock_client = MagicMock()
+        mock_client_cls.return_value = mock_client
+        mock_client.create_pull_request.return_value = {
+            "number": 1,
+            "url": "https://github.com/org/cipher/pull/1",
+            "labels": ["alfred-generated", "alfred-plan"],
+        }
+        register_git_write_tools(registry, config=config, data_dir=tmp_path)
+        result = registry.run(
+            "create_pull_request",
+            {"repo": "org/cipher", "title": "Fix", "head": "alfred/fix", "base": "main"},
+            allowed=["create_pull_request"],
+        )
+
+    assert result.kind == "pr_created"
+    mock_client.create_pull_request.assert_called_once()
+    call_kwargs = mock_client.create_pull_request.call_args.kwargs
+    assert call_kwargs["head"] == "alfred/pr/fix"
+    assert call_kwargs["labels"] == ["alfred-generated", "alfred-plan"]

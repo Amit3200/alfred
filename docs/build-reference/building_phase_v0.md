@@ -10,7 +10,7 @@
 
 Alfred is **directionally aligned** with the v0 architecture: local-first, pluggable AI, Slack ingress, session memory, Markdown playbooks, read-only git investigation, JIRA (**including writes**), Google Workspace (**including writes**), **AWS (Athena + CloudWatch + grade_events)**, Graphify, cron schedules, planning mode, self-learning playbooks, and observability with cost estimates.
 
-**v0.1 routing/queue polish is shipped.** Remaining work clusters into **context/routing polish (v0.2)**, and **git/AWS write surface (v2)** — governance v1 and plan→PR handoff are shipped; see [Recommended next build steps](#recommended-next-build-steps).
+**v0.1 routing/queue polish is shipped.** **v0.2 polish**, **v1 governance**, and **Phase 1 git write / plan→PR** are largely shipped. Remaining work clusters into **automation surface (v2)** and **tool extensibility (v3 — MCP + generic APIs, not started)**; see [Recommended next build steps](#recommended-next-build-steps).
 
 | v0 first milestone | Status |
 |--------------------|--------|
@@ -33,6 +33,7 @@ Use these when reading gaps below:
 | **v0.2 polish** | Next — thread relevancy ranking, BM25 matcher, self-learning review gate |
 | **v1** | Governance — audit log, confirmation UX, write policies |
 | **v2** | Git write tools, ECS/S3 tools, workflow skills (e.g. hotfix) |
+| **v3** | Tool extensibility — MCP client, optional generic REST/OpenAPI connectors |
 | **Won't do** | Explicitly out of scope |
 
 ---
@@ -125,6 +126,7 @@ Use these when reading gaps below:
 | Schedule tools | ✅ | v0 | `create_schedule`, `list_schedules`, … |
 | Git write tools | 🟡 Phase 1 | **v2** | Branch/commit/push/PR + debug scripts when `git.write_enabled`; full hotfix skills **v2** |
 | ECS / S3 direct tools | ❌ | **v2** | In `allowed_services` config only — no boto tools yet |
+| MCP / generic API tools | ❌ | **v3** | No MCP client; tools are first-party Python only (`backend/tools/catalog.py`) |
 | Structured UI payloads | ✅ | v0 | |
 
 ### Layer 7 — Governance
@@ -193,17 +195,22 @@ Company investigation playbooks (e.g. event dumps) → `.alfred/playbooks/` with
 | Skill routing | `routing/engine.py` | Keyword → heuristic → LLM (`agentic_routing`) |
 | Context pruning | `orchestrator/policy.py` → `prune_context` | Stack traces + long URLs — **not** message ranking |
 
-### v0.2 polish — next (quality, no new integrations)
+### v0.2 polish — shipped ✅
 
-| # | Gap | Why it matters |
-|---|-----|----------------|
-| 1 | **Thread relevancy ranking** | Long Slack threads still send most messages to the LLM after prune-only compression |
-| 2 | **BM25 playbook matcher** | Planned in `v0.md` but never added; keyword collisions possible when many playbooks overlap |
-| 3 | **Self-learning review gate** | `learning.py` writes playbooks directly — needs Admin UI approve/reject before activation |
+| # | Gap | Status |
+|---|-----|--------|
+| 1 | **Thread relevancy ranking** | ✅ `slack/relevancy.py` |
+| 2 | **BM25 playbook matcher** | ✅ tier in `routing/engine.py` |
+| 3 | **Self-learning review gate** | ✅ pending queue + Admin UI approve/reject |
+
+<details>
+<summary>Original v0.2 design notes (archive)</summary>
 
 **Thread relevancy (design sketch):** score messages by stack traces, file paths, error codes, PR/commit URLs, keyword overlap with intent, recency; keep top N + one-line summary of the rest. Optional cheap-model pass before investigation LLM.
 
 **BM25 (design sketch):** index playbook `name`, `description`, and triggers locally (`rank-bm25`); use as tier between keyword and LLM matcher when confidence is ambiguous.
+
+</details>
 
 ### v1 — governance (shipped)
 
@@ -225,6 +232,34 @@ Local git staging (`write_file`, `git_commit`, …) is **audit-logged** but does
 | 10 | **ECS / S3 read tools** | `allowed_services` lists them; only Athena + CloudWatch tools exist |
 
 Safe git write slice: branch in session workspace → push branch → open PR via existing GitHub/GitLab API clients. **No force-push tool.**
+
+### v3 — tool extensibility (next phase — not started)
+
+Today Alfred only exposes **built-in integrations** registered in code (Git, JIRA, AWS, Google, web search, schedules, Graphify). Skills and playbooks pick from that fixed catalog via `allowed_tools`; there is **no** Model Context Protocol (MCP) client and **no** generic “call any REST API” tool.
+
+| # | Gap | Notes |
+|---|-----|-------|
+| 11 | **MCP client** | Configurable MCP servers in `.alfred/config.yaml`; discover tools at runtime and register on `ToolRegistry` (reuse lazy registration + governance) |
+| 12 | **MCP admin + health** | Admin UI to add/remove servers, store secrets, run connectivity checks; surface in health panel |
+| 13 | **Generic REST/OpenAPI connector** (optional) | Declarative HTTP endpoints with auth from encrypted secrets — higher risk; needs allowlists, read/write classification, and audit |
+| 14 | **Playbook/skill wiring** | Domain playbooks reference MCP tool names in `allowed_tools`; document naming and collision rules with built-in tools |
+
+**Design sketch (MCP):**
+
+```yaml
+# .alfred/config.yaml (proposed — not implemented)
+mcp:
+  enabled: true
+  servers:
+    - name: linear
+      transport: stdio          # or sse / streamable-http
+      command: ["npx", "-y", "@linear/mcp-server"]
+      env_secret_keys: [LINEAR_API_KEY]
+```
+
+At task start, Alfred would connect (or reuse a session pool), list MCP tools, map JSON schemas → `ToolSchema`, and register handlers that proxy `tools/call` through governance. Write-capable MCP tools use the same confirmation + audit path as `create_pull_request` and JIRA writes.
+
+**Out of scope for v3 v1:** arbitrary user-supplied Python plugins, running untrusted MCP servers without config review, or replacing first-party Git/JIRA clients with MCP-only paths.
 
 ### Operational polish (ongoing)
 
@@ -253,6 +288,7 @@ graph LR
     BM25[BM25 matcher v0.2] --> Route[Fewer wrong skill picks]
     GitW --> HF[deploy_hotfix skill]
     AWS2[ECS/S3 read v2] --> Ops[Ops investigations]
+    MCP[MCP client v3] --> Ext[Third-party tools without code forks]
 ```
 
 | Track | Best for | Steps |
@@ -260,8 +296,9 @@ graph LR
 | **Safe automation** | Hotfix/cherry-pick workflows | v1 governance → git branch/push/PR tools → `deploy_hotfix.md` |
 | **Better debug UX** | Long Slack incident threads | Thread relevancy ranking → optional BM25 matcher |
 | **Ops depth** | ECS/S3 investigation | ECS/S3 read tools (after or in parallel with v1) |
+| **Extensibility** | Linear, Sentry, Datadog, internal APIs | MCP client + admin config → optional OpenAPI connector; gate writes via governance |
 
-**Recommended default:** BM25 matcher and self-learning review gate are shipped. Next: ECS/S3 read tools, company playbooks, or real-repo plan→PR dry run — defer deploy/hotfix skills until CI/CD integrations (Jenkins, Argo, etc.) are scoped.
+**Recommended default:** v0.2 polish and v1 governance are shipped. Near-term: ECS/S3 read tools, company playbooks, or real-repo plan→PR dry run. **Next phase for new integrations without forking Alfred:** **v3 MCP client** (see [v3 — tool extensibility](#v3--tool-extensibility-next-phase--not-started)) — defer generic OpenAPI until MCP patterns and governance hooks are proven.
 
 ---
 
@@ -407,6 +444,7 @@ Defer until v1: confirmation governance (audit + write policies). Defer until v2
 | Socket Mode for Slack | No public URL required for Slack |
 | Unified direct router | `routing/intent.py` consolidates JIRA/git/investigate fast paths (v0.1) |
 | JIRA/Google writes before git writes | API write tools shipped; governance (v1) must gate all write surfaces |
+| First-party tools only (until v3) | New SaaS integrations require Python client + `register_*_tools`; MCP planned to reduce that burden |
 | grade_events in playbooks | Company table semantics; tool enforces guardrails |
 
 ---

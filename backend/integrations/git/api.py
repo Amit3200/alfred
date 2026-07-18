@@ -171,6 +171,7 @@ class GitApiClient:
         base: str,
         body: str = "",
         draft: bool = False,
+        labels: list[str] | None = None,
     ) -> dict[str, Any]:
         return self._impl.create_pull_request(
             repo,
@@ -179,6 +180,7 @@ class GitApiClient:
             base=base,
             body=body,
             draft=draft,
+            labels=labels,
         )
 
 
@@ -347,6 +349,15 @@ class _GitHubClient:
             json={"content": content},
         )
 
+    def _apply_issue_labels(self, repo: str, issue_number: int, labels: list[str]) -> None:
+        if not labels:
+            return
+        owner, name = split_repo_slug(repo)
+        self._post(
+            f"/repos/{owner}/{name}/issues/{issue_number}/labels",
+            json={"labels": labels},
+        )
+
     def create_pull_request(
         self,
         repo: str,
@@ -356,6 +367,7 @@ class _GitHubClient:
         base: str,
         body: str = "",
         draft: bool = False,
+        labels: list[str] | None = None,
     ) -> dict[str, Any]:
         owner, name = split_repo_slug(repo)
         payload: dict[str, Any] = {
@@ -367,8 +379,13 @@ class _GitHubClient:
         if draft:
             payload["draft"] = True
         data = self._post(f"/repos/{owner}/{name}/pulls", json=payload)
+        pr_number = data.get("number")
+        applied_labels: list[str] = []
+        if pr_number and labels:
+            self._apply_issue_labels(repo, int(pr_number), labels)
+            applied_labels = list(labels)
         return {
-            "number": data.get("number"),
+            "number": pr_number,
             "title": data.get("title"),
             "state": data.get("state"),
             "repo": f"{owner}/{name}",
@@ -376,6 +393,7 @@ class _GitHubClient:
             "head": (data.get("head") or {}).get("ref"),
             "base": (data.get("base") or {}).get("ref"),
             "draft": data.get("draft", False),
+            "labels": applied_labels,
         }
 
 
@@ -537,6 +555,7 @@ class _GitLabClient:
         base: str,
         body: str = "",
         draft: bool = False,
+        labels: list[str] | None = None,
     ) -> dict[str, Any]:
         project = quote(repo, safe="")
         payload: dict[str, Any] = {
@@ -547,6 +566,8 @@ class _GitLabClient:
         }
         if draft:
             payload["draft"] = True
+        if labels:
+            payload["labels"] = ",".join(labels)
         data = self._post(f"/projects/{project}/merge_requests", json=payload)
         return {
             "number": data.get("iid"),
@@ -557,4 +578,5 @@ class _GitLabClient:
             "head": data.get("source_branch"),
             "base": data.get("target_branch"),
             "draft": bool(data.get("draft")),
+            "labels": list(labels or []),
         }

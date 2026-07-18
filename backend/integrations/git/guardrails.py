@@ -115,9 +115,46 @@ def validate_readonly_script_content(content: str) -> None:
             raise ValueError(f"Debug script rejected — {label} is not allowed in read-only scripts.")
 
 
-def suggest_branch_name(prefix: str = "alfred") -> str:
-    from datetime import datetime, timezone
+ALFRED_PR_BRANCH_PREFIX = "alfred/pr"
 
-    stamp = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
-    safe = re.sub(r"[^a-zA-Z0-9-]+", "-", prefix.strip().lower()).strip("-") or "alfred"
-    return f"{safe}/{stamp}"
+
+def slugify_branch_context(text: str, *, max_len: int = 48) -> str:
+    slug = re.sub(r"[^a-zA-Z0-9-]+", "-", text.strip().lower())
+    slug = re.sub(r"-{2,}", "-", slug).strip("-")
+    if not slug:
+        slug = "change"
+    trimmed = slug[:max_len].rstrip("-")
+    return trimmed or "change"
+
+
+def format_alfred_pr_branch_name(branch_context: str) -> str:
+    return f"{ALFRED_PR_BRANCH_PREFIX}/{slugify_branch_context(branch_context)}"
+
+
+def resolve_alfred_pr_branch_name(
+    *,
+    branch_name: str | None = None,
+    branch_context: str | None = None,
+) -> str:
+    """Normalize Alfred PR branches to ``alfred/pr/<slug>``."""
+    name = (branch_name or "").strip()
+    context = (branch_context or "").strip()
+
+    if name.startswith(f"{ALFRED_PR_BRANCH_PREFIX}/"):
+        return name
+
+    if name.startswith("alfred/"):
+        context = context or name[len("alfred/") :]
+    elif name:
+        context = context or name
+
+    if not context:
+        from datetime import datetime, timezone
+
+        context = datetime.now(timezone.utc).strftime("%Y%m%d-%H%M")
+
+    return format_alfred_pr_branch_name(context)
+
+
+def suggest_branch_name(branch_context: str = "change") -> str:
+    return format_alfred_pr_branch_name(branch_context)

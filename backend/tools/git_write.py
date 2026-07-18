@@ -8,6 +8,7 @@ from typing import Any
 
 from backend.ai.base import ToolSchema
 from backend.integrations.git.api import GitApiClient, resolve_repo_slug
+from backend.integrations.git.guardrails import resolve_alfred_pr_branch_name
 from backend.integrations.git.mirror import WorkspaceMirrorManager
 from backend.integrations.git.script_runner import run_debug_script, write_debug_script
 from backend.integrations.git.write_ops import (
@@ -22,6 +23,9 @@ from backend.tools.result import ToolResult
 
 logger = logging.getLogger(__name__)
 
+ALFRED_PR_LABEL_GENERATED = "alfred-generated"
+ALFRED_PR_LABEL_PLAN = "alfred-plan"
+
 GIT_PREPARE_BRANCH = ToolSchema(
     name="git_prepare_branch",
     description=(
@@ -32,16 +36,26 @@ GIT_PREPARE_BRANCH = ToolSchema(
         "type": "object",
         "properties": {
             "repo": {"type": "string", "description": "Repository slug owner/name."},
+            "branch_context": {
+                "type": "string",
+                "description": (
+                    "Short slug for the change, e.g. instrument-checkout-handler. "
+                    "Branch becomes alfred/pr/<slug>."
+                ),
+            },
             "branch_name": {
                 "type": "string",
-                "description": "New branch name, e.g. alfred/add-logging-instrumentation.",
+                "description": (
+                    "Optional explicit branch name (alfred/pr/<slug>). "
+                    "When omitted, derived from branch_context."
+                ),
             },
             "base_branch": {
                 "type": "string",
                 "description": "Base branch to pull (default: git.default_base_branch or main).",
             },
         },
-        "required": ["repo", "branch_name"],
+        "required": ["repo"],
     },
 )
 
@@ -165,6 +179,22 @@ CREATE_PULL_REQUEST = ToolSchema(
 )
 
 
+def alfred_pr_labels_for_registry(registry: ToolRegistry, data_dir: Path) -> list[str]:
+    """Labels applied to Alfred-created PRs for filtering and automation."""
+    labels = [ALFRED_PR_LABEL_GENERATED]
+    gov = getattr(registry, "governance", None)
+    if gov is None:
+        return labels
+
+    from backend.orchestrator.planning import plan_exists_for_task, session_plan_path
+
+    if plan_exists_for_task(gov.task.id, data_dir):
+        labels.append(ALFRED_PR_LABEL_PLAN)
+    elif session_plan_path(gov.session):
+        labels.append(ALFRED_PR_LABEL_PLAN)
+    return labels
+
+
 def register_git_write_tools(
     registry: ToolRegistry,
     *,
@@ -188,14 +218,22 @@ def register_git_write_tools(
 
     def prepare_branch_handler(args: dict[str, Any]) -> ToolResult:
         try:
+            branch_name = str(args.get("branch_name") or "").strip() or None
+            branch_context = str(args.get("branch_context") or "").strip() or None
+            if not branch_name and not branch_context:
+                return ToolResult.error("branch_context or branch_name is required.")
+            resolved_branch = resolve_alfred_pr_branch_name(
+                branch_name=branch_name,
+                branch_context=branch_context,
+            )
             data = prepare_write_branch(
                 mirror,
                 _session_key(),
                 str(args.get("repo") or ""),
-                branch_name=str(args.get("branch_name") or ""),
+                branch_name=resolved_branch,
                 base_branch=str(args.get("base_branch") or "") or None,
             )
-            return ToolResult(kind="git_branch", data=data)
+            return ToolResult(kind="git_branch", data={**data, "branch_name": resolved_branch})
         except (ValueError, RuntimeError) as exc:
             return _handle_value_error(exc) if isinstance(exc, ValueError) else ToolResult.error(str(exc))
 
@@ -278,15 +316,18 @@ def register_git_write_tools(
         try:
             slug = resolve_repo_slug(repo, config.git)
             base = str(args.get("base") or config.git.default_base_branch or "main").strip()
+            normalized_head = resolve_alfred_pr_branch_name(branch_name=head)
+            labels = alfred_pr_labels_for_registry(registry, data_dir)
             detail = client.create_pull_request(
                 slug,
                 title=title,
-                head=head,
+                head=normalized_head,
                 base=base,
                 body=str(args.get("body") or ""),
                 draft=bool(args.get("draft", True)),
+                labels=labels,
             )
-            return ToolResult(kind="pr_created", data={"pr": detail})
+            return ToolResult(kind="pr_created", data={"pr": detail, "labels": labels})
         except (ValueError, RuntimeError) as exc:
             return ToolResult.error(str(exc))
 

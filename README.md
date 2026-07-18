@@ -4,7 +4,7 @@
 
 Config and encrypted secrets live in `.alfred/` (not a SaaS). Optional Ollama on your machine; admin UI for setup, health, and usage tracking.
 
-> **Status:** Alpha — Slack ingress, durable SQLite task queue, unified routing, git/JIRA/AWS/Google investigation, schedules, planning mode, and observability are working. **Next:** governance (audit + confirmation before writes), thread relevancy ranking, git write tools. Slack DMs are out of scope.  
+> **Status:** Alpha — Slack ingress, durable SQLite task queue, unified routing, git/JIRA/AWS/Google investigation, schedules, planning mode, governance, and observability are working. **Next:** v2 automation (ECS/S3, hotfix skills); **v3** MCP + generic API extensibility (planned, not built). Slack DMs are out of scope.  
 > **Tracker:** [`docs/build-reference/building_phase_v0.md`](docs/build-reference/building_phase_v0.md) (last reviewed 2026-07-18)
 
 **Requires Python 3.10+.** Local dev targets **Python 3.13** (see `.python-version`).
@@ -80,11 +80,10 @@ Company-specific Athena tables (e.g. event dumps) → **`.alfred/playbooks/`** w
 
 | Item | Target | Notes |
 |------|--------|--------|
-| Governance (audit log, confirmation UX, write policies) | **v1** | Gate all write surfaces including JIRA/Google |
-| Git write Phase 1 (draft PR flow) | **Shipped (opt-in)** | `git.write_enabled` + `create_pr` skill; cherry-pick/hotfix **v2** |
-| Thread relevancy ranking | **v0.2 polish** | Context **pruning** exists; message **scoring/selection** does not |
-| BM25 playbook matcher | **v0.2 polish** | Routing uses keyword + heuristic + LLM today |
 | ECS/S3 direct tools | **v2** | Listed in `allowed_services` config only |
+| `deploy_hotfix` / cherry-pick skills | **v2** | Phase 1 draft PR flow shipped (`git.write_enabled` + `create_pr`) |
+| **MCP client** (third-party tool servers) | **v3** | Not built — tools are first-party Python only today |
+| **Generic REST/OpenAPI connectors** | **v3** | Optional after MCP; declarative HTTP tools with governance |
 | Slack app DMs | **Won't do** | Use `@alfred` in channels |
 
 Details and recommended build order: [`building_phase_v0.md`](docs/build-reference/building_phase_v0.md)
@@ -682,12 +681,13 @@ Release wheel: `./scripts/build-release.sh`
 |--------|--------|--------|
 | **v0** | Slack channels, git/JIRA/AWS read, GitHub PR bot, admin UI, Google, schedules | ✅ Done |
 | **v0.1** | SQLite queue + worker, unified router, keyword/heuristic/LLM routing, context pruning | ✅ Done |
-| **v0.2 polish** | Thread relevancy ranking, BM25 matcher, self-learning review gate | Next |
-| **v1** | Governance — audit log, confirmation UX, write policies | Planned |
-| **v2** | Git write tools, `deploy_hotfix` skill, ECS/S3 read tools | Planned |
+| **v0.2 polish** | Thread relevancy ranking, BM25 matcher, self-learning review gate | ✅ Done |
+| **v1** | Governance — audit log, confirmation UX, write policies | ✅ Done |
+| **v2** | Git hotfix skills, ECS/S3 read tools (Phase 1 PR write shipped) | Planned |
+| **v3** | **MCP client** + optional generic REST/OpenAPI tool connectors | **Next phase (not started)** |
 | — | Slack DMs | **Won't do** |
 
-Recommended sequence: **governance → git hotfix workflow** (safe automation) or **thread relevancy** (better debug answers in long threads).
+Recommended sequence: **v2 ops/automation** (ECS/S3, hotfix skills) in parallel with scoping **v3 MCP** for integrations that should not require forking Alfred (Linear, Sentry, internal APIs, etc.). Details: [v3 — tool extensibility](docs/build-reference/building_phase_v0.md#v3--tool-extensibility-next-phase--not-started).
 
 Full tracker: [`building_phase_v0.md`](docs/build-reference/building_phase_v0.md)
 

@@ -83,8 +83,10 @@ Alfred's workflow gate handles this automatically in Slack/UI chat; the skill re
 Call `git_prepare_branch` with:
 
 - `repo` — full slug (`owner/name`)
-- `branch_name` — descriptive, e.g. `alfred/instrument-checkout-handler` or `alfred/fix-null-fp-id`
+- `branch_context` — short slug, e.g. `instrument-checkout-handler` or `fix-null-fp-id` (branch becomes `alfred/pr/<slug>`)
 - `base_branch` — use `git.default_base_branch` from config when set; otherwise `main`
+
+Optional: pass `branch_name` only when you need an explicit `alfred/pr/<slug>` (normally use `branch_context`).
 
 This fetches latest `main` (or configured base) and creates an isolated feature branch in **this conversation's workspace only**.
 
@@ -124,9 +126,11 @@ Before `write_file`:
 3. `create_pull_request` with:
    - **title** — concise, conventional
    - **body** — include the plan from Step 2 + test checklist
-   - **head** — feature branch name
+   - **head** — feature branch name (`alfred/pr/<slug>` from Step 1)
    - **base** — same base used in Step 1
    - **draft** — `true` by default
+
+Alfred tags PRs with GitHub labels `alfred-generated` and, when a plan exists, `alfred-plan` (create these labels in the repo once for filtering).
 
 Reply in Slack with the PR URL and a summary of changes.
 
