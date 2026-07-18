@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
+from pathlib import Path
 from typing import Any, Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -531,6 +532,23 @@ def get_logs(
     except Exception as exc:
         from fastapi import HTTPException
         raise HTTPException(status_code=500, detail=str(exc))
+
+
+@router.get("/audit")
+def governance_audit_log(
+    manager: ConfigManager = Depends(require_admin),
+    limit: int = Query(50, ge=1, le=200),
+    tool_name: str | None = Query(None),
+    blocked_only: bool = Query(False),
+) -> dict[str, Any]:
+    from backend.governance.audit import get_audit_store
+
+    entries = get_audit_store(manager.data_dir).list_recent(
+        limit=limit,
+        tool_name=tool_name or None,
+        blocked_only=blocked_only,
+    )
+    return {"entries": entries, "total": len(entries)}
 
 
 @router.get("/health")

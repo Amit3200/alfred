@@ -6,11 +6,17 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from backend.orchestrator.processor import TaskProcessor
+from backend.routing.playbook_store_registry import reset_playbook_store_registry
 from backend.models.config import default_config
 from backend.models.task import Task
 
 
-def test_processor_injects_matched_playbook(tmp_path: Path):
+def test_processor_injects_matched_playbook(tmp_path: Path, monkeypatch):
+    empty_skills = tmp_path / "empty_bundled_skills"
+    empty_skills.mkdir()
+    monkeypatch.setattr("backend.routing.playbooks.bundled_skills_dir", lambda: empty_skills)
+    reset_playbook_store_registry()
+
     playbooks = tmp_path / "playbooks"
     playbooks.mkdir()
     (playbooks / "summaries.md").write_text(
@@ -26,6 +32,8 @@ Always include a code block table.
     )
 
     config = default_config()
+    config.skills.agentic_routing = False
+    config.skills.bm25_routing = False
     mock_provider = MagicMock()
     mock_provider.chat.return_value = MagicMock(content="ok", model="m")
 

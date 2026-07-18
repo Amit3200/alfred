@@ -2525,6 +2525,25 @@ body,
   background-color: #94a3b8;
 }
 
+.alfred-integration-card-dot.health-ok {
+  background-color: #10b981;
+  box-shadow: 0 0 8px rgba(16, 185, 129, 0.4);
+}
+
+.alfred-integration-card-dot.health-fail {
+  background-color: #ef4444;
+  box-shadow: 0 0 8px rgba(239, 68, 68, 0.35);
+}
+
+.alfred-integration-card-dot.health-warn {
+  background-color: #f59e0b;
+  box-shadow: 0 0 8px rgba(245, 158, 11, 0.35);
+}
+
+.alfred-status-warn {
+  color: #f59e0b;
+}
+
 .alfred-integration-card.add-new {
   border-style: dashed !important;
   background: transparent !important;

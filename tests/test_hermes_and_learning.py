@@ -58,6 +58,7 @@ def test_run_hermes_loop_tool_call():
 def test_analyze_and_generate_playbook(tmp_path, monkeypatch):
     config = AlfredConfig()
     config.orchestrator.self_improvement = True
+    config.orchestrator.self_improvement_requires_review = False
     config.ai.default_provider = "openai"
     config.ai.providers = {
         "openai": AIProviderConfig(enabled=True, model="gpt-4o"),
@@ -123,3 +124,57 @@ def test_analyze_and_generate_playbook_disabled(tmp_path):
         data_dir=str(tmp_path),
     )
     assert playbook_file is None
+
+
+def test_analyze_and_generate_playbook_queues_for_review(tmp_path, monkeypatch):
+    config = AlfredConfig()
+    config.orchestrator.self_improvement = True
+    config.orchestrator.self_improvement_requires_review = True
+    config.ai.default_provider = "openai"
+    config.ai.providers = {
+        "openai": AIProviderConfig(enabled=True, model="gpt-4o"),
+    }
+
+    mock_provider = MagicMock()
+    mock_provider.chat.return_value = LLMResponse(
+        content=(
+            "---\n"
+            "name: queued_playbook\n"
+            "description: Generated test playbook\n"
+            "mode: investigation\n"
+            "trigger_keywords: [test, debug]\n"
+            "---\n"
+            "# Objective\n"
+            "Run a test debug.\n"
+        ),
+        model="gpt-4o",
+    )
+
+    monkeypatch.setattr(
+        "backend.orchestrator.learning.LLMRouter.from_config",
+        lambda cfg, data_dir: MagicMock(get=lambda: mock_provider),
+    )
+
+    task = Task(
+        source="slack",
+        user_id="U1",
+        channel_id="C1",
+        raw_text="@alfred why is deployment failing?",
+        cleaned_intent="why is deployment failing?",
+    )
+
+    result = analyze_and_generate_playbook(
+        task,
+        "It failed due to timeout.",
+        config,
+        data_dir=str(tmp_path),
+    )
+
+    assert result is not None
+    from backend.orchestrator.playbook_pending import list_pending_playbooks
+    from backend.paths import playbooks_dir
+
+    pending = list_pending_playbooks(tmp_path)
+    assert len(pending) == 1
+    assert pending[0]["playbook_filename"] == "queued_playbook.md"
+    assert not (playbooks_dir(tmp_path) / "queued_playbook.md").exists()

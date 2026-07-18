@@ -43,9 +43,14 @@ JIRA_TOOLS = frozenset(
 UI_TOOLS = frozenset()
 
 
+WEB_TOOLS = frozenset({"web_search"})
+
+
 def tool_category(tool_name: str) -> str:
     if tool_name in GIT_TOOLS:
         return "git"
+    if tool_name in WEB_TOOLS:
+        return "web"
     if tool_name in SLACK_TOOLS:
         return "slack"
     if tool_name in JIRA_TOOLS:

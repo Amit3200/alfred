@@ -16,6 +16,7 @@ import {
   ApiError,
 } from "../api/client";
 import { defaultPublicBranding } from "../branding";
+import type { HealthCheck } from "../health";
 import type { AppView, SettingsPage } from "../types";
 import { showToast } from "../utils/toast";
 
@@ -30,7 +31,7 @@ type AppContextValue = {
   initialized: boolean;
   dataDir: string;
   branding: PublicBranding;
-  checks: Record<string, { ok: boolean; message?: string; skipped?: boolean }> | null;
+  checks: Record<string, HealthCheck> | null;
   view: AppView;
   settingsPage: SettingsPage;
   navigate: (view: AppView, settingsPage?: SettingsPage) => void;
@@ -95,6 +96,14 @@ export function AppProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const refreshChecks = useCallback(async () => {
+    try {
+      setChecks(await api.checks());
+    } catch {
+      setChecks(null);
+    }
+  }, []);
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
@@ -107,8 +116,10 @@ export function AppProvider({ children }: { children: ReactNode }) {
       if (health.initialized) {
         const cfg = await api.getConfig();
         setConfig(cfg);
+        await refreshChecks();
       } else {
         setConfig(null);
+        setChecks(null);
       }
     } catch (err) {
       if (err instanceof ApiError && err.status === 401) {
@@ -127,7 +138,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     } finally {
       setLoading(false);
     }
-  }, [notify, refreshBranding]);
+  }, [notify, refreshBranding, refreshChecks]);
 
   const login = async (username: string, password_or_token: string) => {
     setLoading(true);
@@ -162,6 +173,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     setTokenInput("");
     setIsAuthenticated(false);
     setConfig(null);
+    setChecks(null);
     notify("success", "Logged out successfully");
   };
 
@@ -223,6 +235,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       setConfig(await api.saveConfig(config, token));
       notify("success", "Configuration saved.");
+      await refreshChecks();
     } catch (err) {
       notify("error", err instanceof Error ? err.message : "Save failed");
     }
@@ -238,6 +251,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
       setConfig(await api.saveSecrets(secrets, token));
       setSecrets({ ai_api_keys: {} });
       notify("success", "Secrets saved (encrypted).");
+      await refreshChecks();
     } catch (err) {
       notify("error", err instanceof Error ? err.message : "Save failed");
     }
@@ -247,6 +261,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
     try {
       setChecks(await api.checks());
     } catch (err) {
+      setChecks(null);
       notify("error", err instanceof Error ? err.message : "Checks failed");
     }
   };
@@ -270,6 +285,11 @@ export function AppProvider({ children }: { children: ReactNode }) {
         result.ok ? "success" : "error",
         `${name}: ${result.message || (result.ok ? "OK" : "Failed")}`,
       );
+      try {
+        await refreshChecks();
+      } catch {
+        setChecks((prev) => ({ ...(prev ?? {}), [name]: result }));
+      }
     } catch (err) {
       notify("error", err instanceof Error ? err.message : "Test failed");
     }

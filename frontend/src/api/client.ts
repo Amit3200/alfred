@@ -1,3 +1,5 @@
+import type { HealthCheck } from "../health";
+
 export type LLMRouteConfig = {
   provider: string;
   model: string;
@@ -19,6 +21,9 @@ export type AlfredConfig = {
     signing_secret: string;
     app_token: string;
     allowed_channels: string[];
+    thread_relevance_enabled?: boolean;
+    thread_relevance_top_n?: number;
+    thread_fetch_limit?: number;
   };
   git: {
     enabled: boolean;
@@ -32,6 +37,7 @@ export type AlfredConfig = {
     mirror_refresh_minutes?: number;
     mirror_max_workspaces?: number;
     mirror_shallow_depth?: number;
+    write_enabled?: boolean;
   };
   github: {
     enabled: boolean;
@@ -68,6 +74,11 @@ export type AlfredConfig = {
     enabled: boolean;
     oauth_redirect_base_url: string;
   };
+  web_search?: {
+    enabled: boolean;
+    provider: "duckduckgo" | "tavily";
+    max_results: number;
+  };
   ai: {
     default_provider: string;
     routing: {
@@ -84,6 +95,9 @@ export type AlfredConfig = {
     custom_directory: string;
     disabled: string[];
     agentic_routing: boolean;
+    bm25_routing?: boolean;
+    bm25_min_score?: number;
+    bm25_min_gap?: number;
   };
   branding: {
     company_name: string;
@@ -94,6 +108,19 @@ export type AlfredConfig = {
   orchestrator: {
     agent_runner: "react" | "hermes";
     self_improvement: boolean;
+    self_improvement_requires_review?: boolean;
+  };
+  governance?: {
+    enabled: boolean;
+    require_confirmation: boolean;
+    require_confirmation_sources: string[];
+    confirmation_phrases: string[];
+    approval_ttl_minutes: number;
+    audit_enabled: boolean;
+    write_allowed_sources: string[];
+    write_allowed_channels: string[];
+    write_blocked_channels: string[];
+    write_allowed_users: string[];
   };
   _secrets_configured?: {
     slack_bot_token: boolean;
@@ -111,6 +138,7 @@ export type AlfredConfig = {
     google_oauth_refresh_token: boolean;
     google_credentials_type?: string | null;
     google_oauth_connected?: boolean;
+    web_search_api_key?: boolean;
     server_admin_token: boolean;
     ai_api_keys: Record<string, boolean>;
   };
@@ -137,6 +165,7 @@ export type SecretsPayload = {
   jira_api_token?: string;
   google_credentials_json?: string;
   google_oauth_refresh_token?: string;
+  web_search_api_key?: string;
   server_admin_token?: string;
   ai_api_keys?: Record<string, string>;
 };
@@ -272,7 +301,7 @@ export const api = {
   },
   deleteBrandingLogo: () =>
     request<PublicBranding>("/api/config/branding/logo", { method: "DELETE" }, true),
-  checks: () => request<Record<string, { ok: boolean; message?: string; skipped?: boolean }>>("/api/health/checks", {}, true),
+  checks: () => request<Record<string, HealthCheck>>("/api/health/checks", {}, true),
   getConfig: () => request<AlfredConfig>("/api/config", {}, true),
   saveConfig: (config: AlfredConfig, token?: string) =>
     request<AlfredConfig>(
@@ -459,6 +488,18 @@ export const api = {
       {},
       true,
     ),
+  governanceAudit: (params: { limit?: number; tool_name?: string; blocked_only?: boolean } = {}) => {
+    const q = new URLSearchParams();
+    if (params.limit != null) q.set("limit", String(params.limit));
+    if (params.tool_name) q.set("tool_name", params.tool_name);
+    if (params.blocked_only) q.set("blocked_only", "true");
+    const suffix = q.toString() ? `?${q.toString()}` : "";
+    return request<GovernanceAuditResponse>(
+      `/api/observability/audit${suffix}`,
+      {},
+      true,
+    );
+  },
   observabilityFilters: (preset = "30d") =>
     request<ObservabilityFilterOptions>(
       `/api/observability/filters?preset=${encodeURIComponent(preset)}`,
@@ -517,6 +558,26 @@ export const api = {
   },
 
   listPlaybooks: () => request<PlaybooksListResponse>("/api/playbooks", {}, true),
+  listPendingPlaybooks: () =>
+    request<PendingPlaybooksResponse>("/api/playbooks/pending", {}, true),
+  getPendingPlaybook: (pendingId: string) =>
+    request<{ pending: PendingPlaybook }>(
+      `/api/playbooks/pending/${encodeURIComponent(pendingId)}`,
+      {},
+      true,
+    ),
+  approvePendingPlaybook: (pendingId: string) =>
+    request<{ ok: boolean; filename: string; pending: PendingPlaybook }>(
+      `/api/playbooks/pending/${encodeURIComponent(pendingId)}/approve`,
+      { method: "POST" },
+      true,
+    ),
+  rejectPendingPlaybook: (pendingId: string) =>
+    request<{ ok: boolean; pending: PendingPlaybook }>(
+      `/api/playbooks/pending/${encodeURIComponent(pendingId)}/reject`,
+      { method: "POST" },
+      true,
+    ),
   getPlaybookExample: () => request<PlaybookExampleResponse>("/api/playbooks/example", {}, true),
   getPlaybook: (filename: string) =>
     request<PlaybookDetail>(`/api/playbooks/${encodePlaybookPath(filename)}`, {}, true),
@@ -894,6 +955,28 @@ export type ObservabilityFilterOptions = {
   tool_categories: string[];
 };
 
+export type GovernanceAuditEntry = {
+  id: number;
+  recorded_at: string;
+  task_id: string;
+  session_key: string;
+  source: string;
+  user_id: string;
+  channel_id: string;
+  skill_name: string;
+  tool_name: string;
+  tool_args: string;
+  result_kind: string;
+  success: boolean;
+  message: string;
+  blocked: boolean;
+};
+
+export type GovernanceAuditResponse = {
+  entries: GovernanceAuditEntry[];
+  total: number;
+};
+
 export type DbTableStats = {
   rows: number;
   oldest?: string | null;
@@ -953,6 +1036,27 @@ export type PlaybooksListResponse = {
 export type PlaybookDetail = PlaybookSummary & {
   content: string;
   ok?: boolean;
+};
+
+export type PendingPlaybook = {
+  id: string;
+  kind: string;
+  title: string;
+  description: string;
+  playbook_filename: string;
+  playbook_name?: string;
+  proposed_content: string;
+  status: string;
+  created_at: string;
+  source_task_id?: string;
+  source_intent?: string;
+  source_channel_id?: string;
+  source?: string;
+};
+
+export type PendingPlaybooksResponse = {
+  pending: PendingPlaybook[];
+  total: number;
 };
 
 export type ScheduledJob = {

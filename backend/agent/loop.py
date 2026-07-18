@@ -38,11 +38,10 @@ def run_agent_loop(
     data_dir = current_data_dir.get()
 
     def get_plan_context() -> str | None:
-        if task_id and data_dir:
-            from backend.orchestrator.planning import plans_dir
-            plan_file = plans_dir(data_dir) / f"plan_{task_id}.md"
-            if plan_file.is_file():
-                return plan_file.read_text(encoding="utf-8")
+        if task_id:
+            from backend.orchestrator.planning import resolve_plan_for_task
+
+            return resolve_plan_for_task(task_id, session=session, data_dir=data_dir)
         return None
 
     for iteration in range(max_iterations):

@@ -75,10 +75,10 @@ def test_detect_direct_action_git_status():
     skill = Playbook(
         name="git_status",
         path=Path("git_status.md"),
-        body="",
         description="status",
         mode="investigation",
         allowed_tools=["list_my_prs"],
+        _body="",
     )
 
     action = detect_direct_action(

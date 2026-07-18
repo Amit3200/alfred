@@ -13,6 +13,7 @@ import { HealthChecksTable } from "./HealthChecksTable";
 import { OllamaGetStarted } from "./OllamaGetStarted";
 import { useApp } from "../context/AppContext";
 import { api } from "../api/client";
+import { summarizeHealth } from "../health";
 
 export function HomePage() {
   const {
@@ -103,9 +104,20 @@ export function HomePage() {
   const secretsCount = [
     configured?.slack_bot_token,
     configured?.git_token,
+    configured?.jira_api_token,
+    configured?.aws_access_key_id,
+    configured?.google_credentials_json,
+    configured?.web_search_api_key,
     configured?.server_admin_token,
     Object.values(configured?.ai_api_keys || {}).some(Boolean),
   ].filter(Boolean).length;
+  const healthSummary = summarizeHealth(checks);
+  const statusClass =
+    healthSummary.failed > 0
+      ? "alfred-status-warn"
+      : healthSummary.total > 0
+        ? "alfred-status-ok"
+        : "alfred-status-ok";
 
   return (
     <div>
@@ -138,7 +150,7 @@ export function HomePage() {
       <div className="alfred-stat-grid">
         <div className="alfred-stat-card">
           <div className="alfred-stat-label">Status</div>
-          <div className="alfred-stat-value alfred-status-ok">Ready</div>
+          <div className={`alfred-stat-value ${statusClass}`}>{healthSummary.headline}</div>
         </div>
         <div className="alfred-stat-card">
           <div className="alfred-stat-label">Version</div>
@@ -152,7 +164,7 @@ export function HomePage() {
         </div>
         <div className="alfred-stat-card">
           <div className="alfred-stat-label">Secrets</div>
-          <div className="alfred-stat-value">{secretsCount} / 4</div>
+          <div className="alfred-stat-value">{secretsCount} configured</div>
         </div>
       </div>
 
@@ -218,7 +230,7 @@ export function HomePage() {
             </Flex>
             {!checks ? (
               <Typography.Text type="secondary" style={{ fontSize: 14 }}>
-                Test Slack, Git, AWS, and AI connectivity.
+                Run checks to verify Slack, Git, JIRA, AWS, Google, web search, and AI connectivity.
               </Typography.Text>
             ) : (
               <HealthChecksTable checks={checks} compact />

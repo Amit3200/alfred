@@ -4,8 +4,8 @@
 
 Config and encrypted secrets live in `.alfred/` (not a SaaS). Optional Ollama on your machine; admin UI for setup, health, and usage tracking.
 
-> **Status:** Alpha — Slack ingress, git mirrors, JIRA (with context caching), AWS read tools, Graphify, observability (with task checkpoints database), local persistent SQLite task queue + background worker, and pluggable AI (incl. Kimi) are working. Git write ops, Slack DMs, and a unified intent router are still pending.  
-> **Tracker:** [`docs/build-reference/building_phase_v0.md`](docs/build-reference/building_phase_v0.md) (last reviewed 2026-07-04)
+> **Status:** Alpha — Slack ingress, durable SQLite task queue, unified routing, git/JIRA/AWS/Google investigation, schedules, planning mode, and observability are working. **Next:** governance (audit + confirmation before writes), thread relevancy ranking, git write tools. Slack DMs are out of scope.  
+> **Tracker:** [`docs/build-reference/building_phase_v0.md`](docs/build-reference/building_phase_v0.md) (last reviewed 2026-07-18)
 
 **Requires Python 3.10+.** Local dev targets **Python 3.13** (see `.python-version`).
 
@@ -39,10 +39,14 @@ Config and encrypted secrets live in `.alfred/` (not a SaaS). Optional Ollama on
 | **Session memory** | SQLite per `(channel, thread)` — follow-ups, active PR, last git action. |
 | **Slack context** | Channel + thread history (~90 days with dynamic day/week queries), reaction display names, Slack Lists parsing. |
 | **Git investigation** | Mirror repos; `grep_repo`, `read_file`, `git_log`, `git_blame`, `git_show`. |
+| **Git write (Phase 1)** | Opt-in (`git.write_enabled`): isolated branch, `write_file`, read-only debug scripts, draft PR via `create_pr` skill. |
 | **PR review** | Summarize/review from URL or thread; GitHub App `@alfred review` on PR comments (optional, needs public URL). |
 | **JIRA** | Search, get, update, comment, create, link PRs; assignee resolution via `assignee_map`; workspace identity map. |
 | **AWS (read-only)** | `athena_query`, `cloudwatch_query`, `list_cloudwatch_log_groups`; domain **`grade_events_query`** via local playbooks with guardrails (LIMIT, partition windows). |
+| **Google Workspace** | Read/write Sheets, read/create/append Docs (OAuth or service account). |
+| **Schedules** | Cron jobs via `schedule_management` skill — enqueue recurring tasks to Slack channels. |
 | **Graphify** | Optional code graphs on sync — `query_graph` when `git.graphify_enabled`. |
+| **Task queue** | Persistent SQLite queue + background worker; checkpoint timeline in Admin → Usage. |
 | **Playbooks** | `.alfred/playbooks/*.md` — company triggers, formatting, investigation tools (local only). |
 | **Skills** | Bundled `skills/*.md` — investigate, review PR, git status, JIRA, AWS, summarize alerts. |
 | **AI** | Ollama, OpenAI-compat, Anthropic, Gemini, Kimi — per-task routing (`investigation`, `skill_matching`, …). |
@@ -62,6 +66,10 @@ Config and encrypted secrets live in `.alfred/` (not a SaaS). Optional Ollama on
 | `jira_management.md` | JIRA search/update/comment/create, identity map |
 | `jira_ticket.md` | Link PRs to JIRA issues |
 | `aws_query.md` | Athena + CloudWatch Logs (generic) |
+| `google_workspace.md` | Google Sheets and Docs read/write |
+| `schedule_management.md` | Create/list/toggle/delete cron schedules |
+| `plan_task.md` | Standalone execution plan (`@alfred plan`) |
+| `create_pr.md` | Phase 1 isolated branch → commit → draft PR (`@alfred pr`) |
 | `summarize_bugs.md` | Operational summaries from Slack context |
 
 Company-specific Athena tables (e.g. event dumps) → **`.alfred/playbooks/`** with `mode: investigation` and `allowed_tools`.
@@ -72,11 +80,14 @@ Company-specific Athena tables (e.g. event dumps) → **`.alfred/playbooks/`** w
 
 | Item | Target | Notes |
 |------|--------|--------|
-| Intent router, thread relevancy, skill matcher | **v0.1** | Upgrade from keywords + direct paths |
-| Git write ops, ECS/S3 tools | **v2** | |
+| Governance (audit log, confirmation UX, write policies) | **v1** | Gate all write surfaces including JIRA/Google |
+| Git write Phase 1 (draft PR flow) | **Shipped (opt-in)** | `git.write_enabled` + `create_pr` skill; cherry-pick/hotfix **v2** |
+| Thread relevancy ranking | **v0.2 polish** | Context **pruning** exists; message **scoring/selection** does not |
+| BM25 playbook matcher | **v0.2 polish** | Routing uses keyword + heuristic + LLM today |
+| ECS/S3 direct tools | **v2** | Listed in `allowed_services` config only |
 | Slack app DMs | **Won't do** | Use `@alfred` in channels |
 
-Details: [`building_phase_v0.md`](docs/build-reference/building_phase_v0.md)
+Details and recommended build order: [`building_phase_v0.md`](docs/build-reference/building_phase_v0.md)
 
 ---
 
@@ -94,6 +105,7 @@ chmod +x scripts/*.sh
 | Admin UI (dev) | http://127.0.0.1:5173 |
 | API + bundled UI | http://127.0.0.1:8080 |
 | Health | http://127.0.0.1:8080/api/health |
+| Health checks | http://127.0.0.1:8080/api/health/checks |
 
 ```bash
 alfred token      # view admin username, password, and token for login
@@ -175,6 +187,25 @@ git:
 alfred git sync
 ```
 
+**Optional — Phase 1 PR write flow:** Admin → Integrations → enable **Phase 1 git write**, set `main_repo` to your primary repo (e.g. `YourOrg/cipher`), and route **Workflow execution** to a capable coding model in Admin → AI.
+
+```yaml
+git:
+  write_enabled: true
+  main_repo: YourOrg/cipher
+  default_base_branch: main
+```
+
+Then in Slack: `@alfred pr on cipher — add logging when fp_id is missing, include a unit test`
+
+**Plan before implementing:**
+```
+@alfred plan instrument checkout handler for missing fp_id cases
+alfred plan -i
+```
+
+See `skills/create_pr.md` and `skills/plan_task.md` for governance rules Alfred follows.
+
 ### 7 — JIRA (optional)
 
 ```yaml
@@ -214,7 +245,7 @@ Logs: `.alfred/alfred.log`
 
 | Check | How |
 |-------|-----|
-| Health | Admin → Health (Slack, AI, Git, JIRA, AWS) |
+| Health | Admin → Health (Slack, Git, JIRA, AWS, Google, web search, AI) |
 | Chat | Admin → Chat |
 | Slack | `@alfred what are my open PRs?` |
 | Git | `@alfred where is X handled in org/repo?` |
@@ -347,6 +378,8 @@ List shortcodes: `alfred slack emojis` (requires `emoji:read` scope). Custom + b
 | `alfred status` | Data dir, init state, Slack readiness |
 | `alfred token` | Print admin username, password, and token |
 | `alfred exec "…"` | Run locally (no Slack post) |
+| `alfred pr [CONTEXT]` | Phase 1 PR flow — same as `@alfred pr` in Slack (use `-i` to prompt) |
+| `alfred plan [TASK]` | Standalone checklist plan — same as `@alfred plan` (use `-i` to prompt) |
 | `alfred git sync` | Clone/update shared mirrors |
 | `alfred git workspaces` | List session workspaces |
 | `alfred git cleanup` | Remove expired workspaces |
@@ -647,11 +680,14 @@ Release wheel: `./scripts/build-release.sh`
 
 | Target | Focus | Status |
 |--------|--------|--------|
-| **v0** | Slack channels, git/JIRA/AWS read, GitHub PR bot, admin UI | Mostly done |
-| **v0.1** | Intent router, thread relevancy, skill matcher | Next |
-| **v1** | Task queue, HTTP enqueue, governance | Planned |
-| **v2** | Git writes, ECS/S3 tools | Planned |
+| **v0** | Slack channels, git/JIRA/AWS read, GitHub PR bot, admin UI, Google, schedules | ✅ Done |
+| **v0.1** | SQLite queue + worker, unified router, keyword/heuristic/LLM routing, context pruning | ✅ Done |
+| **v0.2 polish** | Thread relevancy ranking, BM25 matcher, self-learning review gate | Next |
+| **v1** | Governance — audit log, confirmation UX, write policies | Planned |
+| **v2** | Git write tools, `deploy_hotfix` skill, ECS/S3 read tools | Planned |
 | — | Slack DMs | **Won't do** |
+
+Recommended sequence: **governance → git hotfix workflow** (safe automation) or **thread relevancy** (better debug answers in long threads).
 
 Full tracker: [`building_phase_v0.md`](docs/build-reference/building_phase_v0.md)
 

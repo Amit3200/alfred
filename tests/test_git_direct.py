@@ -24,9 +24,9 @@ def _git_skill() -> Playbook:
     return Playbook(
         name="git_status",
         path=Path("git_status.md"),
-        body="",
         mode="investigation",
         allowed_tools=["list_my_prs", "list_prs", "get_pr", "list_repos"],
+        _body="",
     )
 
 

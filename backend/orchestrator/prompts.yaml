@@ -124,3 +124,23 @@ update_plan_prompt: |
   Output the updated plan. Change the checkmark from `[ ]` to `[x]` for all completed steps. Keep uncompleted steps as `[ ]`.
   Do not alter the step descriptions or the plan layout.
   Return ONLY the updated markdown checklist code. Do not add any conversational prefixes, suffixes, or formatting markers.
+
+standalone_plan_prompt: |
+  You are the Alfred Planning Core.
+  Create a standalone execution plan for the user's task — do NOT execute tools or write code yet.
+
+  ## Task
+  {intent}
+
+  ## Context
+  {context}
+
+  ## Requirements
+  - Output a markdown checklist the team can follow before implementation.
+  - Include: problem statement, approach, files/areas likely involved, instrumentation, tests, edge cases, risks.
+  - If repo layout is unknown, note assumptions and discovery steps first.
+  - Use checkbox format under `# Task Plan` with `- [ ]` items.
+  - End with a short "Open questions" section if anything is still ambiguous.
+  - Do not invent file paths — mark discovery steps when needed.
+
+  Return ONLY the markdown plan.

@@ -3,6 +3,7 @@ import { Button, Descriptions, Flex, Popconfirm, Space, Typography } from "antd"
 import { useCallback, useEffect, useState } from "react";
 import { api, type DbStatsResponse } from "../../api/client";
 import { useApp } from "../../context/AppContext";
+import { summarizeHealth } from "../../health";
 import { HealthChecksTable } from "../HealthChecksTable";
 
 function formatBytes(bytes: number): string {
@@ -23,6 +24,7 @@ function formatWhen(value?: string | null): string {
 
 export function HealthPanel() {
   const { checks, runChecks, notify } = useApp();
+  const healthSummary = summarizeHealth(checks);
   const [dbStats, setDbStats] = useState<DbStatsResponse | null>(null);
   const [dbLoading, setDbLoading] = useState(true);
   const [cleaning, setCleaning] = useState<string | null>(null);
@@ -80,17 +82,24 @@ export function HealthPanel() {
         Health
       </Typography.Title>
       <Typography.Paragraph className="alfred-page-desc">
-        Verify connectivity to Slack, Git, AWS, and your configured AI provider. Manage local
-        SQLite storage when usage history grows large.
+        Verify connectivity to Slack, Git, JIRA, AWS, Google Workspace, web search, and your configured
+        AI provider. Integration cards reflect the latest check results after you run checks here or from
+        Integrations → Test connection.
       </Typography.Paragraph>
 
       <div className="alfred-panel" style={{ marginBottom: 20 }}>
         <Flex vertical gap={16}>
-          <div>
+          <Flex justify="space-between" align="center" wrap="wrap" gap={12}>
+            <Typography.Text type={healthSummary.failed > 0 ? "danger" : "secondary"}>
+              {healthSummary.headline}
+              {healthSummary.total > 0
+                ? ` · ${healthSummary.ok}/${healthSummary.total} passing`
+                : ""}
+            </Typography.Text>
             <Button type="primary" onClick={runChecks}>
               Run all checks
             </Button>
-          </div>
+          </Flex>
 
           {!checks ? (
             <Typography.Text type="secondary">No checks run yet.</Typography.Text>

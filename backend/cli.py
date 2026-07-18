@@ -175,10 +175,85 @@ def status(data_dir: Path | None) -> None:
 @click.option("--data-dir", type=click.Path(path_type=Path), default=None)
 def exec_cmd(message: str, data_dir: Path | None) -> None:
     """Run a message through Alfred locally (same path as Slack, without posting)."""
-    pass
-    pass
-    pass
+    _run_local_message(message, data_dir)
 
+
+@main.command("pr")
+@click.argument("context", required=False)
+@click.option("--repo", help="Target repository slug (owner/name).")
+@click.option("-i", "--interactive", is_flag=True, help="Prompt for repo, goal, and tests.")
+@click.option("--data-dir", type=click.Path(path_type=Path), default=None)
+def pr_cmd(
+    context: str | None,
+    repo: str | None,
+    interactive: bool,
+    data_dir: Path | None,
+) -> None:
+    """Create a draft PR from context (same flow as @alfred pr in Slack)."""
+    from backend.orchestrator.workflow_gates import build_cli_create_pr_intent
+
+    manager = ConfigManager(data_dir)
+    if not manager.is_initialized():
+        click.echo("Alfred not initialized. Run: alfred init")
+        raise SystemExit(1)
+    config, _ = manager.load_merged()
+    if not context and not interactive and not repo:
+        click.echo(
+            "Usage: alfred pr [CONTEXT] --repo owner/name\n"
+            "       alfred pr -i   # interactive prompts\n"
+            "Example: alfred pr \"add fp_id logging in checkout handler with unit test\" --repo YourOrg/cipher"
+        )
+        raise SystemExit(1)
+    intent = build_cli_create_pr_intent(
+        context,
+        repo=repo,
+        interactive=interactive,
+        config=config,
+    )
+    _run_local_message(intent, manager.data_dir, metadata={"command": "pr", "repo": repo or ""})
+
+
+@main.command("plan")
+@click.argument("task_description", required=False)
+@click.option("--repo", help="Optional repo context (owner/name).")
+@click.option("-i", "--interactive", is_flag=True, help="Prompt for task and repo.")
+@click.option("--data-dir", type=click.Path(path_type=Path), default=None)
+def plan_cmd(
+    task_description: str | None,
+    repo: str | None,
+    interactive: bool,
+    data_dir: Path | None,
+) -> None:
+    """Create a standalone task plan (same flow as @alfred plan in Slack)."""
+    from backend.orchestrator.workflow_gates import build_cli_plan_intent
+
+    manager = ConfigManager(data_dir)
+    if not manager.is_initialized():
+        click.echo("Alfred not initialized. Run: alfred init")
+        raise SystemExit(1)
+    config, _ = manager.load_merged()
+    if not task_description and not interactive:
+        click.echo(
+            "Usage: alfred plan [TASK DESCRIPTION]\n"
+            "       alfred plan -i   # interactive prompts\n"
+            "Example: alfred plan \"instrument checkout handler for missing fp_id\""
+        )
+        raise SystemExit(1)
+    intent = build_cli_plan_intent(
+        task_description,
+        repo=repo,
+        interactive=interactive,
+        config=config,
+    )
+    _run_local_message(intent, manager.data_dir, metadata={"command": "plan", "repo": repo or ""})
+
+
+def _run_local_message(
+    message: str,
+    data_dir: Path | None,
+    *,
+    metadata: dict | None = None,
+) -> None:
     manager = ConfigManager(data_dir)
     if not manager.is_initialized():
         click.echo("Alfred not initialized. Run: alfred init")
@@ -189,6 +264,7 @@ def exec_cmd(message: str, data_dir: Path | None) -> None:
         user_id="cli",
         raw_text=message,
         cleaned_intent=message.strip(),
+        metadata=metadata or {},
     )
     processor = TaskProcessor(config, data_dir=manager.data_dir)
     try:

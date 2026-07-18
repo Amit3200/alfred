@@ -59,7 +59,12 @@ def build_slack_bolt_app(
         session_store=session_store,
         data_dir=data_dir,
         context_fetcher=lambda task: fetch_slack_context(
-            app.client, task, bot_user_id=bot_user_id
+            app.client,
+            task,
+            bot_user_id=bot_user_id,
+            thread_relevance_enabled=config.slack.thread_relevance_enabled,
+            thread_relevance_top_n=config.slack.thread_relevance_top_n,
+            thread_fetch_limit=config.slack.thread_fetch_limit,
         ),
     )
 

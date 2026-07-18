@@ -76,6 +76,9 @@ def fetch_slack_context(
     task: Task,
     *,
     bot_user_id: str = "",
+    thread_relevance_enabled: bool = True,
+    thread_relevance_top_n: int = 15,
+    thread_fetch_limit: int = 50,
 ) -> SlackContextBundle:
     """Load thread and/or channel messages based on the user's question."""
     if not task.channel_id:
@@ -108,6 +111,7 @@ def fetch_slack_context(
             client,
             task,
             bot_user_id=bot_user_id,
+            limit=thread_fetch_limit,
         )
 
     if channel_messages or thread_messages:
@@ -131,7 +135,27 @@ def fetch_slack_context(
             )
 
     if in_thread or "thread" in intent.lower():
-        thread_text = messages_to_text(thread_messages, user_names=user_names)
+        kept = thread_messages
+        omitted: list[dict] = []
+        if thread_relevance_enabled and len(thread_messages) > thread_relevance_top_n:
+            from backend.integrations.slack.relevancy import format_ranked_thread_section, rank_thread_messages
+
+            kept, omitted = rank_thread_messages(
+                thread_messages,
+                intent,
+                requesting_user_id=task.user_id,
+                top_n=thread_relevance_top_n,
+            )
+            logger.info(
+                "Thread relevancy: kept %d/%d messages task=%s",
+                len(kept),
+                len(thread_messages),
+                task.id,
+            )
+        thread_text = format_ranked_thread_section(kept, omitted, user_names=user_names) if omitted else messages_to_text(
+            kept,
+            user_names=user_names,
+        )
         if thread_text:
             sections.append(f"Thread messages (oldest → newest):\n{thread_text}")
             logger.debug("Thread context loaded (%d chars) for task %s", len(thread_text), task.id)

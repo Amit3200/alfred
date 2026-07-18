@@ -43,6 +43,7 @@ export function SecretsPanel() {
   );
   const jiraConfigured = !!configured?.jira_api_token;
   const googleConfigured = !!configured?.google_credentials_json;
+  const webSearchConfigured = !!configured?.web_search_api_key;
 
   return (
     <div>
@@ -214,11 +215,31 @@ export function SecretsPanel() {
             />
           </AddableSection>
         )}
+
+        {integrations.isVisible("web_search") && (
+          <AddableSection
+            title="Web search (Tavily)"
+            info={renderHelpContent(SECRETS_HELP.web_search)}
+            visible
+            configured={webSearchConfigured}
+            onAdd={() => integrations.add("web_search")}
+            onRemove={() => integrations.remove("web_search")}
+          >
+            <SecretField
+              label="Tavily API key"
+              configured={configured?.web_search_api_key}
+              value={secrets.web_search_api_key ?? ""}
+              placeholder="tvly-..."
+              hint="Only required when Integrations → Web search uses the Tavily provider."
+              onChange={(v) => setSecrets((s) => ({ ...s, web_search_api_key: v }))}
+            />
+          </AddableSection>
+        )}
       </ActiveSections>
 
       <AddableSectionList
         label={
-          slackConfigured || gitConfigured || githubConfigured || awsConfigured || jiraConfigured || googleConfigured
+          slackConfigured || gitConfigured || githubConfigured || awsConfigured || jiraConfigured || googleConfigured || webSearchConfigured
             ? "Integrations"
             : "Add integration"
         }
@@ -280,6 +301,16 @@ export function SecretsPanel() {
             visible={false}
             configured={googleConfigured}
             onAdd={() => integrations.add("google")}
+            onRemove={() => {}}
+          />
+        )}
+        {!integrations.isVisible("web_search") && (
+          <AddableSection
+            title="Web search (Tavily)"
+            info={renderHelpContent(SECRETS_HELP.web_search)}
+            visible={false}
+            configured={webSearchConfigured}
+            onAdd={() => integrations.add("web_search")}
             onRemove={() => {}}
           />
         )}

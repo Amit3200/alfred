@@ -31,6 +31,22 @@ class SlackConfig(BaseModel):
             "Mixed randomly with built-in defaults (up to 10 per request)."
         ),
     )
+    thread_relevance_enabled: bool = Field(
+        default=True,
+        description="Rank long Slack threads and keep the most relevant messages for context.",
+    )
+    thread_relevance_top_n: int = Field(
+        default=15,
+        ge=5,
+        le=50,
+        description="Maximum thread messages to keep after relevancy ranking.",
+    )
+    thread_fetch_limit: int = Field(
+        default=50,
+        ge=10,
+        le=200,
+        description="Maximum thread replies to fetch before ranking.",
+    )
 
 
 class GitHubAppConfig(BaseModel):
@@ -71,6 +87,59 @@ class GitConfig(BaseModel):
     mirror_refresh_minutes: int = 30
     mirror_max_workspaces: int = 32
     mirror_shallow_depth: int = 1
+    # Phase 1 write flow (opt-in) — session-scoped branches + PR creation
+    write_enabled: bool = Field(
+        default=False,
+        description="Enable git write tools (branch, commit, push, create PR) in isolated workspaces.",
+    )
+    default_base_branch: str = Field(
+        default="",
+        description="Base branch for write flow (e.g. main). Empty auto-detects main/master.",
+    )
+    protected_branches: list[str] = Field(
+        default_factory=lambda: ["main", "master", "production", "prod"],
+        description="Branches that must never be committed to or pushed.",
+    )
+    write_allowed_prefixes: list[str] = Field(
+        default_factory=list,
+        description=(
+            "If set, only these repo-relative path prefixes may be written (Phase 1). "
+            "Empty allows any path not blocked."
+        ),
+    )
+    write_blocked_prefixes: list[str] = Field(
+        default_factory=lambda: [
+            ".github/",
+            ".gitlab/",
+            "infra/",
+            "terraform/",
+            "Dockerfile",
+            "docker-compose",
+            ".env",
+            "secrets/",
+            "pyproject.toml",
+            "package.json",
+            "package-lock.json",
+            "requirements.txt",
+        ],
+        description="Repo paths Alfred must not modify in Phase 1.",
+    )
+    debug_script_prefix: str = Field(
+        default="scripts/alfred_debug/",
+        description="Directory for read-only debug scripts Alfred may create and run.",
+    )
+    write_max_file_bytes: int = Field(
+        default=256_000,
+        ge=1024,
+        le=2_000_000,
+        description="Max bytes per write_file / debug script content.",
+    )
+    script_timeout_seconds: int = Field(
+        default=120,
+        ge=5,
+        le=600,
+        description="Timeout for run_debug_script.",
+    )
 
 
 class AWSConfig(BaseModel):
@@ -132,6 +201,24 @@ class GoogleConfig(BaseModel):
         default="",
         description="OAuth refresh token after Connect Google — stored encrypted.",
     )
+
+
+class WebSearchConfig(BaseModel):
+    enabled: bool = Field(
+        default=False,
+        description="Enable web_search tool for external docs, errors, and release notes.",
+    )
+    provider: Literal["duckduckgo", "tavily"] = Field(
+        default="duckduckgo",
+        description="Search provider — DuckDuckGo needs no API key; Tavily uses web_search_api_key in Secrets.",
+    )
+    max_results: int = Field(
+        default=8,
+        ge=1,
+        le=20,
+        description="Default max results per search.",
+    )
+    api_key: str = Field(default="", description="Provider API key (Tavily) — stored encrypted.")
 
 
 class JiraConfig(BaseModel):
@@ -223,9 +310,23 @@ class SkillsConfig(BaseModel):
     agentic_routing: bool = Field(
         default=True,
         description=(
-            "When true, use the skill_matching LLM route if keyword triggers and "
-            "heuristics do not match a skill."
+            "When true, use the skill_matching LLM route if keyword, heuristic, and BM25 "
+            "do not match a skill."
         ),
+    )
+    bm25_routing: bool = Field(
+        default=True,
+        description="Use BM25 over skill name/description/triggers before LLM skill matching.",
+    )
+    bm25_min_score: float = Field(
+        default=-1.0,
+        ge=-10.0,
+        description="Minimum BM25 score required to accept a skill match (scores can be negative on short queries).",
+    )
+    bm25_min_gap: float = Field(
+        default=0.5,
+        ge=0.0,
+        description="Minimum score gap between top-1 and top-2 BM25 candidates.",
     )
 
 
@@ -283,6 +384,52 @@ class ObservabilityConfig(BaseModel):
 class OrchestratorConfig(BaseModel):
     agent_runner: Literal["react", "hermes"] = "react"
     self_improvement: bool = True
+    self_improvement_requires_review: bool = Field(
+        default=True,
+        description="Queue self-learned playbooks for admin approval instead of auto-writing.",
+    )
+
+
+class GovernanceConfig(BaseModel):
+    enabled: bool = Field(
+        default=True,
+        description="Enable write policies, confirmation UX, and audit logging.",
+    )
+    require_confirmation: bool = Field(
+        default=True,
+        description="Require explicit user confirmation before publish/write tools (push, PR, JIRA, Google, schedules).",
+    )
+    require_confirmation_sources: list[str] = Field(
+        default_factory=lambda: ["slack", "ui"],
+        description="Task sources that require confirmation. CLI is excluded by default.",
+    )
+    confirmation_phrases: list[str] = Field(
+        default_factory=list,
+        description="Phrases that grant write approval in-thread. Empty uses built-in defaults (yes, proceed, etc.).",
+    )
+    approval_ttl_minutes: int = Field(
+        default=30,
+        ge=5,
+        le=240,
+        description="Minutes write approval remains valid after user confirms.",
+    )
+    audit_enabled: bool = Field(default=True, description="Persist audit log entries for write tools.")
+    write_allowed_sources: list[str] = Field(
+        default_factory=lambda: ["slack", "ui", "cli", "scheduler"],
+        description="Sources allowed to invoke write tools.",
+    )
+    write_allowed_channels: list[str] = Field(
+        default_factory=list,
+        description="If set, only these Slack channel IDs may use write tools. Empty = use slack.allowed_channels.",
+    )
+    write_blocked_channels: list[str] = Field(
+        default_factory=list,
+        description="Slack channel IDs where write tools are always blocked.",
+    )
+    write_allowed_users: list[str] = Field(
+        default_factory=list,
+        description="If set, only these Slack user IDs may invoke write tools.",
+    )
 
 
 class AlfredConfig(BaseModel):
@@ -296,11 +443,13 @@ class AlfredConfig(BaseModel):
     aws: AWSConfig = Field(default_factory=AWSConfig)
     jira: JiraConfig = Field(default_factory=JiraConfig)
     google: GoogleConfig = Field(default_factory=GoogleConfig)
+    web_search: WebSearchConfig = Field(default_factory=WebSearchConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
     skills: SkillsConfig = Field(default_factory=SkillsConfig)
     branding: BrandingConfig = Field(default_factory=BrandingConfig)
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     orchestrator: OrchestratorConfig = Field(default_factory=OrchestratorConfig)
+    governance: GovernanceConfig = Field(default_factory=GovernanceConfig)
 
 
 class AlfredSecrets(BaseModel):
@@ -317,6 +466,7 @@ class AlfredSecrets(BaseModel):
     jira_api_token: str = ""
     google_credentials_json: str = ""
     google_oauth_refresh_token: str = ""
+    web_search_api_key: str = ""
     ai_api_keys: dict[str, str] = Field(default_factory=dict)
     server_admin_token: str = ""
     server_admin_username: str = ""

@@ -26,6 +26,7 @@ PayloadKind = Literal[
     "grade_events_query",
     "google_sheet",
     "google_doc",
+    "web_search",
 ]
 
 

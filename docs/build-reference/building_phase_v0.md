@@ -2,13 +2,15 @@
 
 > **Purpose:** Living tracker of implementation progress against [`v0.md`](v0.md) and [`idea.md`](idea.md).  
 > **Update this file** when layers ship or priorities change.  
-> **Last reviewed:** 2026-06-21
+> **Last reviewed:** 2026-07-18
 
 ---
 
 ## Summary
 
-Alfred is **directionally aligned** with the v0 architecture: local-first, pluggable AI, Slack ingress, session memory, Markdown playbooks, read-only git investigation, JIRA, **AWS (Athena + CloudWatch + grade_events)**, Graphify, and observability with cost estimates.
+Alfred is **directionally aligned** with the v0 architecture: local-first, pluggable AI, Slack ingress, session memory, Markdown playbooks, read-only git investigation, JIRA (**including writes**), Google Workspace (**including writes**), **AWS (Athena + CloudWatch + grade_events)**, Graphify, cron schedules, planning mode, self-learning playbooks, and observability with cost estimates.
+
+**v0.1 routing/queue polish is shipped.** Remaining work clusters into **context/routing polish (v0.2)**, and **git/AWS write surface (v2)** — governance v1 and plan→PR handoff are shipped; see [Recommended next build steps](#recommended-next-build-steps).
 
 | v0 first milestone | Status |
 |--------------------|--------|
@@ -26,10 +28,11 @@ Use these when reading gaps below:
 
 | Label | Meaning |
 |-------|---------|
-| **v0** | Shipped or in scope for current alpha |
-| **v0.1** | Polish phase — completed |
-| **v1** | Next major increment (governance) |
-| **v2** | Later — write git, extra AWS surface |
+| **v0** | Shipped — current alpha baseline |
+| **v0.1** | Shipped — queue, unified router, keyword/heuristic/LLM routing, context pruning |
+| **v0.2 polish** | Next — thread relevancy ranking, BM25 matcher, self-learning review gate |
+| **v1** | Governance — audit log, confirmation UX, write policies |
+| **v2** | Git write tools, ECS/S3 tools, workflow skills (e.g. hotfix) |
 | **Won't do** | Explicitly out of scope |
 
 ---
@@ -40,11 +43,11 @@ Use these when reading gaps below:
 |-------|--------|--------|--------|
 | **0** | Scaffold, config, `alfred init` | ✅ Done | v0 |
 | **1** | AI plug layer | ✅ Done | v0 |
-| **2** | Skills engine | ✅ Done | v0.1 — word-boundary trigger keywords mapping |
+| **2** | Skills engine | ✅ Done | v0.1 — keyword + heuristic + LLM routing |
 | **3** | Slack ingress | ✅ Done | v0 — channel `@mentions` only; **Slack DMs: Won't do** |
-| **4** | Thread context | ✅ Done | v0.1 — stack trace and URL context pruning |
-| **5** | Investigation + ReAct + read tools | ✅ Done | v0 read paths done; v0.1 intent router |
-| **6** | Workflow skills (write git, governance) | 🟡 Partial | JIRA writes exist; git writes **v2**; governance **v1** |
+| **4** | Thread context | 🟡 Partial | v0 fetch + prune done; **v0.2** message relevancy ranking |
+| **5** | Investigation + ReAct + read tools | ✅ Done | v0 read paths; Hermes loop optional |
+| **6** | Workflow skills (write git, governance) | 🟡 Partial | JIRA + Google writes exist ungated; git writes **v2**; governance **v1** |
 | **7** | AWS + admin UI | ✅ Done | v0 — Athena/CloudWatch/grade_events; ECS/S3 tools **v2** |
 | **8** | Distribution | ✅ Done | v0 — Docker, README, ECS/EC2 patterns, SQLite queue |
 
@@ -74,7 +77,7 @@ Use these when reading gaps below:
 | Encrypted secrets | ✅ | v0 | |
 | Admin UI | ✅ | v0 | Flat sharp Theme 2.0 aesthetics with logout |
 | Admin UI & API Auth | ✅ | v0 | Password + token auth (Basic, Bearer, X-Alfred-Token) |
-| Health checks | 🟡 | v0 | Slack, Ollama, Git, JIRA, AWS STS |
+| Health checks | 🟡 | v0 | Slack, Ollama, Git, JIRA, AWS STS, web search |
 | Observability | ✅ | v0 | Tokens, est. cost, tools, users |
 
 ### Layer 3 — Orchestration
@@ -83,17 +86,19 @@ Use these when reading gaps below:
 |-----------|--------|--------|-------|
 | Task queue (durable) | ✅ | **v0.1** | Persistent SQLite queue with background worker daemon and checkpoint logging |
 | Session store | ✅ | v0 | SQLite `(channel, thread_ts)` |
-| Intent router | 🟡 Mostly | **v0.1** | Direct router fallback caching (active PR & JIRA tickets) |
+| Intent router | ✅ | **v0.1** | Unified `detect_direct_action` in `routing/intent.py`; session PR/JIRA cache |
 | Git / JIRA session context | ✅ | v0 | |
 | Identity map | ✅ | v0 | |
+| Cron scheduler | ✅ | v0 | `runtime/scheduler.py` + `schedule_management` skill |
 
 ### Layer 4 — Context engine
 
 | Component | Status | Target | Notes |
 |-----------|--------|--------|-------|
-| Skill / playbook matcher | ✅ | **v0.1** | Word-boundary checking triggers |
+| Skill / playbook matcher | ✅ | **v0.2 polish** | Keyword + heuristic + **BM25** + LLM (`routing/engine.py`) |
 | Slack thread + channel fetch | ✅ | v0 | 90-day default (with relative day/week regex time window parser) |
-| Relevancy heuristics | ✅ | **v0.1** | Truncate/prune long stack traces and URLs |
+| Context pruning | ✅ | **v0.1** | `prune_context()` — truncate stack traces and long URLs |
+| Thread relevancy ranking | ✅ | **v0.2 polish** | Heuristic ranker keeps top N thread messages + omission summary (`slack/relevancy.py`) |
 | Repo context + Graphify | ✅ | v0 | |
 | Context policy | ✅ | v0 | |
 
@@ -115,8 +120,11 @@ Use these when reading gaps below:
 | JIRA tools | ✅ | v0 | |
 | AWS tools (Athena, CloudWatch, grade_events) | ✅ | v0 | |
 | Graphify `query_graph` | 🟡 | v0 | Optional, `graphify_enabled` |
-| Git write tools | ❌ | **v2** | checkout, cherry-pick, open PR |
-| ECS / S3 direct tools | ❌ | **v2** | In `allowed_services` config only |
+| Google Workspace tools | ✅ | v0 | Sheets read/write, Docs read/create/append |
+| Web search (`web_search`) | ✅ | **v0.2 polish** | DuckDuckGo (optional `uv sync --extra web`) or Tavily; `web_research` skill |
+| Schedule tools | ✅ | v0 | `create_schedule`, `list_schedules`, … |
+| Git write tools | 🟡 Phase 1 | **v2** | Branch/commit/push/PR + debug scripts when `git.write_enabled`; full hotfix skills **v2** |
+| ECS / S3 direct tools | ❌ | **v2** | In `allowed_services` config only — no boto tools yet |
 | Structured UI payloads | ✅ | v0 | |
 
 ### Layer 7 — Governance
@@ -125,7 +133,10 @@ Use these when reading gaps below:
 |-----------|--------|--------|-------|
 | Skills + playbooks | ✅ | v0 | |
 | AWS guardrails | ✅ | v0 | |
-| Policies, confirmation UX, audit log | ❌ | **v1** | Observability events only today |
+| Policies, confirmation UX, audit log | ✅ | **v1** | `GovernanceContext` on `ToolRegistry.run()`; SQLite `audit_log`; Slack/UI confirmation before push/PR/JIRA/Google/schedules |
+| Self-learning playbook review | ✅ | **v0.2 polish** | Pending queue in `.alfred/pending_playbooks.json`; approve/reject in Playbooks admin UI |
+| Lazy skill index | ✅ | **v0.2 polish** | Metadata-first `PlaybookStore`; bodies load on match; shared store + admin invalidation |
+| Lazy tool registration | ✅ | **v0.2 polish** | `build_git_tool_registry(allowed_tools=…)` skips unused integration modules/handlers |
 
 ---
 
@@ -133,13 +144,17 @@ Use these when reading gaps below:
 
 | Skill | Mode | Tools / purpose |
 |-------|------|-----------------|
-| `investigate_bug.md` | investigation | git read, get_pr, query_graph, … |
+| `investigate_bug.md` | investigation | git read, get_pr, query_graph, web_search, … |
 | `review_pr.md` | investigation | PR review + diff |
 | `git_status.md` | workflow | list PRs, repos |
 | `summarize_bugs.md` | conversational | Slack alert summaries |
 | `jira_management.md` | investigation | JIRA CRUD + identity map |
 | `jira_ticket.md` | investigation | Link PRs to JIRA |
 | `aws_query.md` | investigation | athena_query, cloudwatch_query, list_cloudwatch_log_groups |
+| `google_workspace.md` | investigation | Google Sheets/Docs read/write |
+| `web_research.md` | investigation | External docs/errors via `web_search` |
+| `schedule_management.md` | workflow | Cron schedule CRUD |
+| `create_pr.md` | workflow | Phase 1 PR flow — branch, write, draft PR (`git.write_enabled`) |
 
 Company investigation playbooks (e.g. event dumps) → `.alfred/playbooks/` with `allowed_tools`.
 
@@ -155,6 +170,9 @@ Company investigation playbooks (e.g. event dumps) → `.alfred/playbooks/` with
 - Domain playbooks from `.alfred/playbooks/`
 - Git: PRs, review, grep/read/blame in mirrored repos
 - JIRA: search/get/update/comment/create, assignee map, identity map
+- Google Workspace: Sheets/Docs via OAuth or service account
+- Web search: `web_search` tool (DuckDuckGo or Tavily) for external docs and errors — opt-in under Integrations
+- Cron schedules: background jobs enqueue tasks to Slack channels
 - AWS: Athena, CloudWatch Logs, grade_events (guardrailed)
 - Structured Slack/UI rendering for AWS and grade_events
 - Graphify optional on sync
@@ -166,22 +184,56 @@ Company investigation playbooks (e.g. event dumps) → `.alfred/playbooks/` with
 
 ## Known gaps by target release
 
-### v0.1 — pick soon
+### v0.1 — shipped ✅
 
-1. **Unified intent router** — replace growing `detect_*` direct routes
-2. **Thread relevancy** — rank/filter Slack messages before LLM
-3. **Skill / playbook matcher** — BM25 or strict single-skill selection (upgrade from keywords)
+| Item | Code | Notes |
+|------|------|-------|
+| SQLite task queue + worker | `db/sqlite_queue.py`, `orchestrator/worker.py` | Fast ack; checkpoints in observability DB |
+| Unified intent router | `routing/intent.py` → `detect_direct_action` | JIRA, git, investigate direct paths |
+| Skill routing | `routing/engine.py` | Keyword → heuristic → LLM (`agentic_routing`) |
+| Context pruning | `orchestrator/policy.py` → `prune_context` | Stack traces + long URLs — **not** message ranking |
 
-### v1
+### v0.2 polish — next (quality, no new integrations)
 
-4. **HTTP enqueue queue** — fast ack + background worker (webhooks, recovery)
-5. **Durable task queue** — wire existing ABC; crash-safe processing
-6. **Governance** — policies, confirmation UX for writes, audit export
+| # | Gap | Why it matters |
+|---|-----|----------------|
+| 1 | **Thread relevancy ranking** | Long Slack threads still send most messages to the LLM after prune-only compression |
+| 2 | **BM25 playbook matcher** | Planned in `v0.md` but never added; keyword collisions possible when many playbooks overlap |
+| 3 | **Self-learning review gate** | `learning.py` writes playbooks directly — needs Admin UI approve/reject before activation |
 
-### v2
+**Thread relevancy (design sketch):** score messages by stack traces, file paths, error codes, PR/commit URLs, keyword overlap with intent, recency; keep top N + one-line summary of the rest. Optional cheap-model pass before investigation LLM.
 
-7. **Git write tools** — checkout, cherry-pick, PR create
-8. **ECS / S3 direct tools** — beyond Athena/CloudWatch
+**BM25 (design sketch):** index playbook `name`, `description`, and triggers locally (`rank-bm25`); use as tier between keyword and LLM matcher when confidence is ambiguous.
+
+### v1 — governance (shipped)
+
+| # | Item | Status |
+|---|------|--------|
+| 4 | **Audit log** | ✅ SQLite `audit_log` table + `GET /api/observability/audit` |
+| 5 | **Confirmation UX** | ✅ Reply *yes, proceed* in-thread → 30 min write approval (Slack/UI; CLI excluded by default) |
+| 6 | **Write policies** | ✅ Blocked channels, allowed users, source allowlist via `governance` config + Admin UI |
+| 7 | **Gate existing writes** | ✅ Push, PR, JIRA, Google, and schedule tools require confirmation when governance enabled |
+
+Local git staging (`write_file`, `git_commit`, …) is **audit-logged** but does not require confirmation — reversible until push.
+
+### v2 — automation surface
+
+| # | Gap | Notes |
+|---|-----|-------|
+| 8 | **Git write tools** | `git_create_branch`, `git_push` (no `main`/`master`), `create_pr`; workspace-scoped only |
+| 9 | **`deploy_hotfix.md` skill** | Described in `v0.md` / `idea.md` — not shipped in `skills/` |
+| 10 | **ECS / S3 read tools** | `allowed_services` lists them; only Athena + CloudWatch tools exist |
+
+Safe git write slice: branch in session workspace → push branch → open PR via existing GitHub/GitLab API clients. **No force-push tool.**
+
+### Operational polish (ongoing)
+
+| Area | Gap |
+|------|-----|
+| Health checks | Slack/Git/JIRA/AWS/Google/web search/Ollama tracked in admin UI; add queue depth, scheduler heartbeat, mirror freshness |
+| Horizontal scale | Single worker thread — fine for small teams; multi-worker needs lease-based dequeue |
+| Tests | Thin coverage on Google tool E2E, schedule→queue→processor path; governance unit tests in `tests/test_governance.py` |
+| Docs | Keep `building_phase_v0.md` ↔ `README.md` in sync when shipping |
 
 ### Won't do
 
@@ -189,7 +241,31 @@ Company investigation playbooks (e.g. event dumps) → `.alfred/playbooks/` with
 
 ---
 
-## Recommended next build steps (v0.1)
+## Recommended next build steps
+
+Suggested sequence (pick one track based on team priority):
+
+```mermaid
+graph LR
+    G[Governance v1] --> GW[Gate JIRA/Google writes]
+    G --> GitW[Git write tools v2]
+    TR[Thread relevancy v0.2] --> Inv[Better investigations]
+    BM25[BM25 matcher v0.2] --> Route[Fewer wrong skill picks]
+    GitW --> HF[deploy_hotfix skill]
+    AWS2[ECS/S3 read v2] --> Ops[Ops investigations]
+```
+
+| Track | Best for | Steps |
+|-------|----------|-------|
+| **Safe automation** | Hotfix/cherry-pick workflows | v1 governance → git branch/push/PR tools → `deploy_hotfix.md` |
+| **Better debug UX** | Long Slack incident threads | Thread relevancy ranking → optional BM25 matcher |
+| **Ops depth** | ECS/S3 investigation | ECS/S3 read tools (after or in parallel with v1) |
+
+**Recommended default:** BM25 matcher and self-learning review gate are shipped. Next: ECS/S3 read tools, company playbooks, or real-repo plan→PR dry run — defer deploy/hotfix skills until CI/CD integrations (Jenkins, Argo, etc.) are scoped.
+
+---
+
+## Completed v0.1 work (archive)
 
 Below is the sequenced build plan with task dependencies:
 
@@ -308,7 +384,7 @@ flowchart TD
 * **Goal**: Refactor `backend/routing/engine.py` and `intent.py` to leverage a unified, semantic routing strategy. Cache active entities (e.g. target JIRA tickets or PR numbers) per Slack thread to avoid redundant user lookups.
 
 ### 4. Task 4: Skill Matcher & Thread Relevancy (Heuristics)
-* **Status**: ✅ Shipped (Alphanumeric word-boundary keyword checks and context pruning helper `prune_context` completed)
+* **Status**: 🟡 Partial — word-boundary keyword checks and `prune_context()` shipped; **BM25 matcher and thread message ranking remain v0.2**
 * **Dependencies**: Task 3 (requires clean intent detection)
 * **Goal**: Implement context pruning heuristics in `backend/orchestrator/policy.py` to strip out long stack traces and URLs from previous messages before feeding context to the LLM. Upgrade keyword trigger matching to a hybrid keyword + semantic similarity model.
 
@@ -317,7 +393,7 @@ flowchart TD
 * **Dependencies**: Task 2, Task 4
 * **Goal**: Add hooks for `users:read.email` for richer assignee mapping, configure fallback strategies for unrouted queries, and optimize the prompt instructions for specific models (Claude, Kimi).
 
-Defer until v1: confirmation governance. Defer until v2: git writes, ECS/S3.
+Defer until v1: confirmation governance (audit + write policies). Defer until v2: git writes, ECS/S3. Defer until v0.2: thread relevancy ranking, BM25 matcher.
 
 ---
 
@@ -329,7 +405,8 @@ Defer until v1: confirmation governance. Defer until v2: git writes, ECS/S3.
 | Public URL per company for GitHub App | Webhook needs HTTPS; e.g. `alfred.abc.dev` + Cloudflare tunnel or ALB |
 | Playbooks local, skills in repo | Company tables/rules stay private |
 | Socket Mode for Slack | No public URL required for Slack |
-| Direct processor paths (temporary) | Until v0.1 unified intent router |
+| Unified direct router | `routing/intent.py` consolidates JIRA/git/investigate fast paths (v0.1) |
+| JIRA/Google writes before git writes | API write tools shipped; governance (v1) must gate all write surfaces |
 | grade_events in playbooks | Company table semantics; tool enforces guardrails |
 
 ---

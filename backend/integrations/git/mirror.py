@@ -439,6 +439,28 @@ class WorkspaceMirrorManager:
             _run_git(["git", "-C", str(repo_dir), "checkout", "-f", "--detach", checkout_target])
             _run_git(["git", "-C", str(repo_dir), "reset", "--hard", "FETCH_HEAD"])
 
+    def _update_repo_ref(
+        self,
+        session_key: str,
+        repo: str,
+        *,
+        ref: str,
+        head_sha: str | None = None,
+    ) -> None:
+        """Persist active branch/ref on the session workspace manifest."""
+        workspace_dir = self._workspace_dir(session_key)
+        manifest = self._load_manifest(workspace_dir)
+        entry = manifest.setdefault("repos", {}).get(repo, {})
+        if not isinstance(entry, dict):
+            entry = {}
+        entry["ref"] = ref
+        if head_sha:
+            entry["head_sha"] = head_sha
+        entry["last_pulled_at"] = _now_iso()
+        manifest["repos"][repo] = entry
+        manifest["last_used_at"] = _now_iso()
+        self._save_manifest(workspace_dir, manifest)
+
     def _try_seed_from_shared(self, repo: str, dest: Path) -> bool:
         shared = self.shared_root / _repo_dir_name(repo)
         if not shared.is_dir() or not any(shared.iterdir()):

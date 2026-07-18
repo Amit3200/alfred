@@ -27,6 +27,7 @@ HERMES_SYSTEM_INSTRUCTIONS = (_prompts.get("hermes_system_instructions") or "").
 META_LEARNING_PROMPT = (_prompts.get("meta_learning_prompt") or "").strip()
 PLANNING_PROMPT = (_prompts.get("planning_prompt") or "").strip()
 UPDATE_PLAN_PROMPT = (_prompts.get("update_plan_prompt") or "").strip()
+STANDALONE_PLAN_PROMPT = (_prompts.get("standalone_plan_prompt") or "").strip()
 
 
 def build_alfred_system_prompt(config: AlfredConfig | None = None, model_name: str | None = None) -> str:

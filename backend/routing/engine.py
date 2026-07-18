@@ -1,4 +1,4 @@
-"""Hybrid skill router — keyword → heuristics → LLM."""
+"""Hybrid skill router — keyword → heuristics → BM25 → LLM."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from backend.ai.registry import LLMRouter
 if TYPE_CHECKING:
     from backend.routing.playbooks import PlaybookStore
 from backend.models.config import AlfredConfig
+from backend.routing.bm25 import route_by_bm25
 from backend.routing.heuristics import route_by_heuristic
 from backend.routing.keyword import playbook_for_decision, route_by_keyword
 from backend.routing.llm import LLMSkillMatcher
@@ -50,6 +51,14 @@ class SkillRouter:
                     logger.debug("Skill route: %s via heuristic", playbook.name)
                     return RouteResult(playbook=playbook, decision=heuristic)
 
+        if self._bm25_enabled():
+            bm25 = route_by_bm25(context, self._store, self._config)
+            if bm25.matched:
+                playbook = playbook_for_decision(bm25, self._store)
+                if playbook is not None:
+                    logger.debug("Skill route: %s via BM25", playbook.name)
+                    return RouteResult(playbook=playbook, decision=bm25)
+
         if self._agentic_enabled():
             llm = self._route_by_llm(context)
             if llm.matched:
@@ -57,7 +66,7 @@ class SkillRouter:
                 if playbook is not None:
                     return RouteResult(playbook=playbook, decision=llm)
 
-        return RouteResult.none(reason="no keyword, heuristic, or LLM match")
+        return RouteResult.none(reason="no keyword, heuristic, BM25, or LLM match")
 
     def route_investigation(self, context: RouteContext) -> RouteResult:
         """Convenience wrapper for investigation/workflow skills."""
@@ -87,6 +96,9 @@ class SkillRouter:
 
     def _agentic_enabled(self) -> bool:
         return bool(getattr(self._config.skills, "agentic_routing", True))
+
+    def _bm25_enabled(self) -> bool:
+        return bool(getattr(self._config.skills, "bm25_routing", True))
 
     def _route_by_llm(self, context: RouteContext) -> RouteDecision:
         matcher = self._get_llm_matcher()

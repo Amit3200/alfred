@@ -162,6 +162,25 @@ class GitApiClient:
     ) -> dict[str, Any]:
         return self._impl.create_issue_comment_reaction(repo, comment_id, content)
 
+    def create_pull_request(
+        self,
+        repo: str,
+        *,
+        title: str,
+        head: str,
+        base: str,
+        body: str = "",
+        draft: bool = False,
+    ) -> dict[str, Any]:
+        return self._impl.create_pull_request(
+            repo,
+            title=title,
+            head=head,
+            base=base,
+            body=body,
+            draft=draft,
+        )
+
 
 class _GitHubClient:
     API = "https://api.github.com"
@@ -328,6 +347,37 @@ class _GitHubClient:
             json={"content": content},
         )
 
+    def create_pull_request(
+        self,
+        repo: str,
+        *,
+        title: str,
+        head: str,
+        base: str,
+        body: str = "",
+        draft: bool = False,
+    ) -> dict[str, Any]:
+        owner, name = split_repo_slug(repo)
+        payload: dict[str, Any] = {
+            "title": title,
+            "head": head,
+            "base": base,
+            "body": body,
+        }
+        if draft:
+            payload["draft"] = True
+        data = self._post(f"/repos/{owner}/{name}/pulls", json=payload)
+        return {
+            "number": data.get("number"),
+            "title": data.get("title"),
+            "state": data.get("state"),
+            "repo": f"{owner}/{name}",
+            "url": data.get("html_url"),
+            "head": (data.get("head") or {}).get("ref"),
+            "base": (data.get("base") or {}).get("ref"),
+            "draft": data.get("draft", False),
+        }
+
 
 class _GitLabClient:
     API = "https://gitlab.com/api/v4"
@@ -477,3 +527,34 @@ class _GitLabClient:
         self, repo: str, comment_id: int, content: str
     ) -> dict[str, Any]:
         raise RuntimeError("Issue comment reactions are not supported for GitLab yet")
+
+    def create_pull_request(
+        self,
+        repo: str,
+        *,
+        title: str,
+        head: str,
+        base: str,
+        body: str = "",
+        draft: bool = False,
+    ) -> dict[str, Any]:
+        project = quote(repo, safe="")
+        payload: dict[str, Any] = {
+            "title": title,
+            "source_branch": head,
+            "target_branch": base,
+            "description": body,
+        }
+        if draft:
+            payload["draft"] = True
+        data = self._post(f"/projects/{project}/merge_requests", json=payload)
+        return {
+            "number": data.get("iid"),
+            "title": data.get("title"),
+            "state": data.get("state"),
+            "repo": repo,
+            "url": data.get("web_url"),
+            "head": data.get("source_branch"),
+            "base": data.get("target_branch"),
+            "draft": bool(data.get("draft")),
+        }

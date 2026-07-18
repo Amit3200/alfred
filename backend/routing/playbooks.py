@@ -21,7 +21,6 @@ SkillMode = Literal["conversational", "investigation", "workflow"]
 class Playbook:
     name: str
     path: Path
-    body: str
     triggers: list[str] = field(default_factory=list)
     channels: list[str] = field(default_factory=list)
     repos: list[str] = field(default_factory=list)
@@ -32,10 +31,25 @@ class Playbook:
     bundled: bool = False
     fetch_urls: list[str] = field(default_factory=list)
     fetch_ttl_minutes: int = 60
+    _body: str | None = field(default=None, repr=False, compare=False)
+
+    @property
+    def body(self) -> str:
+        if self._body is None:
+            object.__setattr__(self, "_body", _read_body(self.path))
+        return self._body
+
+    @property
+    def body_loaded(self) -> bool:
+        return self._body is not None
 
 
 class PlaybookStore:
-    """Read playbooks from `.alfred/playbooks/` and bundled `skills/`."""
+    """Read playbooks from `.alfred/playbooks/` and bundled `skills/`.
+
+    Routing tiers load **metadata only** (frontmatter). Full markdown bodies are
+    read on demand when formatting the active playbook for the agent prompt.
+    """
 
     def __init__(
         self,
@@ -43,31 +57,32 @@ class PlaybookStore:
         *,
         disabled_skills: list[str] | None = None,
     ) -> None:
+        self.data_dir = data_dir
         self.directory = playbooks_dir(data_dir)
         self.disabled_skills = {name.strip().lower() for name in (disabled_skills or [])}
         self._playbooks: list[Playbook] | None = None
         self._cache_mtime: float = 0.0
+
+    def set_disabled_skills(self, names: list[str]) -> None:
+        new_set = {name.strip().lower() for name in names}
+        if new_set != self.disabled_skills:
+            self.disabled_skills = new_set
+            self.reload()
 
     def reload(self) -> None:
         self._playbooks = None
         self._cache_mtime = 0.0
 
     def list_playbooks(self) -> list[Playbook]:
-        mtime = self._directory_mtime()
+        mtime = self._sources_mtime()
         if self._playbooks is None or mtime > self._cache_mtime:
-            self._playbooks = self._load_all()
+            self._playbooks = self._load_index()
             self._cache_mtime = mtime
         return list(self._playbooks)
 
-    def _directory_mtime(self) -> float:
-        if not self.directory.is_dir():
-            return 0.0
-        latest = 0.0
-        for path in self.directory.rglob("*.md"):
-            try:
-                latest = max(latest, path.stat().st_mtime)
-            except OSError:
-                continue
+    def _sources_mtime(self) -> float:
+        latest = _tree_mtime(self.directory)
+        latest = max(latest, _tree_mtime(bundled_skills_dir()))
         return latest
 
     def match(
@@ -163,7 +178,7 @@ class PlaybookStore:
         return True
 
     def get_by_name(self, name: str) -> Playbook | None:
-        """Return a loaded playbook/skill by name, or None."""
+        """Return a playbook/skill by name (metadata only until ``body`` is accessed)."""
         target = name.strip().lower()
         for playbook in self.list_playbooks():
             if playbook.name.lower() == target:
@@ -222,10 +237,14 @@ class PlaybookStore:
         repo: str = "",
         data_dir: Path | None = None,
     ) -> str:
-        """Body for the active playbook if matched; otherwise catalog only."""
-        if active:
-            return self.format_for_prompt([active], data_dir=data_dir)
-        return self.format_catalog_for_prompt(channel_id=channel_id, repo=repo)
+        """Catalog index plus the active playbook body when matched; otherwise catalog only."""
+        catalog = self.format_catalog_for_prompt(channel_id=channel_id, repo=repo)
+        if active is None:
+            return catalog
+        active_section = self.format_for_prompt([active], data_dir=data_dir)
+        if catalog and active_section:
+            return f"{catalog}\n\n{active_section}"
+        return active_section or catalog
 
     def _passes_catalog_filters(
         self,
@@ -258,12 +277,13 @@ class PlaybookStore:
             sections.append("")
 
         from backend.routing.playbook_fetch import format_playbook_dynamic_context
+
         dynamic = format_playbook_dynamic_context(playbooks, data_dir=data_dir)
         if dynamic:
             sections.extend(["", dynamic, ""])
         return "\n".join(sections).strip()
 
-    def _load_all(self) -> list[Playbook]:
+    def _load_index(self) -> list[Playbook]:
         playbooks: list[Playbook] = []
         seen_names: set[str] = set()
 
@@ -271,7 +291,7 @@ class PlaybookStore:
             if path.name.lower() == "readme.md":
                 continue
             try:
-                playbook = _parse_playbook(path, bundled=False)
+                playbook = _parse_playbook_index(path, bundled=False)
                 playbooks.append(playbook)
                 seen_names.add(playbook.name.lower())
             except Exception:
@@ -283,7 +303,7 @@ class PlaybookStore:
                 if path.name.lower() == "readme.md":
                     continue
                 try:
-                    playbook = _parse_playbook(path, bundled=True)
+                    playbook = _parse_playbook_index(path, bundled=True)
                     if playbook.name.lower() in self.disabled_skills:
                         continue
                     if playbook.name.lower() in seen_names:
@@ -292,19 +312,37 @@ class PlaybookStore:
                 except Exception:
                     logger.exception("Failed to load skill %s", path)
 
-        logger.info("Loaded %d playbook/skill file(s)", len(playbooks))
+        logger.info("Indexed %d playbook/skill file(s) (metadata only)", len(playbooks))
         return playbooks
 
 
-def _parse_playbook(path: Path, *, bundled: bool) -> Playbook:
+def _tree_mtime(directory: Path) -> float:
+    if not directory.is_dir():
+        return 0.0
+    latest = 0.0
+    for path in directory.rglob("*.md"):
+        try:
+            latest = max(latest, path.stat().st_mtime)
+        except OSError:
+            continue
+    return latest
+
+
+def _read_body(path: Path) -> str:
+    raw = path.read_text(encoding="utf-8")
+    match = _FRONTMATTER_RE.match(raw)
+    if match:
+        return raw[match.end() :].strip()
+    return raw.strip()
+
+
+def _parse_playbook_index(path: Path, *, bundled: bool) -> Playbook:
     raw = path.read_text(encoding="utf-8")
     meta: dict = {}
-    body = raw.strip()
 
     match = _FRONTMATTER_RE.match(raw)
     if match:
         meta = yaml.safe_load(match.group(1)) or {}
-        body = raw[match.end() :].strip()
 
     name = str(meta.get("name") or path.stem)
     description = str(meta.get("description") or "").strip()
@@ -325,7 +363,6 @@ def _parse_playbook(path: Path, *, bundled: bool) -> Playbook:
     return Playbook(
         name=name,
         path=path,
-        body=body,
         triggers=triggers,
         channels=channels,
         repos=repos,
@@ -337,6 +374,13 @@ def _parse_playbook(path: Path, *, bundled: bool) -> Playbook:
         fetch_urls=fetch_urls,
         fetch_ttl_minutes=max(1, fetch_ttl_minutes),
     )
+
+
+def _parse_playbook(path: Path, *, bundled: bool) -> Playbook:
+    """Parse metadata and eagerly load body — admin API / tests."""
+    playbook = _parse_playbook_index(path, bundled=bundled)
+    object.__setattr__(playbook, "_body", _read_body(path))
+    return playbook
 
 
 def _normalize_str_list(value: object) -> list[str]:
@@ -367,7 +411,6 @@ def _best_trigger_len(playbook: Playbook, intent_lower: str) -> int:
         if token not in intent_lower:
             continue
 
-        # Check alphanumeric boundaries around the trigger token in intent_lower
         idx = intent_lower.find(token)
         while idx != -1:
             left_ok = True

@@ -82,6 +82,15 @@ class ToolResult:
             truncated_data["rows"] = _truncate_row_fields(rows)
         return cls(kind="grade_events_query", data=truncated_data)
 
+    @classmethod
+    def web_search(cls, data: dict[str, Any]) -> ToolResult:
+        payload = dict(data)
+        results = list(payload.get("results") or [])
+        if len(results) > 10:
+            payload["results"] = results[:10]
+            payload["note"] = f"Truncated from {len(results)} results to 10 for prompt safety."
+        return cls(kind="web_search", data=payload)
+
 
 def _truncate_row_fields(rows: list[dict[str, Any]], max_field_len: int = 500) -> list[dict[str, Any]]:
     truncated = []

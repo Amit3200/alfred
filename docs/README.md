@@ -15,15 +15,24 @@ Planning and reference materials for Alfred.
 | **Contributors picking next work** | [`build-reference/building_phase_v0.md`](build-reference/building_phase_v0.md) |
 | **Architecture deep dive** | [`build-reference/v0.md`](build-reference/v0.md) |
 
-## Current status (2026-06-22)
+## Current status (2026-07-18)
 
-**Shipped (v0):** Slack channel `@mentions`, git mirrors + PR review, JIRA, AWS (Athena/CloudWatch/grade_events), Graphify, observability, GitHub PR bot (with public URL), custom Slack thinking status, Admin UI & API authentication, modern Theme 2.0 aesthetics.
+**Shipped (v0):** Slack channel `@mentions`, git mirrors + PR review, JIRA, AWS (Athena/CloudWatch/grade_events), Graphify, Google Workspace (Sheets/Docs), cron schedules, observability + task checkpoints, GitHub PR bot (with public URL), Admin UI & API authentication, planning mode, self-learning playbooks.
 
-**Next (v0.1):** Unified intent router, thread relevancy, skill/playbook matcher upgrade.
+**Shipped (v0.1):** SQLite task queue + background worker, unified direct-action router (`detect_direct_action`), keyword + heuristic + LLM skill routing, context pruning (stack traces / long URLs), checkpoint timeline in Admin UI.
 
-**Later:** v1 — task queue, HTTP enqueue, governance · v2 — git writes, ECS/S3 tools · **Won't do:** Slack DMs.
+**Next (recommended order):**
 
-Roadmap detail: [`building_phase_v0.md`](build-reference/building_phase_v0.md)
+| Priority | Target | Focus |
+|----------|--------|--------|
+| 1 | **v1** | Governance — audit log, confirmation UX, write policies (gate JIRA/Google writes too) |
+| 2 | **v0.2 polish** | Thread relevancy ranking, BM25 playbook matcher |
+| 3 | **v2** | Git write tools + `deploy_hotfix` workflow skill; ECS/S3 read tools |
+| — | **Ops** | Self-learning playbook review gate, schedule UX polish, doc/test hardening |
+
+**Won't do:** Slack DMs / App Home Chat.
+
+Full gap analysis and build sequence: [`building_phase_v0.md`](build-reference/building_phase_v0.md)
 
 ### What to commit vs keep local
 

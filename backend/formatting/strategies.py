@@ -140,6 +140,42 @@ class CloudWatchLogGroupsFormatter(FormatterStrategy):
         return "\n".join(lines)
 
 
+class WebSearchFormatter(FormatterStrategy):
+    def render(self, data: dict[str, Any], *, slack: bool = False) -> str:
+        query = str(data.get("query") or "")
+        provider = str(data.get("provider") or "web")
+        results = list(data.get("results") or [])
+        answer = str(data.get("answer") or "").strip()
+        lines: list[str] = []
+        title = f"*Web search* ({provider}) — `{query}`" if slack else f"Web search ({provider}) — {query}"
+        lines.append(title)
+        if answer:
+            lines.append(f"*Summary:* {answer}" if slack else f"Summary: {answer}")
+        if not results:
+            lines.append("No results returned.")
+            return "\n".join(lines)
+        bullet = "•" if slack else "-"
+        for index, item in enumerate(results[:8], start=1):
+            if not isinstance(item, dict):
+                continue
+            item_title = str(item.get("title") or "Untitled").strip()
+            url = str(item.get("url") or "").strip()
+            snippet = str(item.get("snippet") or "").strip()
+            if slack and url:
+                head = f"{bullet} <{url}|{item_title}>"
+            elif url:
+                head = f"{bullet} [{item_title}]({url})"
+            else:
+                head = f"{bullet} {item_title}"
+            lines.append(head)
+            if snippet:
+                lines.append(f"  {snippet[:240]}" + ("…" if len(snippet) > 240 else ""))
+        note = str(data.get("note") or "")
+        if note:
+            lines.append(note)
+        return "\n".join(lines)
+
+
 class GradeEventsQueryFormatter(FormatterStrategy):
     def render(self, data: dict[str, Any], *, slack: bool = False) -> str:
         guardrails = data.get("guardrails") or {}
@@ -266,6 +302,15 @@ class GitPRDetailFormatter(FormatterStrategy):
         return "\n".join(lines).strip()
 
 
+class GitPRCreatedFormatter(FormatterStrategy):
+    def render(self, data: dict[str, Any], *, slack: bool = False) -> str:
+        pr_data = data.get("pr") or data
+        detail_formatter = GitPRDetailFormatter()
+        header = "*Draft PR opened*" if slack else "**Draft PR opened**"
+        body = detail_formatter.render({"pr": pr_data}, slack=slack)
+        return f"{header}\n{body}"
+
+
 # 3. Jira Formatters
 class JiraListFormatter(FormatterStrategy):
     def render(self, data: dict[str, Any], *, slack: bool = False) -> str:
@@ -373,8 +418,10 @@ KIND_FORMATTERS: dict[str, FormatterStrategy] = {
     "cloudwatch_query": CloudWatchQueryFormatter(),
     "cloudwatch_log_groups": CloudWatchLogGroupsFormatter(),
     "grade_events_query": GradeEventsQueryFormatter(),
+    "web_search": WebSearchFormatter(),
     "pr_list": GitPRListFormatter(),
     "pr_detail": GitPRDetailFormatter(),
+    "pr_created": GitPRCreatedFormatter(),
     "jira_list": JiraListFormatter(),
     "jira_detail": JiraDetailFormatter(),
     "jira_action": JiraActionFormatter(),

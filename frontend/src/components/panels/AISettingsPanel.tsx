@@ -129,7 +129,30 @@ export function AISettingsPanel() {
               }
             />
             <Typography.Text type="secondary" style={{ marginLeft: 12, fontSize: 13 }}>
-              {config.skills.agentic_routing ?? true ? "Enabled" : "Disabled — keywords and heuristics only"}
+              {config.skills.agentic_routing ?? true ? "Enabled" : "Disabled — keywords, heuristics, and BM25 only"}
+            </Typography.Text>
+          </Col>
+        </Row>
+
+        <Row gutter={[16, 12]} style={{ marginBottom: 20 }}>
+          <Col xs={24} md={6}>
+            <label className="alfred-field-label">BM25 skill matching</label>
+            <Typography.Text type="secondary" style={{ display: "block", fontSize: 12 }}>
+              Cheap fuzzy match over skill names, descriptions, and triggers before calling the
+              skill-matching LLM.
+            </Typography.Text>
+          </Col>
+          <Col xs={24} md={18}>
+            <Switch
+              checked={config.skills.bm25_routing ?? true}
+              onChange={(checked) =>
+                updateConfig({
+                  skills: { ...config.skills, bm25_routing: checked },
+                })
+              }
+            />
+            <Typography.Text type="secondary" style={{ marginLeft: 12, fontSize: 13 }}>
+              {config.skills.bm25_routing ?? true ? "Enabled" : "Disabled"}
             </Typography.Text>
           </Col>
         </Row>
@@ -183,6 +206,35 @@ export function AISettingsPanel() {
             />
             <Typography.Text type="secondary" style={{ marginLeft: 12, fontSize: 13 }}>
               {config.orchestrator?.self_improvement ?? true ? "Enabled" : "Disabled"}
+            </Typography.Text>
+          </Col>
+        </Row>
+
+        <Row gutter={[16, 12]} style={{ marginBottom: 20 }}>
+          <Col xs={24} md={6}>
+            <label className="alfred-field-label">Playbook review gate</label>
+            <Typography.Text type="secondary" style={{ display: "block", fontSize: 12 }}>
+              Queue self-learned playbooks under Configure → Playbooks for approval instead of
+              writing directly to <Typography.Text code>.alfred/playbooks/</Typography.Text>.
+            </Typography.Text>
+          </Col>
+          <Col xs={24} md={18}>
+            <Switch
+              checked={config.orchestrator?.self_improvement_requires_review ?? true}
+              disabled={!(config.orchestrator?.self_improvement ?? true)}
+              onChange={(checked) =>
+                updateConfig({
+                  orchestrator: {
+                    ...config.orchestrator,
+                    self_improvement_requires_review: checked,
+                  },
+                })
+              }
+            />
+            <Typography.Text type="secondary" style={{ marginLeft: 12, fontSize: 13 }}>
+              {config.orchestrator?.self_improvement_requires_review ?? true
+                ? "Review required"
+                : "Auto-publish"}
             </Typography.Text>
           </Col>
         </Row>

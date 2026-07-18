@@ -102,6 +102,18 @@ export const SECRETS_HELP: Record<string, HelpGuide> = {
       { label: "Docs API", href: "https://developers.google.com/docs/api" },
     ],
   },
+  web_search: {
+    title: "Web search (Tavily)",
+    summary:
+      "Optional Tavily API key for richer web_search results with an AI summary. DuckDuckGo needs no key — install uv sync --extra web on the server instead.",
+    steps: [
+      "Sign up at tavily.com and create an API key.",
+      "Paste tvly-... here — encrypted at rest, never written to config.yaml.",
+      "Integrations → Web search → enable, choose Tavily provider, then Test connection.",
+      "Bundled skills: web_research (investigation) and investigate_bug (when external context helps).",
+    ],
+    links: [{ label: "Tavily API", href: "https://tavily.com" }],
+  },
 };
 
 export const AI_KEY_HELP: Record<string, HelpGuide> = {

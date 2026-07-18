@@ -207,6 +207,25 @@ def check_google(config: AlfredConfig) -> dict:
         return {"ok": False, "message": str(exc)}
 
 
+def check_web_search(config: AlfredConfig) -> dict:
+    if not config.web_search.enabled:
+        return {"ok": False, "skipped": True, "message": "Web search disabled"}
+    if config.web_search.provider == "tavily" and not (config.web_search.api_key or "").strip():
+        return {"ok": False, "message": "Tavily API key not configured (Secrets)"}
+    try:
+        from backend.integrations.web.search import WebSearchClient
+
+        client = WebSearchClient.from_config(config.web_search)
+        meta = client.ping()
+        provider = meta.get("provider") or config.web_search.provider
+        count = meta.get("result_count", 0)
+        return {"ok": True, "message": f"{provider} search OK ({count} sample result(s))"}
+    except RuntimeError as exc:
+        return {"ok": False, "message": str(exc)}
+    except Exception as exc:
+        return {"ok": False, "message": str(exc)}
+
+
 def check_ai(config: AlfredConfig, provider: str | None = None, *, data_dir=None) -> dict:
     pass
 
@@ -236,5 +255,33 @@ def run_all_checks(config: AlfredConfig, *, data_dir: Path | None = None) -> dic
         "aws": check_aws(config),
         "jira": check_jira(config),
         "google": check_google(config),
+        "web_search": check_web_search(config),
         "ai": check_ai(config, data_dir=data_dir),
     }
+
+
+INTEGRATION_HEALTH_CHECKS = frozenset(
+    {"slack", "git", "aws", "jira", "google", "web_search"},
+)
+
+
+def run_integration_check(
+    name: str,
+    config: AlfredConfig,
+    *,
+    data_dir: Path | None = None,
+) -> dict:
+    """Run a single integration health check (Integrations → Test connection)."""
+    if name == "slack":
+        return check_slack(config)
+    if name == "git":
+        return check_git(config, data_dir=data_dir)
+    if name == "aws":
+        return check_aws(config)
+    if name == "jira":
+        return check_jira(config)
+    if name == "google":
+        return check_google(config)
+    if name == "web_search":
+        return check_web_search(config)
+    raise ValueError(f"Unknown integration: {name}")

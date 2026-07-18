@@ -9,6 +9,7 @@ from pathlib import Path
 from typing import Any
 
 from backend.config_manager import ConfigManager
+from backend.routing.playbook_store_registry import get_playbook_store
 from backend.db.sqlite_queue import SQLiteQueue
 from backend.db.session_store import SessionStore
 from backend.formatting.render import render_for_channel
@@ -75,7 +76,12 @@ class TaskQueueWorker:
                         client = slack_bot_client(config.slack.bot_token)
                         bot_user_id = client.auth_test().get("user_id", "")
                         context_fetcher = lambda t: fetch_slack_context(
-                            client, t, bot_user_id=bot_user_id
+                            client,
+                            t,
+                            bot_user_id=bot_user_id,
+                            thread_relevance_enabled=config.slack.thread_relevance_enabled,
+                            thread_relevance_top_n=config.slack.thread_relevance_top_n,
+                            thread_fetch_limit=config.slack.thread_fetch_limit,
                         )
 
                         indicator = ThinkingIndicator(
@@ -91,6 +97,10 @@ class TaskQueueWorker:
                         session_store=store,
                         data_dir=self.manager.data_dir,
                         context_fetcher=context_fetcher,
+                        playbook_store=get_playbook_store(
+                            self.manager.data_dir,
+                            disabled_skills=config.skills.disabled,
+                        ),
                     )
 
                     response = processor.process(task)

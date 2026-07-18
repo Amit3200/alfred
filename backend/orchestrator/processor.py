@@ -12,6 +12,7 @@ from backend.orchestrator.policy import (
     needs_context_refresh,
     omit_assistant_session_history,
 )
+from backend.routing.playbook_store_registry import get_playbook_store
 from backend.routing.playbooks import Playbook, PlaybookStore
 from backend.orchestrator.prompts import GITHUB_COMMENT_RULES, build_alfred_system_prompt, build_slack_user_message
 from backend.formatting.render import Channel, render_for_channel
@@ -31,6 +32,7 @@ STRUCTURED_TOOL_KINDS = frozenset(
     {
         "pr_list",
         "pr_detail",
+        "pr_created",
         "repo_list",
         "code_grep",
         "file_content",
@@ -46,6 +48,7 @@ STRUCTURED_TOOL_KINDS = frozenset(
         "grade_events_query",
         "google_sheet",
         "google_doc",
+        "web_search",
     }
 )
 
@@ -65,7 +68,7 @@ class TaskProcessor:
         self.router = LLMRouter.from_config(config, data_dir=data_dir)
         self.session_store = session_store
         self._context_fetcher = context_fetcher
-        self._playbooks = playbook_store or PlaybookStore(
+        self._playbooks = playbook_store or get_playbook_store(
             data_dir,
             disabled_skills=config.skills.disabled,
         )
@@ -102,6 +105,37 @@ class TaskProcessor:
         session = self._load_session(session_key)
         channel = _task_channel(task)
 
+        gov_patch = self._maybe_grant_write_approval(task, session)
+        if gov_patch and session and session_key and self.session_store:
+            session.metadata.update(gov_patch)
+            self.session_store.save(session)
+        elif gov_patch and session:
+            session.metadata.update(gov_patch)
+
+        if (
+            self.config.governance.enabled
+            and gov_patch
+            and self._is_confirmation_only(task.cleaned_intent)
+        ):
+            from backend.governance.confirmation import confirmation_granted_message
+
+            response = AssistantResponse.from_text(
+                confirmation_granted_message(self.config.governance.approval_ttl_minutes)
+            )
+            if session_key and self.session_store:
+                rendered = render_for_channel(response, channel)
+                self.session_store.append_exchange(
+                    session_key,
+                    source=task.source,
+                    scope_id=task.channel_id,
+                    thread_id=task.thread_ts or "",
+                    user_content=task.cleaned_intent,
+                    assistant_content=rendered,
+                    assistant_payload=response.payload,
+                    metadata_patch=gov_patch,
+                )
+            return response
+
         slack_context: str | None = None
         history_window_label = ""
         slack_user_names: dict[str, str] = {}
@@ -134,6 +168,29 @@ class TaskProcessor:
             repo=repo_hint,
         )
         investigation = self._skill_router.route_investigation(route_context).playbook
+
+        workflow_response, workflow_meta = self._try_workflow_entry(
+            investigation,
+            task,
+            session=session,
+            slack_context=slack_context if include_context else None,
+        )
+        if workflow_response is not None:
+            if session_key and self.session_store:
+                rendered = render_for_channel(workflow_response, channel)
+                self.session_store.append_exchange(
+                    session_key,
+                    source=task.source,
+                    scope_id=task.channel_id,
+                    thread_id=task.thread_ts or "",
+                    user_content=task.cleaned_intent,
+                    assistant_content=rendered,
+                    assistant_payload=workflow_response.payload,
+                    context_snapshot=slack_context if include_context else None,
+                    metadata_patch=workflow_meta,
+                )
+            return workflow_response
+
         review_skill = self._resolve_pr_review_skill(investigation, task, session)
         omit_assistant = omit_assistant_session_history(
             task.cleaned_intent,
@@ -207,10 +264,12 @@ class TaskProcessor:
         # Resolve target model early to allow model-specific system prompts
         if review_skill and self.config.git.enabled:
             provider_name, provider, model_name = self._resolve_llm("pr_review")
+        elif investigation and investigation.mode == "workflow":
+            provider_name, provider, model_name = self._resolve_llm("workflow_execution")
+        elif investigation:
+            provider_name, provider, model_name = self._resolve_llm("investigation")
         else:
-            provider_name, provider, model_name = self._resolve_llm(
-                "investigation" if investigation else "basic_chat"
-            )
+            provider_name, provider, model_name = self._resolve_llm("basic_chat")
 
         messages = self._build_messages(
             task,
@@ -367,6 +426,116 @@ class TaskProcessor:
 
         return resolve_llm_route(self.config.ai, task_kind, router=self.router)
 
+    def _is_confirmation_only(self, text: str) -> bool:
+        from backend.governance.confirmation import is_confirmation_only
+
+        return is_confirmation_only(text, self.config.governance)
+
+    def _maybe_grant_write_approval(
+        self,
+        task: Task,
+        session: ConversationSession | None,
+    ) -> dict[str, Any] | None:
+        from backend.governance.confirmation import approval_metadata_patch, is_confirmation_phrase
+
+        if not self.config.governance.enabled or not self.config.governance.require_confirmation:
+            return None
+        if not is_confirmation_phrase(task.cleaned_intent, self.config.governance):
+            return None
+        return approval_metadata_patch(
+            user_id=task.user_id,
+            ttl_minutes=self.config.governance.approval_ttl_minutes,
+        )
+
+    def _attach_governance(
+        self,
+        registry: Any,
+        task: Task,
+        *,
+        session: ConversationSession | None,
+        skill_name: str | None,
+    ) -> None:
+        from backend.governance.context import GovernanceContext
+
+        registry.governance = GovernanceContext(
+            self.config,
+            task,
+            session=session,
+            skill_name=skill_name,
+            data_dir=self._data_dir_path(),
+        )
+
+    def _try_workflow_entry(
+        self,
+        skill: Playbook | None,
+        task: Task,
+        *,
+        session: ConversationSession | None,
+        slack_context: str | None,
+    ) -> tuple[AssistantResponse | None, dict[str, Any] | None]:
+        """Gate create-PR / plan commands; ask clarifying questions or run plan-only flow."""
+        if skill is None:
+            return None, None
+
+        from backend.orchestrator.workflow_gates import gate_create_pr, gate_plan_task
+        from backend.orchestrator.planning import generate_standalone_plan
+
+        if skill.name == "create_pr":
+            gate = gate_create_pr(
+                task,
+                self.config,
+                session=session,
+                slack_context=slack_context,
+            )
+            if not gate.ready:
+                return AssistantResponse.from_text(gate.message), gate.metadata_patch or None
+            if gate.enriched_intent:
+                task.cleaned_intent = gate.enriched_intent
+            from backend.orchestrator.planning import adopt_session_plan_for_task
+
+            patch = dict(gate.metadata_patch or {})
+            adopted = adopt_session_plan_for_task(task, session, self._data_dir_path())
+            if adopted:
+                patch["plan_file"] = adopted
+            return None, patch or None
+
+        if skill.name == "plan_task":
+            gate = gate_plan_task(
+                task,
+                self.config,
+                session=session,
+                slack_context=slack_context,
+            )
+            if not gate.ready:
+                return AssistantResponse.from_text(gate.message), gate.metadata_patch or None
+            if gate.enriched_intent:
+                task.cleaned_intent = gate.enriched_intent
+            context_parts = [slack_context or ""]
+            if session and session.context_snapshot and session.context_snapshot not in context_parts:
+                context_parts.append(session.context_snapshot)
+            plan_text, plan_path = generate_standalone_plan(
+                task,
+                self.config,
+                context="\n\n".join(p for p in context_parts if p).strip(),
+                data_dir=self._data_dir,
+                task_kind="workflow_execution",
+            )
+            if not plan_text:
+                return (
+                    AssistantResponse.from_text(
+                        "I couldn't generate a plan — check Admin → AI (Workflow execution provider) and try again."
+                    ),
+                    gate.metadata_patch,
+                )
+            path_note = f"\n\n_Saved to `{plan_path}`_" if plan_path else ""
+            body = f"*Task plan*\n\n{plan_text}{path_note}"
+            patch = dict(gate.metadata_patch or {})
+            if plan_path:
+                patch["plan_file"] = plan_path
+            return AssistantResponse.from_text(body), patch
+
+        return None, None
+
     def _build_route_context(
         self,
         task: Task,
@@ -502,7 +671,10 @@ class TaskProcessor:
             self.config,
             workspace_id=mirror_workspace_key(task),
             data_dir=self._data_dir_path(),
+            allowed_tools=skill.allowed_tools or None,
         )
+        self._attach_governance(registry, task, session=session, skill_name=skill.name)
+
         result = registry.run_normalized(
             tool_name,
             tool_args,
@@ -549,7 +721,9 @@ class TaskProcessor:
             self.config,
             workspace_id=mirror_workspace_key(task),
             data_dir=self._data_dir_path(),
+            allowed_tools=skill.allowed_tools or None,
         )
+        self._attach_governance(registry, task, session=session, skill_name=skill.name)
 
         runner = self.config.orchestrator.agent_runner
         log_checkpoint("agent_loop_start", runner, "started")
@@ -558,9 +732,11 @@ class TaskProcessor:
         if not allowed_tools:
             allowed_tools = list(registry._tools.keys())
 
-        if skill.mode in ("investigation", "workflow"):
-            from backend.orchestrator.planning import generate_initial_plan
-            generate_initial_plan(task, allowed_tools, self.config, data_dir=self._data_dir)
+        if skill.mode in ("investigation", "workflow") and skill.name != "plan_task":
+            from backend.orchestrator.planning import generate_initial_plan, plan_exists_for_task
+
+            if not plan_exists_for_task(task.id, self._data_dir_path()):
+                generate_initial_plan(task, allowed_tools, self.config, data_dir=self._data_dir)
 
         try:
             if runner == "hermes":

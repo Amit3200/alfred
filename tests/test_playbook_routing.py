@@ -6,12 +6,18 @@ from pathlib import Path
 from unittest.mock import MagicMock
 
 from backend.orchestrator.processor import TaskProcessor
+from backend.routing.playbook_store_registry import reset_playbook_store_registry
 from backend.routing.playbooks import PlaybookStore
 from backend.models.config import default_config
 from backend.models.task import Task
 
 
-def test_processor_loads_one_playbook_when_many_triggers_match(tmp_path: Path):
+def test_processor_loads_one_playbook_when_many_triggers_match(tmp_path: Path, monkeypatch):
+    empty_skills = tmp_path / "empty_bundled_skills"
+    empty_skills.mkdir()
+    monkeypatch.setattr("backend.routing.playbooks.bundled_skills_dir", lambda: empty_skills)
+    reset_playbook_store_registry()
+
     playbooks = tmp_path / "playbooks"
     playbooks.mkdir()
     (playbooks / "payment.md").write_text(
@@ -38,6 +44,8 @@ Order runbook body.
     )
 
     config = default_config()
+    config.skills.agentic_routing = False
+    config.skills.bm25_routing = False
     mock_provider = MagicMock()
     mock_provider.chat.return_value = MagicMock(content="ok", model="m")
 
@@ -62,7 +70,12 @@ Order runbook body.
     assert "debug_order" in system
 
 
-def test_processor_catalog_only_when_no_trigger_match(tmp_path: Path):
+def test_processor_catalog_only_when_no_trigger_match(tmp_path: Path, monkeypatch):
+    empty_skills = tmp_path / "empty_bundled_skills"
+    empty_skills.mkdir()
+    monkeypatch.setattr("backend.routing.playbooks.bundled_skills_dir", lambda: empty_skills)
+    reset_playbook_store_registry()
+
     playbooks = tmp_path / "playbooks"
     playbooks.mkdir()
     (playbooks / "scoped.md").write_text(
@@ -77,6 +90,8 @@ Scoped body.
     )
 
     config = default_config()
+    config.skills.agentic_routing = False
+    config.skills.bm25_routing = False
     mock_provider = MagicMock()
     mock_provider.chat.return_value = MagicMock(content="ok", model="m")
 

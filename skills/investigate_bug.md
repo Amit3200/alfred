@@ -37,6 +37,7 @@ allowed_tools:
   - cloudwatch_query
   - list_cloudwatch_log_groups
   - athena_query
+  - web_search
 requires_thread_context: true
 ---
 

@@ -12,6 +12,7 @@ from pydantic import BaseModel, Field
 
 from backend.api.deps import require_admin
 from backend.config_manager import ConfigManager
+from backend.routing.playbook_store_registry import invalidate_playbook_store
 from backend.routing.playbooks import _parse_playbook
 from backend.paths import bundled_playbooks_dir, playbooks_dir
 
@@ -146,6 +147,62 @@ def get_example_playbook(manager: ConfigManager = Depends(require_admin)) -> dic
     return {"filename": "slack-summaries.md", "content": example.read_text(encoding="utf-8")}
 
 
+@router.get("/pending")
+def list_pending_playbooks_route(
+    manager: ConfigManager = Depends(require_admin),
+) -> dict[str, Any]:
+    from backend.orchestrator.playbook_pending import list_pending_playbooks
+
+    pending = list_pending_playbooks(manager.data_dir)
+    return {"pending": pending, "total": len(pending)}
+
+
+@router.get("/pending/{pending_id}")
+def get_pending_playbook_route(
+    pending_id: str,
+    manager: ConfigManager = Depends(require_admin),
+) -> dict[str, Any]:
+    from backend.orchestrator.playbook_pending import get_pending_playbook
+
+    try:
+        item = get_pending_playbook(manager.data_dir, pending_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    return {"pending": item}
+
+
+@router.post("/pending/{pending_id}/approve")
+def approve_pending_playbook_route(
+    pending_id: str,
+    manager: ConfigManager = Depends(require_admin),
+) -> dict[str, Any]:
+    from backend.orchestrator.playbook_pending import approve_pending_playbook
+
+    try:
+        result = approve_pending_playbook(manager.data_dir, pending_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except FileExistsError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    invalidate_playbook_store(manager.data_dir)
+    return result
+
+
+@router.post("/pending/{pending_id}/reject")
+def reject_pending_playbook_route(
+    pending_id: str,
+    manager: ConfigManager = Depends(require_admin),
+) -> dict[str, Any]:
+    from backend.orchestrator.playbook_pending import reject_pending_playbook
+
+    try:
+        return reject_pending_playbook(manager.data_dir, pending_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
 @router.get("/{filename:path}")
 def get_playbook(
     filename: str,
@@ -174,6 +231,7 @@ def create_playbook(
         raise HTTPException(status_code=400, detail="Playbook exceeds 512 KB limit")
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(content if content.endswith("\n") else content + "\n", encoding="utf-8")
+    invalidate_playbook_store(manager.data_dir)
     return {"ok": True, "filename": _playbook_relative_name(root, path), **_metadata_for(root, path)}
 
 
@@ -194,6 +252,7 @@ def save_playbook(
         body.content if body.content.endswith("\n") else body.content + "\n",
         encoding="utf-8",
     )
+    invalidate_playbook_store(manager.data_dir)
     return {"ok": True, "filename": _playbook_relative_name(root, path), **_metadata_for(root, path)}
 
 
@@ -207,4 +266,5 @@ def delete_playbook(
     if not path.is_file():
         raise HTTPException(status_code=404, detail=f"Playbook {filename!r} not found")
     path.unlink()
+    invalidate_playbook_store(manager.data_dir)
     return {"ok": True, "removed": _playbook_relative_name(root, path)}

@@ -65,6 +65,7 @@ async def _lifespan(app: FastAPI):
 
     try:
         config, _ = manager.load_merged()
+        get_playbook_store(manager.data_dir, disabled_skills=config.skills.disabled)
         if config.git.enabled:
             pass
 

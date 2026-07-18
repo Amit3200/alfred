@@ -28,9 +28,16 @@ class RegisteredTool:
 class ToolRegistry:
     def __init__(self) -> None:
         self._tools: dict[str, RegisteredTool] = {}
+        self._registration_filter: frozenset[str] | None = None
         self.last_result: ToolResult | None = None
         self.last_tool_name: str | None = None
         self.last_tool_args: dict[str, Any] | None = None
+
+    def set_registration_filter(self, allowed_tools: list[str] | None) -> None:
+        """When set, ``register()`` skips tools not in this allowlist."""
+        from backend.tools.selection import normalize_allowed
+
+        self._registration_filter = normalize_allowed(allowed_tools)
 
     def clear_results(self) -> None:
         self.last_result = None
@@ -38,6 +45,9 @@ class ToolRegistry:
         self.last_tool_args = None
 
     def register(self, schema: ToolSchema, handler: ToolHandler) -> None:
+        filt = self._registration_filter
+        if filt is not None and schema.name not in filt:
+            return
         self._tools[schema.name] = RegisteredTool(schema=schema, handler=handler)
 
     def get_schemas(self, allowed: list[str]) -> list[ToolSchema]:
@@ -49,6 +59,16 @@ class ToolRegistry:
         tool = self._tools.get(name)
         if tool is None:
             return ToolResult.error(f"unknown tool {name!r}.")
+
+        gov: Any = getattr(self, "governance", None)
+        if gov is not None:
+            blocked = gov.check_before_run(name, arguments)
+            if blocked is not None:
+                self.last_result = blocked
+                self.last_tool_name = name
+                self.last_tool_args = dict(arguments)
+                return blocked
+
         try:
             result = tool.handler(arguments)
             self.last_result = result
@@ -56,6 +76,8 @@ class ToolRegistry:
             self.last_tool_args = dict(arguments)
             logger.info("Tool %s completed kind=%s", name, result.kind)
             self._record_tool(name, success=result.kind != "error")
+            if gov is not None:
+                gov.audit_after_run(name, arguments, result)
             return result
         except Exception as exc:
             logger.exception("Tool %s failed", name)
@@ -64,6 +86,8 @@ class ToolRegistry:
             self.last_tool_name = name
             self.last_tool_args = dict(arguments)
             self._record_tool(name, success=False)
+            if gov is not None:
+                gov.audit_after_run(name, arguments, result)
             return result
 
     def _record_tool(self, name: str, *, success: bool) -> None:

@@ -13,8 +13,9 @@ from backend.api.deps import get_manager, require_admin, restart_slack_listener
 from backend.ai.registry import LLMRouter
 from backend.config_manager import ConfigManager
 from backend.config_transfer import ConfigImportError, build_export_zip, import_config_zip
-from backend.health import check_ai, check_aws, check_git, check_google, check_jira, check_slack
+from backend.health import INTEGRATION_HEALTH_CHECKS, check_ai, run_integration_check
 from backend.models.config import AlfredConfig, AlfredSecrets
+from backend.routing.playbook_store_registry import get_playbook_store, invalidate_playbook_store
 
 router = APIRouter(prefix="/config", tags=["config"])
 
@@ -35,6 +36,8 @@ def update_config(
     config = AlfredConfig.model_validate(payload)
     _, secrets = manager.load_merged()
     manager.save_merged(config, secrets)
+    get_playbook_store(manager.data_dir, disabled_skills=config.skills.disabled)
+    invalidate_playbook_store(manager.data_dir)
     slack_restart = restart_slack_listener(request)
     result = manager.public_config()
     result["slack_restart"] = slack_restart
@@ -107,16 +110,9 @@ def test_integration(
     manager: ConfigManager = Depends(require_admin),
 ) -> dict:
     config, _ = manager.load_merged()
-    checks = {
-        "slack": check_slack,
-        "git": check_git,
-        "aws": check_aws,
-        "jira": check_jira,
-        "google": check_google,
-    }
-    if name not in checks:
+    if name not in INTEGRATION_HEALTH_CHECKS:
         raise HTTPException(status_code=404, detail=f"Unknown integration: {name}")
-    return checks[name](config)
+    return run_integration_check(name, config, data_dir=manager.data_dir)
 
 
 @router.get("/export")

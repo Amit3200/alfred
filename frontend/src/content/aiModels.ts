@@ -31,7 +31,7 @@ export const ROUTE_DESCRIPTIONS: Record<LLMRouteKey, string> = {
   investigation: "Tool-calling agent loops — AWS, git, JIRA, etc.",
   basic_chat: "Simple Q&A without tools.",
   pr_review: "PR review skill and code analysis.",
-  workflow_execution: "JIRA writes and future workflow actions.",
+  workflow_execution: "PR/code write workflow skills (create_pr, schedules). Pick a strong coding model.",
 };
 
 export function modelOptionsForProvider(

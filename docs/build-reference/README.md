@@ -19,15 +19,16 @@ Planning and architecture references for Alfred — not runtime code.
 
 When code and docs diverge, update **`building_phase_v0.md`** first, then **[`README.md`](../../README.md)**.
 
-## Roadmap snapshot (2026-06-21)
+## Roadmap snapshot (2026-07-18)
 
-| Target | Focus |
-|--------|--------|
-| **v0** | Slack channel ingress, git/JIRA/AWS read, GitHub PR bot (public URL), admin UI |
-| **v0.1** | Intent router, thread relevancy, skill matcher upgrade |
-| **v1** | HTTP enqueue queue, durable task queue, governance (confirmation + audit) |
-| **v2** | Git write tools, ECS/S3 direct tools |
-| **Won't do** | Slack DM / App Home Chat |
+| Target | Status | Focus |
+|--------|--------|--------|
+| **v0** | ✅ Shipped | Slack channel ingress, git/JIRA/AWS read, GitHub PR bot, admin UI, Google Workspace, schedules |
+| **v0.1** | ✅ Shipped | SQLite queue + worker, unified intent router, keyword/heuristic/LLM routing, context pruning |
+| **v0.2 polish** | Next | Thread message relevancy ranking, BM25 playbook matcher, self-learning review gate |
+| **v1** | Planned | Governance — audit log, confirmation UX, user/channel write policies |
+| **v2** | Planned | Git write tools (`checkout`, cherry-pick, `create_pr`), ECS/S3 read tools, `deploy_hotfix` skill |
+| **Won't do** | — | Slack DM / App Home Chat |
 
 ## Local-only files (gitignored)
 

@@ -35,9 +35,11 @@ dependencies = [
     "click>=8.1.0",
     "slack-bolt>=1.21.0",
     "python-multipart>=0.0.9",
+    "rank-bm25>=0.2.2",
 ]
 
 [project.optional-dependencies]
+web = ["duckduckgo-search>=6.3.0"]
 ai-openai = ["openai>=1.0.0"]
 ai-anthropic = ["anthropic>=0.15.0"]
 ai-gemini = ["google-genai>=0.1.0"]

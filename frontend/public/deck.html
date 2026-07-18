@@ -1,0 +1,2288 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Alfred - Local-First AI Assistant for Engineering Teams</title>
+  
+  <!-- Modern Typography and Icons -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Space+Grotesk:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  
+  <style>
+    /* ==========================================================================
+       1. DESIGN SYSTEM & VARIABLE DEFINITIONS
+       ========================================================================== */
+    :root {
+      --bg-dark: #08090b;
+      --bg-card: #0e1117;
+      --bg-card-hover: #12161f;
+      --border-color: rgba(255, 255, 255, 0.05);
+      --border-color-hover: rgba(255, 255, 255, 0.12);
+      
+      --color-primary: #059669; /* Emerald Green */
+      --color-primary-glow: rgba(5, 150, 105, 0.1);
+      --color-secondary: #d97706; /* Amber Gold */
+      --color-secondary-glow: rgba(217, 119, 6, 0.08);
+      --color-accent: #0f766e; /* Teal */
+      
+      --text-main: #f3f4f6;
+      --text-muted: #9ca3af;
+      --text-dim: #5c6270;
+      
+      --font-title: 'Space Grotesk', sans-serif;
+      --font-body: 'Outfit', sans-serif;
+      --font-mono: 'Fira Code', monospace;
+      
+      --transition-smooth: all 0.3s cubic-bezier(0.2, 0.8, 0.2, 1);
+      --grid-line-color: rgba(255, 255, 255, 0.015);
+      --blob-opacity: 0.08;
+    }
+
+    /* Light Theme Overwrite */
+    body.light-mode {
+      --bg-dark: #f8fafc;
+      --bg-card: #ffffff;
+      --bg-card-hover: #f1f5f9;
+      --border-color: rgba(15, 23, 42, 0.06);
+      --border-color-hover: rgba(15, 23, 42, 0.12);
+      
+      --color-primary: #059669;
+      --color-primary-glow: rgba(5, 150, 105, 0.04);
+      --color-secondary: #b45309;
+      --color-secondary-glow: rgba(180, 83, 9, 0.04);
+      --color-accent: #0f766e;
+      
+      --text-main: #0f172a;
+      --text-muted: #475569;
+      --text-dim: #64748b;
+      
+      --grid-line-color: rgba(15, 23, 42, 0.015);
+      --blob-opacity: 0.03;
+    }
+
+    /* ==========================================================================
+       2. RESET & BASE LAYOUT
+       ========================================================================== */
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: var(--font-body);
+      overflow: hidden;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+      transition: background-color 0.4s ease;
+    }
+
+    /* Sleek Cyber Grid Background */
+    .grid-bg {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background-image: 
+        linear-gradient(var(--grid-line-color) 1px, transparent 1px),
+        linear-gradient(90deg, var(--grid-line-color) 1px, transparent 1px);
+      background-size: 60px 60px;
+      background-position: center;
+      mask-image: radial-gradient(circle at 50% 50%, black 50%, transparent 95%);
+      -webkit-mask-image: radial-gradient(circle at 50% 50%, black 50%, transparent 95%);
+      pointer-events: none;
+      z-index: 1;
+    }
+
+    /* Soft Background Blurs */
+    .blur-blob {
+      position: absolute;
+      border-radius: 50%;
+      filter: blur(160px);
+      opacity: var(--blob-opacity);
+      pointer-events: none;
+      z-index: 1;
+      animation: float 25s infinite alternate ease-in-out;
+      transition: opacity 0.4s ease;
+    }
+
+    .blob-1 {
+      top: 15%;
+      left: 15%;
+      width: 450px;
+      height: 450px;
+      background: var(--color-primary);
+    }
+
+    .blob-2 {
+      bottom: 15%;
+      right: 20%;
+      width: 500px;
+      height: 500px;
+      background: var(--color-secondary);
+      animation-delay: -7s;
+    }
+
+    /* Professional Diagonal Light Strip sweeping the background */
+    .diagonal-light-strip {
+      position: absolute;
+      top: -100%;
+      left: -50%;
+      width: 180px;
+      height: 300%;
+      background: linear-gradient(to bottom, transparent, rgba(5, 150, 105, 0.06), transparent);
+      transform: rotate(35deg);
+      pointer-events: none;
+      z-index: 1;
+      animation: sweep 15s infinite linear;
+    }
+
+    body.light-mode .diagonal-light-strip {
+      background: linear-gradient(to bottom, transparent, rgba(5, 150, 105, 0.03), transparent);
+    }
+
+    @keyframes sweep {
+      0% { transform: translate(-30%, -30%) rotate(35deg); }
+      100% { transform: translate(120%, 120%) rotate(35deg); }
+    }
+
+    @keyframes float {
+      0% { transform: translate(0, 0) scale(1); }
+      100% { transform: translate(60px, 40px) scale(1.1); }
+    }
+
+    /* ==========================================================================
+       3. SLIDE WRAPPER & NAVIGATION LOGIC
+       ========================================================================== */
+    .deck-container {
+      flex: 1;
+      position: relative;
+      width: 100%;
+      height: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 2;
+    }
+
+    .slide {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      padding: 6% 8% 6% 8%;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transform: translateY(12px) scale(0.99);
+      transition: var(--transition-smooth);
+      z-index: 5;
+    }
+
+    .slide.active {
+      opacity: 1;
+      pointer-events: auto;
+      transform: translateY(0) scale(1);
+      z-index: 10;
+    }
+
+    .slide .animate-fade {
+      opacity: 0;
+      transform: translateY(16px);
+      transition: var(--transition-smooth);
+    }
+
+    .slide.active .animate-fade {
+      opacity: 1;
+      transform: translateY(0);
+    }
+
+    .slide.active .delay-1 { transition-delay: 0.1s; }
+    .slide.active .delay-2 { transition-delay: 0.2s; }
+    .slide.active .delay-3 { transition-delay: 0.3s; }
+    .slide.active .delay-4 { transition-delay: 0.4s; }
+
+    /* ==========================================================================
+       4. GLOBAL HEADERS & INTERFACE UTILITIES
+       ========================================================================== */
+    .top-header {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      padding: 24px 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 100;
+      pointer-events: none;
+    }
+
+    .brand-logo {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      font-family: var(--font-title);
+      font-size: 24px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      color: var(--text-main);
+      pointer-events: auto;
+      text-decoration: none;
+    }
+
+    .brand-logo svg {
+      width: 28px;
+      height: 28px;
+      fill: none;
+      stroke: var(--color-primary);
+      stroke-width: 2.5;
+    }
+
+    .theme-toggle-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: var(--transition-smooth);
+      pointer-events: auto;
+    }
+
+    .theme-toggle-btn:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--border-color-hover);
+      transform: scale(1.05);
+    }
+
+    .theme-toggle-btn svg {
+      width: 18px;
+      height: 18px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+    }
+
+    /* ==========================================================================
+       5. DECK CONTROLS (BOTTOM BAR)
+       ========================================================================== */
+    .controls-footer {
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 100%;
+      padding: 20px 48px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      z-index: 100;
+      border-top: 1px solid var(--border-color);
+      background: linear-gradient(to top, var(--bg-dark), transparent);
+    }
+
+    .slide-directory {
+      display: flex;
+      gap: 20px;
+    }
+
+    .dir-item {
+      font-size: 12px;
+      font-family: var(--font-mono);
+      color: var(--text-dim);
+      cursor: pointer;
+      transition: var(--transition-smooth);
+      position: relative;
+      padding-bottom: 4px;
+    }
+
+    .dir-item::after {
+      content: '';
+      position: absolute;
+      bottom: 0;
+      left: 0;
+      width: 0;
+      height: 2px;
+      background: var(--color-primary);
+      transition: var(--transition-smooth);
+    }
+
+    .dir-item.active {
+      color: var(--text-main);
+    }
+
+    .dir-item.active::after {
+      width: 100%;
+    }
+
+    .action-controls {
+      display: flex;
+      align-items: center;
+      gap: 16px;
+    }
+
+    .creator-attribution {
+      position: absolute;
+      bottom: 100px;
+      right: 48px;
+      z-index: 101;
+      pointer-events: auto;
+    }
+
+    @media (max-width: 1024px) {
+      .creator-attribution {
+        bottom: 75px;
+        right: 24px;
+      }
+    }
+
+    @media (max-width: 768px) {
+      .creator-attribution {
+        display: none;
+      }
+    }
+
+    .progress-dots {
+      display: flex;
+      gap: 8px;
+    }
+
+    .dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: rgba(120, 120, 120, 0.2);
+      cursor: pointer;
+      transition: var(--transition-smooth);
+    }
+
+    body.light-mode .dot {
+      background: rgba(15, 23, 42, 0.1);
+    }
+
+    .dot.active {
+      background: var(--color-primary);
+      width: 24px;
+      border-radius: 4px;
+    }
+
+    .nav-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      width: 38px;
+      height: 38px;
+      border-radius: 50%;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      transition: var(--transition-smooth);
+    }
+
+    .nav-btn:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--border-color-hover);
+      transform: translateY(-1px);
+    }
+
+    .nav-btn svg {
+      width: 16px;
+      height: 16px;
+      fill: none;
+      stroke: currentColor;
+      stroke-width: 2;
+    }
+
+    .slide-counter {
+      font-family: var(--font-mono);
+      font-size: 14px;
+      color: var(--text-muted);
+      letter-spacing: 1px;
+    }
+
+    .top-progress {
+      position: absolute;
+      top: 0;
+      left: 0;
+      height: 3px;
+      background: linear-gradient(90deg, var(--color-primary), var(--color-secondary));
+      width: 0%;
+      z-index: 101;
+      transition: width 0.3s ease-out;
+    }
+
+    /* ==========================================================================
+       6. TYPOGRAPHY & LAYOUT HELPERS
+       ========================================================================== */
+    .gradient-text {
+      background: linear-gradient(135deg, var(--text-main) 40%, var(--color-primary) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+    }
+
+    .slide-title {
+      font-family: var(--font-title);
+      font-size: 48px;
+      font-weight: 700;
+      line-height: 1.1;
+      margin-bottom: 20px;
+      letter-spacing: -1.5px;
+    }
+
+    .slide-subtitle {
+      font-size: 18px;
+      color: var(--text-muted);
+      margin-bottom: 30px;
+      max-width: 800px;
+      line-height: 1.55;
+      font-weight: 300;
+    }
+
+    .content-grid {
+      display: grid;
+      grid-template-columns: repeat(12, 1fr);
+      gap: 30px;
+      align-items: center;
+    }
+
+    /* Sharp, High-End Flat Cards (Anti-AI Generated Template Look) */
+    .glass-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 30px;
+      transition: var(--transition-smooth);
+      position: relative;
+    }
+
+    .glass-card:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--border-color-hover);
+      transform: translateY(-3px);
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.1);
+    }
+
+    body.light-mode .glass-card:hover {
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.04);
+    }
+
+    /* Clean solid border highlights instead of blurry glows */
+    .glow-card-purple:hover {
+      border-color: var(--color-primary);
+    }
+
+    .glow-card-cyan:hover {
+      border-color: var(--color-secondary);
+    }
+
+    .terminal-container {
+      background: #090b11;
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      border-radius: 10px;
+      font-family: var(--font-mono);
+      font-size: 13px;
+      line-height: 1.6;
+      overflow: hidden;
+    }
+
+    body.light-mode .terminal-container {
+      border-color: rgba(15, 23, 42, 0.06);
+    }
+
+    .terminal-header {
+      background: rgba(255, 255, 255, 0.015);
+      padding: 10px 18px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.04);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    body.light-mode .terminal-header {
+      background: rgba(15, 23, 42, 0.01);
+      border-bottom-color: rgba(15, 23, 42, 0.04);
+    }
+
+    .terminal-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+    }
+
+    .dot-red { background: #e11d48; }
+    .dot-yellow { background: #d97706; }
+    .dot-green { background: #059669; }
+
+    .terminal-title {
+      font-size: 11px;
+      color: var(--text-dim);
+      margin-left: auto;
+      letter-spacing: 0.5px;
+    }
+
+    .terminal-body {
+      padding: 20px;
+      color: #a7f3d0;
+    }
+
+    .terminal-prompt {
+      color: #f3f4f6;
+    }
+
+    .terminal-prompt::before {
+      content: '$ ';
+      color: #10b981;
+      font-weight: bold;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 20px;
+      background: rgba(5, 150, 105, 0.08);
+      border: 1px solid rgba(5, 150, 105, 0.15);
+      color: #10b981;
+    }
+
+    .badge-cyan {
+      background: rgba(217, 119, 6, 0.08);
+      border: 1px solid rgba(217, 119, 6, 0.15);
+      color: #d97706;
+    }
+
+    /* ==========================================================================
+       7. SLIDE SPECIFIC LAYOUTS & COMPONENTS
+       ========================================================================== */
+
+    /* Slide 1 - Cover (Hero) */
+    .cover-left {
+      grid-column: span 7;
+    }
+
+    .cover-right {
+      grid-column: span 5;
+    }
+
+    .btn-cta {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      background: var(--color-primary);
+      color: #FFF;
+      padding: 14px 28px;
+      border-radius: 6px;
+      font-weight: 600;
+      font-size: 15px;
+      text-decoration: none;
+      transition: var(--transition-smooth);
+      border: 1px solid rgba(255, 255, 255, 0.05);
+      cursor: pointer;
+    }
+
+    .btn-cta:hover {
+      transform: translateY(-1px);
+      background: #047857;
+    }
+
+    .slack-mock {
+      background: #090c12;
+      border: 1px solid rgba(255, 255, 255, 0.04);
+      border-radius: 12px;
+      padding: 20px;
+    }
+
+    body.light-mode .slack-mock {
+      background: #FFFFFF;
+      border-color: rgba(15, 23, 42, 0.06);
+      box-shadow: 0 10px 30px rgba(15, 23, 42, 0.03);
+    }
+
+    .slack-msg {
+      display: flex;
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+
+    .slack-msg:last-child {
+      margin-bottom: 0;
+      border-top: 1px solid rgba(255, 255, 255, 0.04);
+      padding-top: 16px;
+    }
+
+    body.light-mode .slack-msg:last-child {
+      border-top-color: rgba(15, 23, 42, 0.04);
+    }
+
+    .slack-avatar {
+      width: 36px;
+      height: 36px;
+      border-radius: 6px;
+      background: #10b981;
+      color: #FFF;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: bold;
+      font-size: 14px;
+    }
+
+    .slack-avatar.alfred {
+      background: linear-gradient(135deg, var(--color-primary), var(--color-secondary));
+    }
+
+    .slack-msg-content {
+      flex: 1;
+    }
+
+    .slack-user {
+      font-weight: 700;
+      font-size: 14px;
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      color: #f3f4f6;
+    }
+
+    body.light-mode .slack-user {
+      color: #0f172a;
+    }
+
+    .slack-time {
+      font-size: 11px;
+      color: var(--text-dim);
+      font-weight: 400;
+    }
+
+    .slack-app-badge {
+      background: rgba(255, 255, 255, 0.08);
+      font-size: 9px;
+      padding: 1px 4px;
+      border-radius: 3px;
+      color: #d1d5db;
+    }
+
+    body.light-mode .slack-app-badge {
+      background: rgba(15, 23, 42, 0.05);
+      color: #475569;
+    }
+
+    .slack-text {
+      font-size: 13.5px;
+      color: #d1d5db;
+      line-height: 1.5;
+    }
+
+    body.light-mode .slack-text {
+      color: #334155;
+    }
+
+    .slack-link {
+      color: #10b981;
+      text-decoration: none;
+    }
+
+    .slack-link:hover {
+      text-decoration: underline;
+    }
+
+    .slack-checklist {
+      list-style: none;
+      margin-top: 10px;
+      padding-left: 5px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+    }
+
+    .slack-checklist li {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+      color: #10b981;
+      opacity: 0;
+      animation: slideInItem 0.4s ease-out forwards;
+    }
+
+    .checklist-icon-done {
+      width: 14px;
+      height: 14px;
+      stroke: currentColor;
+      stroke-width: 3;
+      fill: none;
+    }
+
+    /* Thinking Dots and Checklist Entry Animation */
+    .thinking-dots {
+      color: var(--color-primary);
+      display: inline-flex;
+      align-items: center;
+      gap: 3px;
+    }
+    
+    .thinking-dots span {
+      animation: dotPulse 1.4s infinite both;
+      font-weight: bold;
+    }
+    
+    .thinking-dots span:nth-child(2) { animation-delay: .2s; }
+    .thinking-dots span:nth-child(3) { animation-delay: .4s; }
+    
+    @keyframes dotPulse {
+      0%, 80%, 100% { transform: translateY(0); opacity: 0.2; }
+      40% { transform: translateY(-4px); opacity: 1; }
+    }
+    
+    @keyframes slideInItem {
+      from { opacity: 0; transform: translateX(-8px); }
+      to { opacity: 1; transform: translateX(0); }
+    }
+
+    /* Slide 2 - Problem Grid */
+    .problem-left {
+      grid-column: span 6;
+    }
+    
+    .problem-right {
+      grid-column: span 6;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 20px;
+    }
+
+    .problem-stat {
+      font-family: var(--font-title);
+      font-size: 44px;
+      font-weight: 700;
+      color: #e11d48;
+      margin-bottom: 8px;
+    }
+
+    .pain-badge {
+      font-family: var(--font-mono);
+      font-size: 11px;
+      background: rgba(225, 29, 72, 0.08);
+      border: 1px solid rgba(225, 29, 72, 0.15);
+      color: #f43f5e;
+      padding: 3px 8px;
+      border-radius: 4px;
+      display: inline-block;
+      margin-bottom: 12px;
+    }
+
+    /* Slide 3 - What is Alfred */
+    .pillar-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 24px;
+      width: 100%;
+    }
+
+    .pillar-card {
+      height: 310px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .pillar-icon {
+      width: 44px;
+      height: 44px;
+      border-radius: 8px;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      color: var(--color-primary);
+      margin-bottom: 20px;
+      transition: var(--transition-smooth);
+    }
+
+    .pillar-card:hover .pillar-icon {
+      background: var(--color-primary);
+      color: #FFF;
+      transform: translateY(-2px);
+    }
+
+    .pillar-card.card-cyan:hover .pillar-icon {
+      background: var(--color-secondary);
+      color: #FFF;
+    }
+
+    .pillar-card h3 {
+      font-family: var(--font-title);
+      font-size: 18px;
+      font-weight: 600;
+      margin-bottom: 10px;
+    }
+
+    .pillar-card p {
+      font-size: 13.5px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* Slide 4 - Architecture Auto-Cycling Visualizer */
+    .arch-container {
+      display: grid;
+      grid-template-columns: 3fr 1fr;
+      gap: 30px;
+      width: 100%;
+      height: 380px;
+    }
+
+    .arch-flow-box {
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      background: rgba(14, 17, 23, 0.4);
+      padding: 30px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      position: relative;
+    }
+
+    body.light-mode .arch-flow-box {
+      background: rgba(255, 255, 255, 0.4);
+    }
+
+    .arch-stages {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      position: relative;
+      margin: auto 0;
+    }
+
+    /* Dotted dynamic data line running indefinitely between nodes */
+    .arch-flow-line {
+      position: absolute;
+      top: 50%;
+      left: 0;
+      width: 100%;
+      height: 20px;
+      transform: translateY(-50%);
+      z-index: 1;
+      pointer-events: none;
+    }
+
+    .flow-path {
+      stroke: var(--border-color-hover);
+      stroke-width: 1.5px;
+      stroke-dasharray: 4 4;
+      fill: none;
+      animation: dashRun 20s linear infinite;
+    }
+
+    @keyframes dashRun {
+      to {
+        stroke-dashoffset: -400;
+      }
+    }
+
+    .arch-node {
+      width: 84px;
+      height: 84px;
+      border-radius: 50%;
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      z-index: 5;
+      transition: var(--transition-smooth);
+      position: relative;
+    }
+
+    .arch-node span {
+      font-size: 9.5px;
+      font-family: var(--font-mono);
+      color: var(--text-dim);
+      text-align: center;
+      margin-top: 4px;
+      pointer-events: none;
+    }
+
+    .arch-node svg {
+      width: 24px;
+      height: 24px;
+      stroke: var(--text-muted);
+      stroke-width: 1.5;
+      pointer-events: none;
+    }
+
+    .arch-node.active {
+      border-color: var(--color-primary);
+      background: var(--bg-card-hover);
+      transform: scale(1.08);
+      box-shadow: 0 4px 12px rgba(5, 150, 105, 0.08);
+    }
+
+    .arch-node.active svg {
+      stroke: var(--color-primary);
+    }
+
+    .arch-node.active span {
+      color: var(--text-main);
+    }
+
+    .arch-node-hint {
+      position: absolute;
+      top: -24px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      padding: 1px 6px;
+      border-radius: 4px;
+      color: var(--text-muted);
+      white-space: nowrap;
+      pointer-events: none;
+    }
+
+    .arch-info-panel {
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+    }
+
+    .arch-info-header {
+      font-family: var(--font-title);
+      font-size: 18px;
+      font-weight: 600;
+      color: var(--color-primary);
+      margin-bottom: 12px;
+    }
+
+    .arch-info-body {
+      font-size: 13.5px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* Slide 5 - Key Capabilities Tabs */
+    .cap-container {
+      display: grid;
+      grid-template-columns: 1fr 2fr;
+      gap: 30px;
+      width: 100%;
+    }
+
+    .cap-menu {
+      display: flex;
+      flex-direction: column;
+      gap: 10px;
+    }
+
+    .cap-tab-btn {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      padding: 14px 18px;
+      border-radius: 8px;
+      cursor: pointer;
+      text-align: left;
+      transition: var(--transition-smooth);
+      color: var(--text-muted);
+    }
+
+    .cap-tab-btn h4 {
+      font-family: var(--font-title);
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 3px;
+      transition: color 0.3s;
+      color: var(--text-main);
+    }
+
+    .cap-tab-btn.active {
+      background: var(--bg-card-hover);
+      border-color: var(--color-primary);
+    }
+
+    .cap-tab-btn.active h4 {
+      color: var(--color-primary);
+    }
+
+    .cap-viewer {
+      height: 380px;
+    }
+
+    .cap-content {
+      display: none;
+      height: 100%;
+    }
+
+    .cap-content.active {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 20px;
+      animation: fadeIn 0.4s ease-out forwards;
+    }
+
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+
+    .cap-details {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .cap-details ul {
+      margin-top: 12px;
+      margin-left: 20px;
+      font-size: 13.5px;
+      color: var(--text-muted);
+      line-height: 1.7;
+    }
+
+    /* Slide 6 - Playbooks & Meta-Learning */
+    .playbook-layout {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 30px;
+      width: 100%;
+    }
+
+    .playbook-pane-left {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .meta-box {
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      background: rgba(5, 150, 105, 0.02);
+      padding: 20px;
+      position: relative;
+    }
+
+    .meta-box::after {
+      content: '';
+      position: absolute;
+      top: 0;
+      right: 0;
+      width: 3px;
+      height: 100%;
+      background: var(--color-primary);
+      border-radius: 0 10px 10px 0;
+    }
+
+    .meta-box h4 {
+      font-family: var(--font-title);
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--color-primary);
+    }
+
+    .meta-box p {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    .playbook-preview {
+      font-size: 11.5px;
+      max-height: 310px;
+      overflow-y: auto;
+    }
+
+    .playbook-line {
+      display: block;
+      margin-bottom: 4px;
+    }
+
+    .playbook-comment { color: rgba(255, 255, 255, 0.3); }
+    .playbook-yaml-key { color: #34d399; }
+    .playbook-yaml-val { color: #f59e0b; }
+
+    /* Slide 7 - ROI metrics dashboard */
+    .roi-layout {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 30px;
+      width: 100%;
+    }
+
+    .roi-metric-card {
+      text-align: center;
+      padding: 35px 25px;
+    }
+
+    .roi-heading {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--text-dim);
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      margin-bottom: 20px;
+    }
+
+    .roi-times {
+      display: flex;
+      justify-content: center;
+      align-items: center;
+      gap: 20px;
+      margin-bottom: 20px;
+    }
+
+    .roi-time-val {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .roi-time-val .num {
+      font-family: var(--font-title);
+      font-size: 32px;
+      font-weight: 700;
+    }
+
+    .roi-time-val .label {
+      font-size: 10px;
+      color: var(--text-dim);
+      font-family: var(--font-mono);
+      margin-top: 4px;
+    }
+
+    .roi-time-val.before .num { color: #ef4444; text-decoration: line-through; }
+    .roi-time-val.after .num { color: var(--color-primary); }
+
+    .roi-arrow {
+      font-size: 20px;
+      color: var(--text-dim);
+    }
+
+    .roi-saving-badge {
+      display: inline-block;
+      background: rgba(5, 150, 105, 0.08);
+      border: 1px solid rgba(5, 150, 105, 0.15);
+      color: var(--color-primary);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12.5px;
+      font-weight: 600;
+    }
+
+    /* Slide 8 - CTA terminal steps */
+    .cta-layout {
+      display: grid;
+      grid-template-columns: 1.2fr 1fr;
+      gap: 40px;
+      width: 100%;
+    }
+
+    .setup-steps-list {
+      list-style: none;
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    .setup-step {
+      display: flex;
+      gap: 16px;
+      align-items: flex-start;
+    }
+
+    .step-num {
+      width: 28px;
+      height: 28px;
+      border-radius: 50%;
+      background: rgba(5, 150, 105, 0.08);
+      border: 1px solid rgba(5, 150, 105, 0.15);
+      color: var(--color-primary);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-family: var(--font-mono);
+      font-weight: bold;
+      font-size: 13px;
+      flex-shrink: 0;
+    }
+
+    .step-desc h5 {
+      font-size: 15px;
+      font-weight: 600;
+      margin-bottom: 4px;
+    }
+
+    .step-desc p {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .terminal-toggle-tabs {
+      display: flex;
+      gap: 10px;
+      padding: 10px 18px 0 18px;
+      background: rgba(255,255,255,0.01);
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+    }
+
+    .term-tab {
+      padding: 8px 16px;
+      font-size: 11px;
+      font-family: var(--font-mono);
+      color: rgba(255, 255, 255, 0.35);
+      cursor: pointer;
+      border-radius: 6px 6px 0 0;
+      border: 1px solid transparent;
+      border-bottom: none;
+      margin-bottom: -1px;
+    }
+
+    .term-tab.active {
+      color: #34d399;
+      background: #090b11;
+      border-color: rgba(255,255,255,0.04);
+    }
+
+    .term-pane {
+      display: none;
+    }
+
+    .term-pane.active {
+      display: block;
+    }
+
+    ::-webkit-scrollbar {
+      width: 6px;
+      height: 6px;
+    }
+    ::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.01);
+    }
+    ::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.08);
+      border-radius: 3px;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.15);
+    }
+
+    @media (max-width: 1024px) {
+      .content-grid {
+        gap: 20px;
+      }
+      .slide-title {
+        font-size: 36px;
+      }
+      .slide-subtitle {
+        font-size: 15px;
+        margin-bottom: 20px;
+      }
+      .pillar-grid {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 16px;
+      }
+      .pillar-card {
+        height: auto;
+        min-height: 220px;
+        padding: 20px;
+      }
+      .arch-container {
+        grid-template-columns: 1fr;
+        height: auto;
+      }
+      .arch-info-panel {
+        margin-top: 20px;
+      }
+      .cap-container {
+        grid-template-columns: 1fr;
+      }
+      .cap-viewer {
+        height: auto;
+      }
+      .playbook-layout {
+        grid-template-columns: 1fr;
+      }
+      .roi-layout {
+        grid-template-columns: 1fr;
+        gap: 20px;
+      }
+      .roi-metric-card {
+        padding: 20px;
+      }
+      .cta-layout {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Background Layer -->
+  <div class="grid-bg"></div>
+  <div class="blur-blob blob-1"></div>
+  <div class="blur-blob blob-2"></div>
+  
+  <!-- Sweeping Diagonal Light Strip in Background -->
+  <div class="diagonal-light-strip"></div>
+  
+  <div class="top-progress" id="topProgress"></div>
+
+  <!-- Reusable SVG definitions for gradients -->
+  <svg style="width:0;height:0;position:absolute;">
+    <defs>
+      <linearGradient id="logo-grad" x1="0%" y1="0%" x2="100%" y2="100%">
+        <stop offset="0%" stop-color="#059669" />
+        <stop offset="100%" stop-color="#d97706" />
+      </linearGradient>
+    </defs>
+  </svg>
+
+  <!-- Top Header Overlay -->
+  <header class="top-header">
+    <a href="#" class="brand-logo">
+      <svg viewBox="0 0 24 24">
+        <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5" />
+      </svg>
+      <span>ALFRED</span>
+    </a>
+    
+    <button id="themeToggle" class="theme-toggle-btn" aria-label="Toggle theme">
+      <svg id="themeIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="5"></circle>
+        <line x1="12" y1="1" x2="12" y2="3"></line>
+        <line x1="12" y1="21" x2="12" y2="23"></line>
+        <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+        <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+        <line x1="1" y1="12" x2="3" y2="12"></line>
+        <line x1="21" y1="12" x2="23" y2="12"></line>
+        <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+        <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+      </svg>
+    </button>
+  </header>
+
+  <!-- Presentation Deck Container -->
+  <main class="deck-container" id="deckContainer">
+
+    <!-- SLIDE 1: Cover (The Pitch Hook) -->
+    <section class="slide active" id="slide-0">
+      <div class="content-grid">
+        <div class="cover-left animate-fade delay-1">
+          <div class="badge">Private Infra-First AI Teammate</div>
+          <h1 class="slide-title">Meet <span class="gradient-text">Alfred</span></h1>
+          <p class="slide-subtitle">
+            Deploy a secure, virtual AI employee directly on your infrastructure. Alfred mirrors your codebase, documentation, and workflows—integrating with JIRA, Slack, Google Workspace, and AWS. Alfred schedules tasks, summarizes meeting transcripts, triages alerts, and runs model routing configurations customized for your security and cost needs.
+          </p>
+          <button class="btn-cta" onclick="nextSlide()">
+            Explore Alfred
+            <svg style="width:16px;height:16px;fill:none;stroke:currentColor;stroke-width:2;" viewBox="0 0 24 24">
+              <path d="M5 12h14M12 5l7 7-7 7"/>
+            </svg>
+          </button>
+        </div>
+        <div class="cover-right animate-fade delay-2">
+          <!-- Live Slack typing simulation -->
+          <div class="slack-mock" style="min-height: 280px; display: flex; flex-direction: column; justify-content: space-between;">
+            <div>
+              <div class="slack-msg" style="margin-bottom: 12px;">
+                <div class="slack-avatar" style="background:#5c6270;">U</div>
+                <div class="slack-msg-content">
+                  <div class="slack-user">amit <span class="slack-time">10:42 AM</span></div>
+                  <div class="slack-text" id="slackInputText" style="min-height: 20px; font-family: var(--font-mono); font-size: 13px;"></div>
+                </div>
+              </div>
+              <div class="slack-msg" id="slackReplyMsg" style="opacity: 0; transition: opacity 0.3s; border-top: 1px solid rgba(255, 255, 255, 0.04); padding-top: 12px;">
+                <div class="slack-avatar alfred">A</div>
+                <div class="slack-msg-content">
+                  <div class="slack-user">Alfred <span class="slack-app-badge">APP</span> <span class="slack-time">10:42 AM</span></div>
+                  <div class="slack-text" style="font-size: 13px;">
+                    <div id="slackReplyStatus" style="font-weight: 500; margin-bottom: 6px;"></div>
+                    <ul class="slack-checklist" id="slackReplyChecklist" style="margin-top: 6px;"></ul>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 2: The Pain Points -->
+    <section class="slide" id="slide-1">
+      <div class="animate-fade delay-1">
+        <div class="badge">The Operational Burden</div>
+        <h2 class="slide-title">The Hidden &ldquo;Operations Tax&rdquo;</h2>
+        <p class="slide-subtitle">Teams lose valuable hours context-switching between separate platforms just to organize tasks, schedule status reports, summarize meetings, or audit system logs.</p>
+      </div>
+      <div class="content-grid animate-fade delay-2">
+        <div class="problem-left">
+          <div class="glass-card glow-card-purple" style="height: 100%;">
+            <h3 style="font-family:var(--font-title);font-size:22px;margin-bottom:15px;color:var(--color-primary);">Fragmented Silos & Security Risks</h3>
+            <p style="color:var(--text-muted);font-size:14.5px;line-height:1.6;margin-bottom:20px;">
+              Operations managers and developers coordinate across JIRA boards, Google Sheets, Slack historical threads, and AWS logs. Without a unified hub, context is lost, forcing repetitive manuals.
+            </p>
+            <p style="color:var(--text-muted);font-size:14.5px;line-height:1.6;">
+              Meanwhile, sending code, private meeting transcripts, and corporate databases to external AI SaaS platforms violates data sovereignty policies.
+            </p>
+          </div>
+        </div>
+        <div class="problem-right">
+          <div class="glass-card">
+            <span class="pain-badge">Admin Chores</span>
+            <div class="problem-stat">70%</div>
+            <p style="font-size:13px;color:var(--text-muted);">of operational time is wasted formatting transcripts, aligning schedules, and updating trackers.</p>
+          </div>
+          <div class="glass-card">
+            <span class="pain-badge">AI Cost Control</span>
+            <div class="problem-stat">In Check</div>
+            <p style="font-size:13px;color:var(--text-muted);">Unmonitored LLM queries run up high monthly bills without a token tracking dashboard.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 3: What is Alfred (The Pillars) -->
+    <section class="slide" id="slide-2">
+      <div class="animate-fade delay-1">
+        <div class="badge badge-cyan">The Architecture</div>
+        <h2 class="slide-title">Customer-Hosted, Secure by Design</h2>
+        <p class="slide-subtitle">Alfred runs entirely in your VPC, network, or hardware. It connects Slack to your infrastructure, retaining full sovereignty over your secrets and data.</p>
+      </div>
+      <div class="pillar-grid animate-fade delay-2">
+        <div class="glass-card pillar-card">
+          <div>
+            <div class="pillar-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+            </div>
+            <h3>Private Infra Hosted</h3>
+          </div>
+          <p>Fully deployed on your private AWS VPC, GCP, or on-premise hardware. You maintain it and control all credentials, guaranteeing absolute security and data residency.</p>
+        </div>
+
+        <div class="glass-card pillar-card card-cyan">
+          <div>
+            <div class="pillar-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>
+            </div>
+            <h3>Configurable Model Routing</h3>
+          </div>
+          <p>Choose model accuracy vs cost. Assign Claude 3.5, Gemini, GPT-4, or local Llama/Qwen models dynamically based on task complexity.</p>
+        </div>
+
+        <div class="glass-card pillar-card">
+          <div>
+            <div class="pillar-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+            </div>
+            <h3>Virtual Operations Teammate</h3>
+          </div>
+          <p>Schedules recurring checks, triages alerts, summarizes meeting transcripts, and automates business chores, not just developer debugging.</p>
+        </div>
+
+        <div class="glass-card pillar-card card-cyan">
+          <div>
+            <div class="pillar-icon">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 20h9"/><path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4L16.5 3.5z"/></svg>
+            </div>
+            <h3>Continuous Learning</h3>
+          </div>
+          <p>Incorporate custom playbooks, templates, and company guidelines. Alfred's intelligence is grown over time, continuously learning from completed runs.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 4: How it Works (Auto-Cycling Lifecycle) -->
+    <section class="slide" id="slide-3">
+      <div class="animate-fade delay-1">
+        <div class="badge">Under the Hood</div>
+        <h2 class="slide-title">Interactive Request Lifecycle</h2>
+        <p class="slide-subtitle">Watch Alfred execute tasks. The animation cycles automatically, or hover over steps to freeze and inspect.</p>
+      </div>
+      
+      <div class="arch-container animate-fade delay-2">
+        <div class="arch-flow-box">
+          
+          <!-- Dotted Data Connection Line -->
+          <svg class="arch-flow-line">
+            <line x1="5%" y1="50%" x2="95%" y2="50%" class="flow-path"></line>
+          </svg>
+
+          <div class="arch-stages">
+            <!-- Stage 1 -->
+            <div class="arch-node active" data-stage="ingress">
+              <div class="arch-node-hint">Step 1</div>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
+              </svg>
+              <span>Ingress</span>
+            </div>
+            <!-- Stage 2 -->
+            <div class="arch-node" data-stage="queue">
+              <div class="arch-node-hint">Step 2</div>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"/><path d="M3 12c0 1.66 4 3 9 3s9-1.34 9-3"/>
+              </svg>
+              <span>Task Queue</span>
+            </div>
+            <!-- Stage 3 -->
+            <div class="arch-node" data-stage="router">
+              <div class="arch-node-hint">Step 3</div>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="16 3 21 3 21 8"/><line x1="4" y1="20" x2="21" y2="3"/><polyline points="21 16 21 21 16 21"/><line x1="15" y1="15" x2="21" y2="21"/><line x1="4" y1="4" x2="9" y2="9"/>
+              </svg>
+              <span>Hermes Loop</span>
+            </div>
+            <!-- Stage 4 -->
+            <div class="arch-node" data-stage="tools">
+              <div class="arch-node-hint">Step 4</div>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>
+              </svg>
+              <span>Tool Reg</span>
+            </div>
+            <!-- Stage 5 -->
+            <div class="arch-node" data-stage="delivery">
+              <div class="arch-node-hint">Step 5</div>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M22 2L11 13M22 2l-7 20-4-9-9-4 20-7z"/>
+              </svg>
+              <span>Format</span>
+            </div>
+          </div>
+
+          <div style="font-size: 11px; color: var(--text-dim); text-align: center; font-family: var(--font-mono);">
+            💡 Animation loops automatically. Hovering a step pauses the cycle.
+          </div>
+        </div>
+
+        <div class="glass-card arch-info-panel">
+          <div class="arch-info-header" id="archTitle">Ingress & Slack Events</div>
+          <div class="arch-info-body" id="archDesc">
+            Slack mentions (Socket Mode events), Admin UI chats, or local CLI commands initiate tasks. Messages are parsed, stripping URLs and extra metadata to yield clean target inputs.
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 5: Key Capabilities Tab Component -->
+    <section class="slide" id="slide-4">
+      <div class="animate-fade delay-1">
+        <div class="badge badge-cyan">Capabilities</div>
+        <h2 class="slide-title">Unified Operations & Engineering Integrations</h2>
+        <p class="slide-subtitle">Alfred bridges your codebase with JIRA, Google Workspace, custom MCP toolservers, and AWS telemetry directly from Slack.</p>
+      </div>
+
+      <div class="cap-container animate-fade delay-2">
+        <div class="cap-menu">
+          <button class="cap-tab-btn active" data-tab="git">
+            <h4>Codebase & Git mirrors</h4>
+            <span style="font-size: 11.5px; opacity:0.7;">Local mirrors, search, Graphify call-graphs</span>
+          </button>
+          <button class="cap-tab-btn" data-tab="jira">
+            <h4>JIRA Sync & Scheduling</h4>
+            <span style="font-size: 11.5px; opacity:0.7;">JIRA tickets, assignee maps, status reports</span>
+          </button>
+          <button class="cap-tab-btn" data-tab="aws">
+            <h4>AWS Telemetry (Read-only)</h4>
+            <span style="font-size: 11.5px; opacity:0.7;">CloudWatch Insights, Glue/Athena partitions</span>
+          </button>
+          <button class="cap-tab-btn" data-tab="workspace">
+            <h4>Workspace Hub & MCPs</h4>
+            <span style="font-size: 11.5px; opacity:0.7;">Google Sheets & Docs, Custom toolservers</span>
+          </button>
+        </div>
+
+        <div class="glass-card cap-viewer">
+          <!-- Git Tab Content -->
+          <div class="cap-content active" id="cap-git">
+            <div class="cap-details">
+              <div>
+                <h3 style="font-family:var(--font-title);color:var(--color-primary);margin-bottom:10px;">Local Git Mirrors & Graphify Call-Graph Indexing</h3>
+                <p style="font-size:14px;color:var(--text-muted);line-height:1.6;">
+                  Alfred syncs lightweight git mirrors inside your private infrastructure. It processes source files locally, protecting code residency while enabling semantic codebase query lookups.
+                </p>
+                <ul>
+                  <li><strong>Local Code Blame & Logs:</strong> Trace commits, git blames, and code changes without sending source repositories to third parties.</li>
+                  <li><strong>Graphify Call-Graph Indexing:</strong> Autogenerates structural call-graphs (<code style="font-family:var(--font-mono);font-size:11px;">graph.json</code>) on sync to map deep call hierarchies.</li>
+                  <li><strong>Fast Search:</strong> Runs high-performance local regex and text search utilities over checked-out mirrors.</li>
+                </ul>
+              </div>
+              <div class="terminal-container" style="margin-top:20px;">
+                <div class="terminal-body" style="padding: 10px 15px;">
+                  <span class="terminal-prompt">alfred git sync</span><br>
+                  <span style="color:#34D399;">✔ Cloned shared mirrors. Building Graphify code index (graph.json)... Done!</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- JIRA Tab Content -->
+          <div class="cap-content" id="cap-jira">
+            <div class="cap-details">
+              <div>
+                <h3 style="font-family:var(--font-title);color:var(--color-primary);margin-bottom:10px;">Bidirectional JIRA Tasks & Employee Mapping</h3>
+                <p style="font-size:14px;color:var(--text-muted);line-height:1.6;">
+                  Coordinate task lists and update ticket parameters contextually directly inside Slack threads. Alfred translates employee handles across git, Slack, and JIRA accounts.
+                </p>
+                <ul>
+                  <li><strong>Identity Mapping:</strong> Connects Slack tags directly to JIRA handles using a customizable workspace identity database.</li>
+                  <li><strong>Context Caching:</strong> Caches open JIRA tickets in session memory to resolve subsequent status queries instantly.</li>
+                  <li><strong>Action Tracking:</strong> Create tickets, append developer comments, link PRs, and adjust ticket fields on command.</li>
+                </ul>
+              </div>
+              <div class="terminal-container" style="margin-top:20px;">
+                <div class="terminal-body" style="padding: 10px 15px;">
+                  <span class="terminal-prompt">@alfred create JIRA task for database indexing and assign to amit</span><br>
+                  <span style="color:#34D399;">✔ Created ticket TECH-882 in project TECH. Assignee mapped to amit3200.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- AWS Tab Content -->
+          <div class="cap-content" id="cap-aws">
+            <div class="cap-details">
+              <div>
+                <h3 style="font-family:var(--font-title);color:var(--color-primary);margin-bottom:10px;">Read-Only Guardrailed AWS Query Channels</h3>
+                <p style="font-size:14px;color:var(--text-muted);line-height:1.6;">
+                  Allow team members to safely scan logs and event dumps without sharing root AWS Console credentials. Outbound bot connections run with read-only AWS IAM roles.
+                </p>
+                <ul>
+                  <li><strong>Athena Queries:</strong> Run Glue/Athena table scans restricted to partition ranges and row LIMIT bounds to manage query latency and billing.</li>
+                  <li><strong>CloudWatch Logs Insights:</strong> Search checkout-api trace logs or system latency spikes directly in Slack threads.</li>
+                  <li><strong>Event Tables Playbooks:</strong> Mapped event schemas (e.g. event dumps) query domain logs safely through company playbooks.</li>
+                </ul>
+              </div>
+              <div class="terminal-container" style="margin-top:20px;">
+                <div class="terminal-body" style="padding: 10px 15px;">
+                  <span class="terminal-prompt">@alfred query checkout-api database errors in the last hour</span><br>
+                  <span style="color:#ef4444;">Traced 3 connection timeout event exceptions. Summarizing event telemetry...</span>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Workspace Hub Tab Content -->
+          <div class="cap-content" id="cap-workspace">
+            <div class="cap-details">
+              <div>
+                <h3 style="font-family:var(--font-title);color:var(--color-primary);margin-bottom:10px;">Google Workspace & Model Context Protocol (MCP) Hub</h3>
+                <p style="font-size:14px;color:var(--text-muted);line-height:1.6;">
+                  Alfred is a unified operations center. It integrates with standard productivity apps and connects directly to custom REST APIs or pre-existing MCP servers.
+                </p>
+                <ul>
+                  <li><strong>Google Docs & Sheets:</strong> Reads sprint meeting recordings and transcripts to compile checklists, and logs reports onto spreadsheet trackers.</li>
+                  <li><strong>Custom REST Connectors:</strong> Instantly bind company databases or internally-hosted endpoints.</li>
+                  <li><strong>MCP Compliance:</strong> Connect existing Model Context Protocol toolservers to quickly scale Alfred's vocabulary of operations.</li>
+                </ul>
+              </div>
+              <div class="terminal-container" style="margin-top:20px;">
+                <div class="terminal-body" style="padding: 10px 15px;">
+                  <span class="terminal-prompt">@alfred parse roadmap doc and update Google spreadsheet schedules</span><br>
+                  <span style="color:#34D399;">✔ Downloaded doc (ID: 1x9aF...). Synced summary to spreadsheet: Sprint Roadmap.</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 6: Playbooks & Meta-Learning -->
+    <section class="slide" id="slide-5">
+      <div class="animate-fade delay-1">
+        <div class="badge">The Knowledge Layer</div>
+        <h2 class="slide-title">Local Playbooks & Autonomous Meta-Learning</h2>
+        <p class="slide-subtitle">Document custom event tables or alert schemas in markdown. Watch Alfred automatically draft playbook suggestions.</p>
+      </div>
+
+      <div class="playbook-layout animate-fade delay-2">
+        <div class="playbook-pane-left">
+          <div class="glass-card" style="margin-bottom: 20px;">
+            <h3 style="font-family:var(--font-title);font-size:18px;margin-bottom:10px;color:var(--color-primary);">Local Playbooks (<code style="font-family:var(--font-mono);font-size:13.5px;">.alfred/playbooks/</code>)</h3>
+            <p style="font-size:13.5px;color:var(--text-muted);line-height:1.5;margin-bottom:12px;">
+              Write standard operating procedures in local markdown playbooks. Define trigger phrases, allowed database tables, specific partition keys (<code style="font-family:var(--font-mono);font-size:11px;">date</code>, <code style="font-family:var(--font-mono);font-size:11px;">merchant_id</code>), and query guidelines.
+            </p>
+          </div>
+          
+          <div class="meta-box">
+            <h4>Context-Generated Suggestions</h4>
+            <p>
+              During repository sync, Alfred runs static analysis to suggest new playbooks (e.g. an architecture or database query guide). Admins can preview, edit, and approve suggestions in the Admin UI.
+            </p>
+            <h4 style="margin-top: 15px;">Self-Improving Learning Loop</h4>
+            <p>
+              When `self_learning_enabled` is set, Alfred reflects on successful runs, parses tools called, and writes optimized troubleshooting playbooks autonomously to continuously adapt.
+            </p>
+          </div>
+        </div>
+
+        <div class="terminal-container">
+          <div class="terminal-header">
+            <span class="terminal-dot dot-red"></span>
+            <span class="terminal-dot dot-yellow"></span>
+            <span class="terminal-dot dot-green"></span>
+            <span class="terminal-title">playbooks/db-alert-triage.md</span>
+          </div>
+          <div class="terminal-body playbook-preview">
+            <span class="playbook-line playbook-comment">---</span>
+            <span class="playbook-line"><span class="playbook-yaml-key">name:</span> <span class="playbook-yaml-val">database_connections</span></span>
+            <span class="playbook-line"><span class="playbook-yaml-key">mode:</span> <span class="playbook-yaml-val">investigation</span></span>
+            <span class="playbook-line"><span class="playbook-yaml-key">triggers:</span></span>
+            <span class="playbook-line">  <span class="playbook-yaml-key">-</span> <span class="playbook-yaml-val">db pool exhausted</span></span>
+            <span class="playbook-line">  <span class="playbook-yaml-key">-</span> <span class="playbook-yaml-val">athena db queries</span></span>
+            <span class="playbook-line"><span class="playbook-yaml-key">allowed_tools:</span></span>
+            <span class="playbook-line">  <span class="playbook-yaml-key">-</span> <span class="playbook-yaml-val">athena_query</span></span>
+            <span class="playbook-line">  <span class="playbook-yaml-key">-</span> <span class="playbook-yaml-val">cloudwatch_query</span></span>
+            <span class="playbook-line playbook-comment">---</span>
+            <span class="playbook-line"></span>
+            <span class="playbook-line" style="color:#D1D5DB;"># Guidelines for Database Outages</span>
+            <span class="playbook-line" style="color:#9CA3AF;">1. Filter connection tables using date partition windows.</span>
+            <span class="playbook-line" style="color:#9CA3AF;">2. Never run queries exceeding LIMIT 100 on dev environments.</span>
+            <span class="playbook-line" style="color:#9CA3AF;">3. Target RDS connections group logs.</span>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 7: ROI, Impact & Before/After -->
+    <section class="slide" id="slide-6">
+      <div class="animate-fade delay-1">
+        <div class="badge badge-cyan">Productivity & ROI</div>
+        <h2 class="slide-title">How Alfred Accelerates Operations</h2>
+        <p class="slide-subtitle">Compare manual coordinating tasks against Alfred's secure customer-hosted automation loop.</p>
+      </div>
+
+      <div class="roi-layout animate-fade delay-2">
+        <div class="glass-card roi-metric-card">
+          <div class="roi-heading">Codebase Diagnostics</div>
+          <div class="roi-times">
+            <div class="roi-time-val before">
+              <span class="num">45m</span>
+              <span class="label">MANUAL SEARCH</span>
+            </div>
+            <div class="roi-arrow">→</div>
+            <div class="roi-time-val after">
+              <span class="num">2m</span>
+              <span class="label">WITH ALFRED</span>
+            </div>
+          </div>
+          <div class="roi-saving-badge">95% Time Saved</div>
+          <p style="font-size: 13px; color: var(--text-muted); margin-top: 15px; line-height: 1.5;">
+            Alfred greps codebase mirrors, traces commits, evaluates call structures, and links code context graphs in minutes.
+          </p>
+        </div>
+
+        <div class="glass-card roi-metric-card">
+          <div class="roi-heading">Operations Triage</div>
+          <div class="roi-times">
+            <div class="roi-time-val before">
+              <span class="num">25m</span>
+              <span class="label">AWS LOG TRIP</span>
+            </div>
+            <div class="roi-arrow">→</div>
+            <div class="roi-time-val after">
+              <span class="num">30s</span>
+              <span class="label">WITH ALFRED</span>
+            </div>
+          </div>
+          <div class="roi-saving-badge">98% Time Saved</div>
+          <p style="font-size: 13px; color: var(--text-muted); margin-top: 15px; line-height: 1.5;">
+            Runs guardrailed queries on tables, parses CloudWatch error telemetry, and prints debug logs directly into Slack.
+          </p>
+        </div>
+
+        <div class="glass-card roi-metric-card">
+          <div class="roi-heading">Task & Sprint Scheduling</div>
+          <div class="roi-times">
+            <div class="roi-time-val before">
+              <span class="num">3h</span>
+              <span class="label">CHORE WRITING</span>
+            </div>
+            <div class="roi-arrow">→</div>
+            <div class="roi-time-val after">
+              <span class="num">5m</span>
+              <span class="label">WITH ALFRED</span>
+            </div>
+          </div>
+          <div class="roi-saving-badge">97% Time Saved</div>
+          <p style="font-size: 13px; color: var(--text-muted); margin-top: 15px; line-height: 1.5;">
+            Extracts action items from text transcript files, designs task schedules, and updates JIRA ticket fields.
+          </p>
+        </div>
+      </div>
+    </section>
+
+    <!-- SLIDE 8: CTA & Setup -->
+    <section class="slide" id="slide-7">
+      <div class="animate-fade delay-1">
+        <div class="badge">Quick Start</div>
+        <h2 class="slide-title">Get Started in Minutes</h2>
+        <p class="slide-subtitle">Install Alfred, map your keys, sync codebase mirrors, and let your operations teammate automate daily chores.</p>
+      </div>
+
+      <div class="cta-layout animate-fade delay-2">
+        <div class="setup-steps-list">
+          <div class="setup-step">
+            <div class="step-num">1</div>
+            <div class="step-desc">
+              <h5>Clone and Initialize</h5>
+              <p>Initialize workspace. Secure admin credentials are encrypted locally in <code style="font-family:var(--font-mono);font-size:11.5px;">.alfred/</code>.</p>
+            </div>
+          </div>
+          <div class="setup-step">
+            <div class="step-num">2</div>
+            <div class="step-desc">
+              <h5>Configure & Sync mirrors</h5>
+              <p>Launch Admin UI to key in your credentials, pull Git mirrors via <code style="font-family:var(--font-mono);font-size:11.5px;">alfred git sync</code>, and assign model routing roles.</p>
+            </div>
+          </div>
+          <div class="setup-step">
+            <div class="step-num">3</div>
+            <div class="step-desc">
+              <h5>Deploy and Collaborate</h5>
+              <p>Invite Alfred to Slack channels to debug failures, coordinate schedules, and manage tickets.</p>
+            </div>
+          </div>
+        </div>
+
+        <div class="terminal-container">
+          <div class="terminal-toggle-tabs">
+            <span class="term-tab active" data-term="setup">setup.sh</span>
+            <span class="term-tab" data-term="up">up.sh</span>
+            <span class="term-tab" data-term="run">status</span>
+          </div>
+          
+          <div class="terminal-body" style="height: 180px;">
+            <!-- Setup Tab -->
+            <div class="term-pane active" id="term-setup">
+              <span class="terminal-prompt">./scripts/setup.sh</span><br>
+              <span style="color:rgba(255,255,255,0.4);"># Creates python virtual environment & directories</span><br>
+              <span style="color:#60A5FA;">Initializing .alfred directory...</span><br>
+              <span style="color:#60A5FA;">Generating secure encryption keys...</span><br>
+              <span style="color:#34D399;">✔ Initialization complete! Run alfred token to login.</span>
+            </div>
+            <!-- Up Tab -->
+            <div class="term-pane" id="term-up">
+              <span class="terminal-prompt">./scripts/up.sh</span><br>
+              <span style="color:rgba(255,255,255,0.4);"># Runs background daemon workers and Vite Admin panel</span><br>
+              <span style="color:#60A5FA;">Starting Alfred FastAPI [Port 8080]...</span><br>
+              <span style="color:#60A5FA;">Starting Slack Ingress socket daemon...</span><br>
+              <span style="color:#34D399;">✔ Services running successfully in background.</span>
+            </div>
+            <!-- Run Tab -->
+            <div class="term-pane" id="term-run">
+              <span class="terminal-prompt">alfred status</span><br>
+              <span style="color:#60A5FA;">Alfred Data Directory: /Users/amit3200/workspace/myspace/alfred/.alfred</span><br>
+              <span style="color:#60A5FA;">Slack Socket Connection: CONNECTED</span><br>
+              <span style="color:#60A5FA;">Git Mirrors Sync: Sync complete (14 repos synced)</span><br>
+              <span style="color:#34D399;">System health status: healthy</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Creator Attribution Chip -->
+  <div class="creator-attribution">
+    <div class="creator-chip" style="display: inline-flex; align-items: center; gap: 8px; font-size: 11.5px; color: var(--text-muted); background: var(--card-bg); border: 1px solid var(--border-color); padding: 6px 12px; border-radius: 4px; font-family: var(--font-mono); letter-spacing: -0.2px; transition: border-color 0.2s;">
+      <span style="display: inline-block; width: 6px; height: 6px; background-color: var(--color-primary); border-radius: 50%; animation: pulse-slow 2s infinite;"></span>
+      Built by <a href="https://github.com/amit3200" target="_blank" style="color: var(--color-primary); font-weight: 600; text-decoration: none; border-bottom: 1px dashed var(--color-primary); transition: opacity 0.2s;" onmouseover="this.style.opacity='0.8'" onmouseout="this.style.opacity='1'">amit3200</a> <span style="color: var(--text-muted); font-size: 11px;">(Amit Singh Sansoya)</span>
+    </div>
+  </div>
+
+  <!-- Controls Footer Overlay -->
+  <footer class="controls-footer">
+    <div class="slide-directory">
+      <span class="dir-item active" onclick="goToSlide(0)">Overview</span>
+      <span class="dir-item" onclick="goToSlide(1)">The Problem</span>
+      <span class="dir-item" onclick="goToSlide(2)">Private Infra</span>
+      <span class="dir-item" onclick="goToSlide(3)">How it Works</span>
+      <span class="dir-item" onclick="goToSlide(4)">Capabilities</span>
+      <span class="dir-item" onclick="goToSlide(5)">Playbooks</span>
+      <span class="dir-item" onclick="goToSlide(6)">Impact</span>
+      <span class="dir-item" onclick="goToSlide(7)">Quick Start</span>
+    </div>
+
+    <div class="action-controls">
+      <span class="slide-counter" id="slideCounter">1 / 8</span>
+      <div class="progress-dots" id="progressDots"></div>
+      <button class="nav-btn" onclick="prevSlide()" aria-label="Previous Slide">
+        <svg viewBox="0 0 24 24"><polyline points="15 18 9 12 15 6"/></svg>
+      </button>
+      <button class="nav-btn" onclick="nextSlide()" aria-label="Next Slide">
+        <svg viewBox="0 0 24 24"><polyline points="9 18 15 12 9 6"/></svg>
+      </button>
+    </div>
+  </footer>
+
+  <!-- Javascript for presentation routing and interactive elements -->
+  <script>
+    /* ==========================================================================
+       1. PRESENTATION STATE MANAGEMENT
+       ========================================================================== */
+    let currentSlideIndex = 0;
+    const slides = document.querySelectorAll('.slide');
+    const dotsContainer = document.getElementById('progressDots');
+    const dirItems = document.querySelectorAll('.dir-item');
+    const topProgress = document.getElementById('topProgress');
+    const slideCounter = document.getElementById('slideCounter');
+
+    // Create progress dots dynamically
+    slides.forEach((_, index) => {
+      const dot = document.createElement('div');
+      dot.classList.add('dot');
+      if (index === 0) dot.classList.add('active');
+      dot.addEventListener('click', () => goToSlide(index));
+      dotsContainer.appendChild(dot);
+    });
+
+    const dots = document.querySelectorAll('.dot');
+
+    function updateNavUI() {
+      slides.forEach((slide, index) => {
+        if (index === currentSlideIndex) {
+          slide.classList.add('active');
+        } else {
+          slide.classList.remove('active');
+        }
+      });
+
+      dots.forEach((dot, index) => {
+        if (index === currentSlideIndex) {
+          dot.classList.add('active');
+        } else {
+          dot.classList.remove('active');
+        }
+      });
+
+      dirItems.forEach((item, index) => {
+        if (index === currentSlideIndex) {
+          item.classList.add('active');
+        } else {
+          item.classList.remove('active');
+        }
+      });
+
+      const percentage = ((currentSlideIndex) / (slides.length - 1)) * 100;
+      topProgress.style.width = `${percentage}%`;
+
+      slideCounter.innerText = `${currentSlideIndex + 1} / ${slides.length}`;
+    }
+
+    window.nextSlide = function() {
+      if (currentSlideIndex < slides.length - 1) {
+        currentSlideIndex++;
+        updateNavUI();
+      }
+    };
+
+    window.prevSlide = function() {
+      if (currentSlideIndex > 0) {
+        currentSlideIndex--;
+        updateNavUI();
+      }
+    };
+
+    window.goToSlide = function(index) {
+      if (index >= 0 && index < slides.length) {
+        currentSlideIndex = index;
+        updateNavUI();
+      }
+    };
+
+    /* ==========================================================================
+       2. KEYBOARD LISTENERS
+       ========================================================================== */
+    window.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+        e.preventDefault();
+        window.nextSlide();
+      } else if (e.key === 'ArrowLeft' || e.key === 'Backspace' || e.key === 'PageUp') {
+        e.preventDefault();
+        window.prevSlide();
+      } else if (e.key === 'Home') {
+        e.preventDefault();
+        window.goToSlide(0);
+      } else if (e.key === 'End') {
+        e.preventDefault();
+        window.goToSlide(slides.length - 1);
+      }
+    });
+
+    /* ==========================================================================
+       3. THEME TOGGLER LOGIC
+       ========================================================================== */
+    const themeToggleBtn = document.getElementById('themeToggle');
+    const themeIcon = document.getElementById('themeIcon');
+
+    const sunIconHTML = `
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    `;
+
+    const moonIconHTML = `
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+    `;
+
+    themeToggleBtn.addEventListener('click', () => {
+      document.body.classList.toggle('light-mode');
+      const isLightMode = document.body.classList.contains('light-mode');
+      
+      if (isLightMode) {
+        themeIcon.innerHTML = moonIconHTML;
+        themeIcon.setAttribute('class', 'feather feather-moon');
+      } else {
+        themeIcon.innerHTML = sunIconHTML;
+        themeIcon.setAttribute('class', 'feather feather-sun');
+      }
+    });
+
+    /* ==========================================================================
+       4. INTERACTIVE NODE CLICKS & AUTO-CYCLE (ARCHITECTURE LIFECYCLE)
+       ========================================================================== */
+    const archNodes = document.querySelectorAll('.arch-node');
+    const archTitle = document.getElementById('archTitle');
+    const archDesc = document.getElementById('archDesc');
+
+    const archData = {
+      ingress: {
+        title: "Ingress Interfaces",
+        desc: "Ingress events from Slack Bot mentions (via Socket Mode), Admin UI HTTP chats, or CLI commands (via alfred exec) write task requests into the persistent local SQLite task queue."
+      },
+      queue: {
+        title: "SQLite Task Queue & Worker Daemon",
+        desc: "Tasks queued in sqlite_queue.py are executed sequentially by a background daemon worker thread (worker.py), avoiding memory overhead and race conditions."
+      },
+      router: {
+        title: "Intent Routing & Checklist Planning",
+        desc: "Before execution, Alfred pre-plans complex workflows inside a step-by-step checklist plan at .alfred/plans/. The orchestrator routes operations using the prompts.yaml registry."
+      },
+      tools: {
+        title: "Gated Tool Registry & Checkpoint DB",
+        desc: "Executes allowed connectors (Athena partition queries, CloudWatch log scans, Git codebase mirrors with blame/grep/log, JIRA Cloud, Google Workspace). Saves timelines to task_checkpoints DB."
+      },
+      delivery: {
+        title: "Strategy Formatting & Response Delivery",
+        desc: "Response strategies in strategies.py clean and format data into rich Markdown, tables, code blocks, or file uploads, posting updates back to the Slack thread or Admin UI."
+      }
+    };
+
+    let archInterval = null;
+    let archTimeout = null;
+    let archIndex = 0;
+    const stages = ['ingress', 'queue', 'router', 'tools', 'delivery'];
+
+    function setArchStage(stage) {
+      archNodes.forEach(node => {
+        if (node.getAttribute('data-stage') === stage) {
+          node.classList.add('active');
+        } else {
+          node.classList.remove('active');
+        }
+      });
+      archTitle.innerText = archData[stage].title;
+      archDesc.innerText = archData[stage].desc;
+    }
+
+    function startCycle() {
+      clearInterval(archInterval);
+      archInterval = setInterval(() => {
+        archIndex = (archIndex + 1) % stages.length;
+        setArchStage(stages[archIndex]);
+      }, 3500);
+    }
+
+    function pauseCycle() {
+      clearInterval(archInterval);
+      clearTimeout(archTimeout);
+    }
+
+    function resumeCycleAfterDelay() {
+      pauseCycle();
+      archTimeout = setTimeout(() => {
+        startCycle();
+      }, 4000);
+    }
+
+    archNodes.forEach(node => {
+      node.addEventListener('mouseenter', (e) => {
+        pauseCycle();
+        const stage = e.target.getAttribute('data-stage');
+        archIndex = stages.indexOf(stage);
+        setArchStage(stage);
+      });
+      node.addEventListener('click', (e) => {
+        pauseCycle();
+        const stage = e.target.getAttribute('data-stage');
+        archIndex = stages.indexOf(stage);
+        setArchStage(stage);
+      });
+      node.addEventListener('mouseleave', () => {
+        resumeCycleAfterDelay();
+      });
+    });
+
+    startCycle();
+
+    /* ==========================================================================
+       5. INTERACTIVE TABS (CAPABILITIES)
+       ========================================================================== */
+    const capTabs = document.querySelectorAll('.cap-tab-btn');
+    const capContents = document.querySelectorAll('.cap-content');
+
+    capTabs.forEach(tab => {
+      tab.addEventListener('click', (e) => {
+        capTabs.forEach(t => t.classList.remove('active'));
+        capContents.forEach(c => c.classList.remove('active'));
+
+        const targetTab = e.currentTarget.getAttribute('data-tab');
+        e.currentTarget.classList.add('active');
+        document.getElementById(`cap-${targetTab}`).classList.add('active');
+      });
+    });
+
+    /* ==========================================================================
+       6. INTERACTIVE TERMINAL TABS (CTA SLIDE)
+       ========================================================================== */
+    const termTabs = document.querySelectorAll('.term-tab');
+    const termPanes = document.querySelectorAll('.term-pane');
+
+    termTabs.forEach(tab => {
+      tab.addEventListener('click', (e) => {
+        termTabs.forEach(t => t.classList.remove('active'));
+        termPanes.forEach(p => p.classList.remove('active'));
+
+        const targetTerm = e.target.getAttribute('data-term');
+        e.target.classList.add('active');
+        document.getElementById(`term-${targetTerm}`).classList.add('active');
+      });
+    });
+
+    /* ==========================================================================
+       7. INTERACTIVE SLACK ANIMATION LOOP (COVER HERO)
+       ========================================================================== */
+    const slackMockData = [
+      {
+        input: "@alfred parse sprint meeting transcript & sync JIRA schedules",
+        status: "Analyzing audio file & checking schemas...",
+        checklist: [
+          "Summarized 45-minute audio transcript highlights",
+          "Created task schedules TECH-882 & TECH-883",
+          "Shared action item list in Slack channel #sprint"
+        ]
+      },
+      {
+        input: "@alfred debug checkout-api database pool exhaustion alert",
+        status: "Scanning Cloudwatch trace files...",
+        checklist: [
+          "Traced connection metrics: found lock bottleneck",
+          "Analyzed git mirror blame on checkout_api/db.py",
+          "Identified SQL connection leak (reproduced on staging)"
+        ]
+      },
+      {
+        input: "@alfred schedule weekly operational status roadmap sync",
+        status: "Reading Google Sheets directory context...",
+        checklist: [
+          "Indexed roadmap spreadsheet updates",
+          "Generated timeline summary and stakeholder logs",
+          "Configured cron: recurring email trigger every Friday"
+        ]
+      }
+    ];
+
+    let slackLoopIndex = 0;
+    const slackInputText = document.getElementById('slackInputText');
+    const slackReplyMsg = document.getElementById('slackReplyMsg');
+    const slackReplyStatus = document.getElementById('slackReplyStatus');
+    const slackReplyChecklist = document.getElementById('slackReplyChecklist');
+    let slackLoopTimer = null;
+
+    function runSlackLoop() {
+      if (!slackInputText || !slackReplyMsg) return;
+      const data = slackMockData[slackLoopIndex];
+      slackInputText.innerHTML = '';
+      slackReplyMsg.style.opacity = '0';
+      slackReplyChecklist.innerHTML = '';
+      slackReplyStatus.innerHTML = '';
+
+      let i = 0;
+      const txt = data.input;
+      function typeChar() {
+        if (i < txt.length) {
+          slackInputText.innerHTML += txt.charAt(i);
+          i++;
+          slackLoopTimer = setTimeout(typeChar, 35);
+        } else {
+          slackLoopTimer = setTimeout(showThinking, 400);
+        }
+      }
+      typeChar();
+
+      function showThinking() {
+        slackReplyMsg.style.opacity = '1';
+        slackReplyStatus.innerHTML = '<span class="thinking-dots">Planning & routing... <span>.</span><span>.</span><span>.</span></span>';
+        slackLoopTimer = setTimeout(showAnswer, 1500);
+      }
+
+      function showAnswer() {
+        slackReplyStatus.innerHTML = '✔ Work complete:';
+        data.checklist.forEach((item, index) => {
+          slackLoopTimer = setTimeout(() => {
+            const li = document.createElement('li');
+            li.innerHTML = `
+              <svg class="checklist-icon-done" viewBox="0 0 24 24"><path d="M20 6L9 17l-5-5"/></svg>
+              <span>${item}</span>
+            `;
+            slackReplyChecklist.appendChild(li);
+          }, index * 400);
+        });
+
+        slackLoopTimer = setTimeout(() => {
+          slackLoopIndex = (slackLoopIndex + 1) % slackMockData.length;
+          runSlackLoop();
+        }, 5500);
+      }
+    }
+
+    // Start Slack simulator loop
+    runSlackLoop();
+  </script>
+</body>
+</html>

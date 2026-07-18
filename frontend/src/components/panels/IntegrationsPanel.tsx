@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, type AlfredConfig, type GoogleOAuthStatus } from "../../api/client";
 import { useApp } from "../../context/AppContext";
+import { integrationDotClass, integrationHealth, type HealthCheck } from "../../health";
 import { JsonCredentialField } from "../ui/JsonCredentialField";
 
 interface CustomIntegration {
@@ -24,8 +25,47 @@ const DEFAULT_GITHUB: AlfredConfig["github"] = {
   callback_base_url: "",
 };
 
+const DEFAULT_GOVERNANCE: NonNullable<AlfredConfig["governance"]> = {
+  enabled: true,
+  require_confirmation: true,
+  require_confirmation_sources: ["slack", "ui"],
+  confirmation_phrases: [],
+  approval_ttl_minutes: 30,
+  audit_enabled: true,
+  write_allowed_sources: ["slack", "ui", "cli", "scheduler"],
+  write_allowed_channels: [],
+  write_blocked_channels: [],
+  write_allowed_users: [],
+};
+
+const DEFAULT_WEB_SEARCH: NonNullable<AlfredConfig["web_search"]> = {
+  enabled: false,
+  provider: "duckduckgo",
+  max_results: 8,
+};
+
+function webSearchConfig(config: AlfredConfig) {
+  return config.web_search ?? DEFAULT_WEB_SEARCH;
+}
+
+function integrationStatusLabel(
+  checks: Record<string, HealthCheck> | null,
+  key: string,
+  enabled: boolean,
+): { dotClass: string; label: string } {
+  const health = integrationHealth(checks, key, enabled);
+  return {
+    dotClass: integrationDotClass(health.kind, enabled),
+    label: health.label,
+  };
+}
+
 function githubConfig(config: AlfredConfig) {
   return config.github ?? DEFAULT_GITHUB;
+}
+
+function governanceConfig(config: AlfredConfig) {
+  return config.governance ?? DEFAULT_GOVERNANCE;
 }
 
 function githubUrls(base: string) {
@@ -109,6 +149,16 @@ function getLogo(name: string) {
       />
     );
   }
+  if (n === "web_search" || n === "web search") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 34, height: 34, color: "var(--alfred-accent)" }}>
+        <circle cx="11" cy="11" r="8" />
+        <path d="m21 21-4.3-4.3" />
+        <path d="M8 11h6" />
+        <path d="M11 8v6" />
+      </svg>
+    );
+  }
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 34, height: 34, color: "var(--alfred-accent)" }}>
       <path d="M12 2v8M18 12H6v2a6 6 0 0 0 12 0v-2ZM12 14v6M16 2v2M8 2v2"/>
@@ -117,7 +167,7 @@ function getLogo(name: string) {
 }
 
 export function IntegrationsPanel() {
-  const { config, updateConfig, saveConfig, testIntegration, notify, secrets, setSecrets, saveSecrets } =
+  const { config, updateConfig, saveConfig, testIntegration, notify, secrets, setSecrets, saveSecrets, checks } =
     useApp();
   const [availableRepos, setAvailableRepos] = useState<string[]>([]);
   const [reposSource, setReposSource] = useState<string>("configured");
@@ -223,6 +273,13 @@ export function IntegrationsPanel() {
 
   if (!config) return null;
 
+  const slackStatus = integrationStatusLabel(checks, "slack", config.slack.enabled);
+  const gitStatus = integrationStatusLabel(checks, "git", config.git.enabled);
+  const awsStatus = integrationStatusLabel(checks, "aws", config.aws.enabled);
+  const jiraStatus = integrationStatusLabel(checks, "jira", Boolean(config.jira?.enabled));
+  const googleStatus = integrationStatusLabel(checks, "google", Boolean(config.google?.enabled));
+  const webSearchStatus = integrationStatusLabel(checks, "web_search", webSearchConfig(config).enabled);
+
   const openConfigModal = (type: string, data: any) => {
     setInitialSectionData(JSON.parse(JSON.stringify(data)));
     setActiveModal(type);
@@ -236,8 +293,11 @@ export function IntegrationsPanel() {
   };
 
   const handleSaveStandard = async () => {
+    const modal = activeModal;
     setActiveModal(null);
-    // Let state commit and trigger save
+    if (modal === "web_search" && (secrets.web_search_api_key ?? "").trim()) {
+      await saveSecrets();
+    }
     setTimeout(() => {
       void saveConfig();
     }, 50);
@@ -342,7 +402,7 @@ export function IntegrationsPanel() {
         Integrations
       </Typography.Title>
       <Typography.Paragraph className="alfred-page-desc" style={{ marginBottom: 24 }}>
-        Connect Slack, Git, GitHub App, JIRA, AWS, and Google Workspace. Toggle each service to customize
+        Connect Slack, Git, GitHub App, JIRA, AWS, Google Workspace, and web search. Toggle each service to customize
         settings and verify connections.
       </Typography.Paragraph>
 
@@ -350,10 +410,8 @@ export function IntegrationsPanel() {
         {/* Slack Card */}
         <div className="alfred-integration-card" onClick={() => openConfigModal("slack", config.slack)}>
           <div className="alfred-integration-card-status">
-            <div className={`alfred-integration-card-dot ${config.slack.enabled ? "enabled" : "disabled"}`} />
-            <span style={{ fontSize: 11, color: "var(--alfred-text-faint)" }}>
-              {config.slack.enabled ? "Active" : "Inactive"}
-            </span>
+            <div className={`alfred-integration-card-dot ${slackStatus.dotClass}`} />
+            <span style={{ fontSize: 11, color: "var(--alfred-text-faint)" }}>{slackStatus.label}</span>
           </div>
           <div className="alfred-integration-card-logo">
             {getLogo("slack")}
@@ -365,10 +423,8 @@ export function IntegrationsPanel() {
         {/* Git Card */}
         <div className="alfred-integration-card" onClick={() => openConfigModal("git", config.git)}>
           <div className="alfred-integration-card-status">
-            <div className={`alfred-integration-card-dot ${config.git.enabled ? "enabled" : "disabled"}`} />
-            <span style={{ fontSize: 11, color: "var(--alfred-text-faint)" }}>
-              {config.git.enabled ? "Active" : "Inactive"}
-            </span>
+            <div className={`alfred-integration-card-dot ${gitStatus.dotClass}`} />
+            <span style={{ fontSize: 11, color: "var(--alfred-text-faint)" }}>{gitStatus.label}</span>
           </div>
           <div className="alfred-integration-card-logo">
             {getLogo("git")}
@@ -395,10 +451,8 @@ export function IntegrationsPanel() {
         {/* AWS Card */}
         <div className="alfred-integration-card" onClick={() => openConfigModal("aws", config.aws)}>
           <div className="alfred-integration-card-status">
-            <div className={`alfred-integration-card-dot ${config.aws.enabled ? "enabled" : "disabled"}`} />
-            <span style={{ fontSize: 11, color: "var(--alfred-text-faint)" }}>
-              {config.aws.enabled ? "Active" : "Inactive"}
-            </span>
+            <div className={`alfred-integration-card-dot ${awsStatus.dotClass}`} />
+            <span style={{ fontSize: 11, color: "var(--alfred-text-faint)" }}>{awsStatus.label}</span>
           </div>
           <div className="alfred-integration-card-logo">
             {getLogo("aws")}
@@ -410,10 +464,8 @@ export function IntegrationsPanel() {
         {/* JIRA Card */}
         <div className="alfred-integration-card" onClick={() => openConfigModal("jira", config.jira)}>
           <div className="alfred-integration-card-status">
-            <div className={`alfred-integration-card-dot ${config.jira?.enabled ? "enabled" : "disabled"}`} />
-            <span style={{ fontSize: 11, color: "var(--alfred-text-faint)" }}>
-              {config.jira?.enabled ? "Active" : "Inactive"}
-            </span>
+            <div className={`alfred-integration-card-dot ${jiraStatus.dotClass}`} />
+            <span style={{ fontSize: 11, color: "var(--alfred-text-faint)" }}>{jiraStatus.label}</span>
           </div>
           <div className="alfred-integration-card-logo">
             {getLogo("jira")}
@@ -425,16 +477,54 @@ export function IntegrationsPanel() {
         {/* Google Workspace Card */}
         <div className="alfred-integration-card" onClick={() => openConfigModal("google", config.google ?? { enabled: false, oauth_redirect_base_url: "" })}>
           <div className="alfred-integration-card-status">
-            <div className={`alfred-integration-card-dot ${config.google?.enabled ? "enabled" : "disabled"}`} />
-            <span style={{ fontSize: 11, color: "var(--alfred-text-faint)" }}>
-              {config.google?.enabled ? "Active" : "Inactive"}
-            </span>
+            <div className={`alfred-integration-card-dot ${googleStatus.dotClass}`} />
+            <span style={{ fontSize: 11, color: "var(--alfred-text-faint)" }}>{googleStatus.label}</span>
           </div>
           <div className="alfred-integration-card-logo">
             {getLogo("google")}
           </div>
           <div className="alfred-integration-card-title">Google Workspace</div>
           <div className="alfred-integration-card-subtitle">Google Sheets read/write & Docs read/create</div>
+        </div>
+
+        {/* Web Search Card */}
+        <div
+          className="alfred-integration-card"
+          onClick={() => openConfigModal("web_search", webSearchConfig(config))}
+        >
+          <div className="alfred-integration-card-status">
+            <div className={`alfred-integration-card-dot ${webSearchStatus.dotClass}`} />
+            <span style={{ fontSize: 11, color: "var(--alfred-text-faint)" }}>{webSearchStatus.label}</span>
+          </div>
+          <div className="alfred-integration-card-logo">{getLogo("web_search")}</div>
+          <div className="alfred-integration-card-title">Web search</div>
+          <div className="alfred-integration-card-subtitle">
+            External docs, errors, and release notes via web_search tool
+          </div>
+        </div>
+
+        {/* Governance Card */}
+        <div
+          className="alfred-integration-card"
+          onClick={() => openConfigModal("governance", governanceConfig(config))}
+        >
+          <div className="alfred-integration-card-status">
+            <div
+              className={`alfred-integration-card-dot ${
+                governanceConfig(config).enabled ? "enabled" : "disabled"
+              }`}
+            />
+            <span style={{ fontSize: 11, color: "var(--alfred-text-faint)" }}>
+              {governanceConfig(config).enabled ? "Active" : "Inactive"}
+            </span>
+          </div>
+          <div className="alfred-integration-card-logo">
+            <CheckCircleOutlined style={{ fontSize: 34, color: "var(--alfred-accent)" }} />
+          </div>
+          <div className="alfred-integration-card-title">Governance</div>
+          <div className="alfred-integration-card-subtitle">
+            Write confirmation, channel policies, and audit logging
+          </div>
         </div>
 
         {/* Custom Integration Cards */}
@@ -517,6 +607,54 @@ export function IntegrationsPanel() {
           <Typography.Paragraph type="secondary" style={{ marginTop: 8, fontSize: 12, marginBottom: 0 }}>
             List Slack channel names or IDs allowed to invoke @alfred. Or use * to match all channels.
           </Typography.Paragraph>
+          <label className="alfred-field-label" style={{ marginTop: 16 }}>Thread relevancy</label>
+          <div className="alfred-settings-action" style={{ paddingTop: 4, paddingBottom: 4 }}>
+            <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+              Rank long Slack threads and keep the most relevant messages (stack traces, intent overlap).
+            </Typography.Text>
+            <Switch
+              checked={config.slack.thread_relevance_enabled ?? true}
+              onChange={(v) => updateConfig({ slack: { ...config.slack, thread_relevance_enabled: v } })}
+            />
+          </div>
+          <Row gutter={[16, 16]} style={{ marginTop: 8 }}>
+            <Col span={12}>
+              <label className="alfred-field-label">Top messages to keep</label>
+              <Input
+                type="number"
+                min={5}
+                max={50}
+                disabled={config.slack.thread_relevance_enabled === false}
+                value={config.slack.thread_relevance_top_n ?? 15}
+                onChange={(e) =>
+                  updateConfig({
+                    slack: {
+                      ...config.slack,
+                      thread_relevance_top_n: Number(e.target.value) || 15,
+                    },
+                  })
+                }
+              />
+            </Col>
+            <Col span={12}>
+              <label className="alfred-field-label">Thread fetch limit</label>
+              <Input
+                type="number"
+                min={10}
+                max={200}
+                disabled={config.slack.thread_relevance_enabled === false}
+                value={config.slack.thread_fetch_limit ?? 50}
+                onChange={(e) =>
+                  updateConfig({
+                    slack: {
+                      ...config.slack,
+                      thread_fetch_limit: Number(e.target.value) || 50,
+                    },
+                  })
+                }
+              />
+            </Col>
+          </Row>
         </div>
       </Modal>
 
@@ -618,6 +756,22 @@ export function IntegrationsPanel() {
                   {reposError}
                 </Typography.Text>
               ) : null}
+            </Col>
+            <Col span={24}>
+              <label className="alfred-field-label">Phase 1 git write (PR flow)</label>
+              <div className="alfred-settings-action" style={{ paddingTop: 4, paddingBottom: 4 }}>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  Enable isolated branch/commit/push and <Typography.Text code>@alfred pr</Typography.Text>{" "}
+                  workflow. Requires repo token with push + PR scope. Route coding tasks via{" "}
+                  <Typography.Text code>Workflow execution</Typography.Text> AI settings.
+                </Typography.Text>
+                <Switch
+                  checked={Boolean(config.git.write_enabled)}
+                  onChange={(v) =>
+                    updateConfig({ git: { ...config.git, write_enabled: v } })
+                  }
+                />
+              </div>
             </Col>
             <Col span={24}>
               <label className="alfred-field-label">Graphify optional graphs</label>
@@ -1014,6 +1168,234 @@ export function IntegrationsPanel() {
                   Install Python extras on the server: pip install &apos;alfred-agent[google]&apos;
                 </Typography.Paragraph>
               )}
+            </Col>
+          </Row>
+        </div>
+      </Modal>
+
+      {/* Web Search Modal */}
+      <Modal
+        title="Web search"
+        open={activeModal === "web_search"}
+        width={560}
+        onCancel={() => handleCancelStandard("web_search")}
+        footer={[
+          <Button key="test" onClick={() => testIntegration("web_search")}>
+            Test connection
+          </Button>,
+          <Button key="cancel" onClick={() => handleCancelStandard("web_search")}>
+            Cancel
+          </Button>,
+          <Button key="save" type="primary" onClick={handleSaveStandard}>
+            Save changes
+          </Button>,
+        ]}
+      >
+        <div style={{ padding: "12px 0" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+            <Typography.Text>Enable web_search tool</Typography.Text>
+            <Switch
+              checked={webSearchConfig(config).enabled}
+              onChange={(v) =>
+                updateConfig({ web_search: { ...webSearchConfig(config), enabled: v } })
+              }
+            />
+          </div>
+          <Row gutter={[16, 16]}>
+            <Col span={12}>
+              <label className="alfred-field-label">Provider</label>
+              <Select
+                style={{ width: "100%" }}
+                value={webSearchConfig(config).provider}
+                options={[
+                  { value: "duckduckgo", label: "DuckDuckGo (no API key)" },
+                  { value: "tavily", label: "Tavily (API key in Secrets)" },
+                ]}
+                onChange={(v: "duckduckgo" | "tavily") =>
+                  updateConfig({
+                    web_search: { ...webSearchConfig(config), provider: v },
+                  })
+                }
+              />
+            </Col>
+            <Col span={12}>
+              <label className="alfred-field-label">Max results</label>
+              <Input
+                type="number"
+                min={1}
+                max={20}
+                value={webSearchConfig(config).max_results}
+                onChange={(e) =>
+                  updateConfig({
+                    web_search: {
+                      ...webSearchConfig(config),
+                      max_results: Number(e.target.value) || 8,
+                    },
+                  })
+                }
+              />
+            </Col>
+            <Col span={24}>
+              {webSearchConfig(config).provider === "duckduckgo" ? (
+                <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 0 }}>
+                  Requires <Typography.Text code>uv sync --extra web</Typography.Text> on the server
+                  (installs duckduckgo-search). Read-only — use the bundled{" "}
+                  <Typography.Text code>web_research</Typography.Text> skill or{" "}
+                  <Typography.Text code>investigate_bug</Typography.Text> when external context helps.
+                </Typography.Paragraph>
+              ) : (
+                <>
+                  <label className="alfred-field-label">Tavily API key</label>
+                  <Input.Password
+                    placeholder={config._secrets_configured?.web_search_api_key ? "••••••••" : "tvly-..."}
+                    value={secrets.web_search_api_key ?? ""}
+                    onChange={(e) =>
+                      setSecrets((s) => ({ ...s, web_search_api_key: e.target.value }))
+                    }
+                  />
+                  <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 8, marginBottom: 0 }}>
+                    Save the key under Secrets (or here, then Save changes on Integrations). Tavily returns a
+                    short AI summary plus ranked results.
+                  </Typography.Paragraph>
+                </>
+              )}
+            </Col>
+          </Row>
+        </div>
+      </Modal>
+
+      {/* Governance Modal */}
+      <Modal
+        title="Governance & write policies"
+        open={activeModal === "governance"}
+        width={640}
+        onCancel={() => handleCancelStandard("governance")}
+        footer={[
+          <Button key="cancel" onClick={() => handleCancelStandard("governance")}>
+            Cancel
+          </Button>,
+          <Button key="save" type="primary" onClick={handleSaveStandard}>
+            Save changes
+          </Button>,
+        ]}
+      >
+        <div style={{ padding: "12px 0" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+            <Typography.Text>Enable governance (policies, confirmation, audit)</Typography.Text>
+            <Switch
+              checked={governanceConfig(config).enabled}
+              onChange={(v) =>
+                updateConfig({ governance: { ...governanceConfig(config), enabled: v } })
+              }
+            />
+          </div>
+          <Row gutter={[16, 16]}>
+            <Col span={24}>
+              <div className="alfred-settings-action" style={{ paddingTop: 4, paddingBottom: 4 }}>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  Require *yes, proceed* before push, PR, JIRA, Google, and schedule writes on Slack/UI.
+                  CLI is excluded by default.
+                </Typography.Text>
+                <Switch
+                  checked={governanceConfig(config).require_confirmation}
+                  disabled={!governanceConfig(config).enabled}
+                  onChange={(v) =>
+                    updateConfig({
+                      governance: { ...governanceConfig(config), require_confirmation: v },
+                    })
+                  }
+                />
+              </div>
+            </Col>
+            <Col span={24}>
+              <div className="alfred-settings-action" style={{ paddingTop: 4, paddingBottom: 4 }}>
+                <Typography.Text type="secondary" style={{ fontSize: 12 }}>
+                  Persist audit log entries for all write tools in{" "}
+                  <Typography.Text code>.alfred/alfred.db</Typography.Text>
+                </Typography.Text>
+                <Switch
+                  checked={governanceConfig(config).audit_enabled}
+                  disabled={!governanceConfig(config).enabled}
+                  onChange={(v) =>
+                    updateConfig({ governance: { ...governanceConfig(config), audit_enabled: v } })
+                  }
+                />
+              </div>
+            </Col>
+            <Col span={12}>
+              <label className="alfred-field-label">Approval TTL (minutes)</label>
+              <Input
+                type="number"
+                min={5}
+                max={240}
+                disabled={!governanceConfig(config).enabled}
+                value={governanceConfig(config).approval_ttl_minutes}
+                onChange={(e) =>
+                  updateConfig({
+                    governance: {
+                      ...governanceConfig(config),
+                      approval_ttl_minutes: Number(e.target.value) || 30,
+                    },
+                  })
+                }
+              />
+            </Col>
+            <Col span={12}>
+              <label className="alfred-field-label">Confirmation sources</label>
+              <Input
+                placeholder="slack, ui"
+                disabled={!governanceConfig(config).enabled}
+                value={governanceConfig(config).require_confirmation_sources.join(", ")}
+                onChange={(e) =>
+                  updateConfig({
+                    governance: {
+                      ...governanceConfig(config),
+                      require_confirmation_sources: e.target.value
+                        .split(",")
+                        .map((s) => s.trim())
+                        .filter(Boolean),
+                    },
+                  })
+                }
+              />
+            </Col>
+            <Col span={24}>
+              <label className="alfred-field-label">Blocked Slack channels (IDs)</label>
+              <Input
+                placeholder="C0123ABC, C0456DEF"
+                disabled={!governanceConfig(config).enabled}
+                value={governanceConfig(config).write_blocked_channels.join(", ")}
+                onChange={(e) =>
+                  updateConfig({
+                    governance: {
+                      ...governanceConfig(config),
+                      write_blocked_channels: e.target.value
+                        .split(",")
+                        .map((s) => s.trim())
+                        .filter(Boolean),
+                    },
+                  })
+                }
+              />
+            </Col>
+            <Col span={24}>
+              <label className="alfred-field-label">Allowed write users (Slack IDs, optional)</label>
+              <Input
+                placeholder="U123, U456 (empty = any user in allowed channels)"
+                disabled={!governanceConfig(config).enabled}
+                value={governanceConfig(config).write_allowed_users.join(", ")}
+                onChange={(e) =>
+                  updateConfig({
+                    governance: {
+                      ...governanceConfig(config),
+                      write_allowed_users: e.target.value
+                        .split(",")
+                        .map((s) => s.trim())
+                        .filter(Boolean),
+                    },
+                  })
+                }
+              />
             </Col>
           </Row>
         </div>

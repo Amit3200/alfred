@@ -91,5 +91,5 @@ Static body.
 
 
 def test_format_playbook_dynamic_context_empty_without_urls(tmp_path) -> None:
-    playbook = Playbook(name="x", path=tmp_path / "x.md", body="body")
+    playbook = Playbook(name="x", path=tmp_path / "x.md", _body="body")
     assert format_playbook_dynamic_context([playbook], data_dir=tmp_path) == ""

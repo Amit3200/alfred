@@ -177,6 +177,7 @@ class ConfigManager:
         config.jira.api_token = secrets_obj.jira_api_token
         config.google.credentials_json = secrets_obj.google_credentials_json
         config.google.oauth_refresh_token = secrets_obj.google_oauth_refresh_token
+        config.web_search.api_key = secrets_obj.web_search_api_key
         for name, provider in config.ai.providers.items():
             if key := secrets_obj.ai_api_keys.get(name):
                 provider.api_key = key
@@ -214,6 +215,8 @@ class ConfigManager:
             secrets_obj.google_credentials_json = config.google.credentials_json
         if config.google.oauth_refresh_token:
             secrets_obj.google_oauth_refresh_token = config.google.oauth_refresh_token
+        if config.web_search.api_key:
+            secrets_obj.web_search_api_key = config.web_search.api_key
         for name, provider in config.ai.providers.items():
             if provider.api_key:
                 secrets_obj.ai_api_keys[name] = provider.api_key
@@ -228,6 +231,7 @@ class ConfigManager:
         config.jira.api_token = ""
         config.google.credentials_json = ""
         config.google.oauth_refresh_token = ""
+        config.web_search.api_key = ""
         config.server.admin_token = ""
         config.server.admin_username = ""
         config.server.admin_password = ""
@@ -285,6 +289,7 @@ class ConfigManager:
             "google_oauth_refresh_token": bool(secrets_obj.google_oauth_refresh_token.strip()),
             "google_credentials_type": google_cred_type,
             "google_oauth_connected": google_connected,
+            "web_search_api_key": bool(secrets_obj.web_search_api_key.strip()),
             "server_admin_token": bool(secrets_obj.server_admin_token),
             "server_admin_username": bool(secrets_obj.server_admin_username),
             "server_admin_password": bool(secrets_obj.server_admin_password),

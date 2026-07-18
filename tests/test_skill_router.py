@@ -142,7 +142,7 @@ def test_hybrid_llm_fallback_when_keywords_miss(tmp_path: Path):
     llm_router = MagicMock()
     llm_router.resolve_task.return_value = ("kimi", provider, "m")
 
-    config = default_config()
+    config = AlfredConfig(skills=SkillsConfig(agentic_routing=True, bm25_routing=False))
     router = SkillRouter(config, store, llm_router=llm_router)
     result = router.route_investigation(
         RouteContext(
@@ -163,7 +163,7 @@ def test_agentic_routing_can_be_disabled(tmp_path: Path):
     llm_router = MagicMock()
     llm_router.resolve_task.return_value = ("kimi", provider, "m")
 
-    config = AlfredConfig(skills=SkillsConfig(agentic_routing=False))
+    config = AlfredConfig(skills=SkillsConfig(agentic_routing=False, bm25_routing=False))
     router = SkillRouter(config, store, llm_router=llm_router)
     result = router.route_investigation(
         RouteContext(intent="dump into a document", mode=RouteMode.INVESTIGATION)

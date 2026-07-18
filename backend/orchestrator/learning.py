@@ -63,14 +63,32 @@ def analyze_and_generate_playbook(
         name_clean = "".join(c for c in name if c.isalnum() or c in ("_", "-")).lower()
         if not name_clean:
             name_clean = "custom_learned"
-            
-        # Ensure playbook directory exists
+
         data_dir_path = Path(data_dir) if data_dir else None
+        if config.orchestrator.self_improvement_requires_review:
+            from backend.orchestrator.playbook_pending import enqueue_pending_playbook
+
+            pending_id = enqueue_pending_playbook(
+                task=task,
+                proposed_content=result,
+                playbook_name=name_clean,
+                data_dir=data_dir_path,
+            )
+            logger.info(
+                "Queued self-learned playbook %s for review (pending_id=%s)",
+                name_clean,
+                pending_id,
+            )
+            return pending_id
+
         target_dir = playbooks_dir(data_dir_path)
         target_dir.mkdir(parents=True, exist_ok=True)
-        
+
         target_file = target_dir / f"{name_clean}.md"
         target_file.write_text(result, encoding="utf-8")
+        from backend.routing.playbook_store_registry import invalidate_playbook_store
+
+        invalidate_playbook_store(data_dir_path)
         logger.info("Autonomously generated new playbook: %s", target_file)
         return str(target_file)
         

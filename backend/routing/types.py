@@ -8,7 +8,7 @@ from typing import Any, Literal
 
 from backend.routing.playbooks import Playbook
 
-RouteStrategy = Literal["keyword", "heuristic", "llm", "none"]
+RouteStrategy = Literal["keyword", "heuristic", "bm25", "llm", "none"]
 
 
 class RouteMode(str, Enum):
