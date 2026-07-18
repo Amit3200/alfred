@@ -90,13 +90,13 @@ def test_create_pull_request_github_api():
             "number": 99,
             "title": "fix: test",
             "state": "open",
-            "html_url": "https://github.com/org/cipher/pull/99",
+            "html_url": "https://github.com/org/backend/pull/99",
             "head": {"ref": "alfred/pr/fix"},
             "base": {"ref": "main"},
             "draft": True,
         }
         detail = client.create_pull_request(
-            "org/cipher",
+            "org/backend",
             title="fix: test",
             head="alfred/pr/fix",
             base="main",
@@ -146,7 +146,7 @@ def test_create_pull_request_applies_labels_from_governance(tmp_path: Path):
             provider="github",
             token="ghp_test",
             write_enabled=True,
-            main_repo="org/cipher",
+            main_repo="org/backend",
         ),
         governance=GovernanceConfig(enabled=False),
     )
@@ -158,13 +158,13 @@ def test_create_pull_request_applies_labels_from_governance(tmp_path: Path):
         mock_client_cls.return_value = mock_client
         mock_client.create_pull_request.return_value = {
             "number": 1,
-            "url": "https://github.com/org/cipher/pull/1",
+            "url": "https://github.com/org/backend/pull/1",
             "labels": ["alfred-generated", "alfred-plan"],
         }
         register_git_write_tools(registry, config=config, data_dir=tmp_path)
         result = registry.run(
             "create_pull_request",
-            {"repo": "org/cipher", "title": "Fix", "head": "alfred/fix", "base": "main"},
+            {"repo": "org/backend", "title": "Fix", "head": "alfred/fix", "base": "main"},
             allowed=["create_pull_request"],
         )
 

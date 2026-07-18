@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Sync external platform skill runbooks into `.alfred/playbooks/cipher/`."""
+"""Sync external Markdown runbooks into `.alfred/playbooks/imported/`."""
 
 from __future__ import annotations
 
@@ -13,10 +13,8 @@ import yaml
 
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
-DEFAULT_SOURCE = Path(
-    "./external/platform-skills"
-)
-PLATFORM_REPO = "AcmeCorp/platform"
+DEFAULT_SOURCE = Path("./external/platform-skills")
+DEFAULT_REPO = "YourOrg/platform"
 
 
 def _alfred_root() -> Path:
@@ -27,14 +25,12 @@ def _transform_frontmatter(meta: dict) -> dict:
     """Adapt external agent skills for Alfred playbook loading."""
     out = dict(meta)
 
-    # Alfred uses Slack channel IDs (C…); external skills use #channel names.
     out.pop("allowed_channels", None)
     out["channels"] = []
 
-    # Scope to platform repo when Alfred adds repo-aware matching.
     repos = out.get("repos")
     if not repos:
-        out["repos"] = [PLATFORM_REPO]
+        out["repos"] = [DEFAULT_REPO]
 
     triggers = out.get("triggers") or out.get("trigger_keywords") or []
     if isinstance(triggers, str):
@@ -42,7 +38,7 @@ def _transform_frontmatter(meta: dict) -> dict:
     out["triggers"] = list(triggers)
     out.pop("trigger_keywords", None)
 
-    # Shell-style tool strings are for the external DevOps agent, not Alfred tools.
+    # Shell-style tool strings are for external agents, not Alfred tools.
     out.pop("allowed_tools", None)
 
     return out
@@ -74,7 +70,7 @@ def sync(source: Path, dest_root: Path, *, dry_run: bool = False) -> int:
     if dry_run:
         for path in skill_files:
             rel = path.relative_to(source)
-            print(f"would copy: {rel} -> cipher/{rel}")
+            print(f"would copy: {rel} -> imported/{rel}")
         print(f"total: {len(skill_files)} files")
         return 0
 
@@ -91,25 +87,24 @@ def sync(source: Path, dest_root: Path, *, dry_run: bool = False) -> int:
     readme = source / "README.md"
     if readme.is_file():
         index_meta = {
-            "name": "cipher-skill-index",
-            "repos": [PLATFORM_REPO],
+            "name": "imported-skill-index",
+            "repos": [DEFAULT_REPO],
             "channels": [],
             "triggers": [
-                "cipher skill",
-                "cipher runbook",
+                "imported runbook",
                 "platform devops",
-                "skill generation matrix",
-                "AcmeCorp/platform",
+                "external skill",
+                DEFAULT_REPO,
             ],
         }
         header = yaml.safe_dump(index_meta, sort_keys=False, allow_unicode=True).strip()
         body = readme.read_text(encoding="utf-8")
         if _FRONTMATTER_RE.match(body):
             body = _FRONTMATTER_RE.sub("", body, count=1).lstrip()
-        index = dest_root / "cipher-skill-index.md"
+        index = dest_root / "imported-skill-index.md"
         index.write_text(f"---\n{header}\n---\n\n{body}", encoding="utf-8")
 
-    print(f"Synced {len(skill_files)} platform skill(s) to {dest_root}")
+    print(f"Synced {len(skill_files)} external playbook(s) to {dest_root}")
     return 0
 
 
@@ -119,12 +114,12 @@ def main() -> int:
         "--source",
         type=Path,
         default=DEFAULT_SOURCE,
-        help=f"Skill Generation Matrix directory (default: {DEFAULT_SOURCE})",
+        help=f"External skills directory (default: {DEFAULT_SOURCE})",
     )
     parser.add_argument(
         "--dest",
         type=Path,
-        default=_alfred_root() / ".alfred" / "playbooks" / "cipher",
+        default=_alfred_root() / ".alfred" / "playbooks" / "imported",
         help="Destination under .alfred/playbooks/",
     )
     parser.add_argument("--dry-run", action="store_true")

@@ -51,9 +51,9 @@ Ops channel only.
     assert len(store.match("cpu alert", channel_id="C01234567890")) == 1
 
 
-def test_playbook_loads_nested_cipher_skills(tmp_path: Path):
+def test_playbook_loads_nested_backend_skills(tmp_path: Path):
     playbooks = tmp_path / "playbooks"
-    nested = playbooks / "cipher" / "p0-critical-path"
+    nested = playbooks / "backend" / "p0-critical-path"
     nested.mkdir(parents=True)
     (nested / "debug_payment_webhook_failures.md").write_text(
         """---
@@ -80,9 +80,9 @@ Platform payment runbook.
 def test_playbook_repo_filter_excludes_other_repos(tmp_path: Path):
     playbooks = tmp_path / "playbooks"
     playbooks.mkdir()
-    (playbooks / "cipher-only.md").write_text(
+    (playbooks / "backend-only.md").write_text(
         """---
-name: cipher-only
+name: backend-only
 repos:
   - AcmeCorp/platform
 triggers:

@@ -72,7 +72,7 @@ def test_playbooks_nested_path_crud(tmp_path) -> None:
     client, token = _client(tmp_path)
     h = _headers(token)
 
-    nested_dir = playbooks_dir(tmp_path) / "cipher" / "p0-critical-path"
+    nested_dir = playbooks_dir(tmp_path) / "backend" / "p0-critical-path"
     nested_dir.mkdir(parents=True)
     path = nested_dir / "debug_example.md"
     path.write_text(
@@ -90,10 +90,10 @@ Nested playbook body.
     listed = client.get("/api/playbooks", headers=h)
     assert listed.status_code == 200
     filenames = {item["filename"] for item in listed.json()["playbooks"]}
-    assert "cipher/p0-critical-path/debug_example.md" in filenames
+    assert "backend/p0-critical-path/debug_example.md" in filenames
 
     fetched = client.get(
-        "/api/playbooks/cipher/p0-critical-path/debug_example.md",
+        "/api/playbooks/backend/p0-critical-path/debug_example.md",
         headers=h,
     )
     assert fetched.status_code == 200

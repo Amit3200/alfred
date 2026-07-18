@@ -2,6 +2,7 @@ import {
   ApiOutlined,
   BankOutlined,
   BarChartOutlined,
+  CodeOutlined,
   CommentOutlined,
   DatabaseOutlined,
   FileTextOutlined,
@@ -25,7 +26,7 @@ import type { SettingsPage } from "../types";
 
 const { Sider } = Layout;
 
-const SETTINGS_KEYS = new Set(["branding", "ai", "secrets", "integrations", "repos", "playbooks", "health", "usage", "schedules", "logs"]);
+const SETTINGS_KEYS = new Set(["branding", "ai", "secrets", "integrations", "repos", "playbooks", "scripts", "health", "usage", "schedules", "logs"]);
 
 type AppSidebarProps = {
   width: number;
@@ -102,6 +103,7 @@ export function AppSidebar({ width }: AppSidebarProps) {
                 { key: "integrations", icon: <ApiOutlined />, label: "Integrations" },
                 { key: "repos", icon: <DatabaseOutlined />, label: "Repo mirrors" },
                 { key: "playbooks", icon: <FileTextOutlined />, label: "Playbooks" },
+                { key: "scripts", icon: <CodeOutlined />, label: "Scripts" },
                 { key: "schedules", icon: <CalendarOutlined />, label: "Schedules" },
                 { key: "usage", icon: <BarChartOutlined />, label: "Usage" },
                 { key: "logs", icon: <FileSearchOutlined />, label: "Logs" },

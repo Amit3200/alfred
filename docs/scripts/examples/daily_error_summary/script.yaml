@@ -1,0 +1,11 @@
+name: daily_error_summary
+description: Example daily error rollup (replace with Athena or internal API calls)
+entry: main.py
+runtime: python3
+args:
+  - name: date
+    description: Partition date YYYY-MM-DD
+    required: true
+  - name: environment
+    description: Environment filter
+    default: production

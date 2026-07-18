@@ -176,36 +176,6 @@ class WebSearchFormatter(FormatterStrategy):
         return "\n".join(lines)
 
 
-class GradeEventsQueryFormatter(FormatterStrategy):
-    def render(self, data: dict[str, Any], *, slack: bool = False) -> str:
-        guardrails = data.get("guardrails") or {}
-        table = str(data.get("table") or guardrails.get("table") or "grade_events")
-        rows = data.get("rows") or []
-        columns = [str(col) for col in data.get("columns") or []]
-        row_count = int(data.get("row_count") or len(rows))
-
-        header = f"*grade_events* `{table}` — {row_count} row(s)" if slack else f"grade_events `{table}` — {row_count} row(s)"
-        meta_parts: list[str] = []
-        if guardrails.get("time_window"):
-            meta_parts.append(str(guardrails["time_window"]).replace("_", " "))
-        if guardrails.get("limit") is not None:
-            meta_parts.append(f"limit {guardrails['limit']}")
-        if guardrails.get("full_data"):
-            meta_parts.append("full data")
-
-        lines = [header]
-        if meta_parts:
-            lines.append(" · ".join(meta_parts))
-        if not rows:
-            lines.append("No matching grade_events rows.")
-            return "\n".join(lines)
-
-        if columns:
-            lines.append("")
-            lines.append(_format_table(columns, rows, slack=slack, max_rows=20))
-        return "\n".join(lines)
-
-
 # 2. Git Formatters
 class GitPRListFormatter(FormatterStrategy):
     def render(self, data: dict[str, Any], *, slack: bool = False) -> str:
@@ -417,7 +387,6 @@ KIND_FORMATTERS: dict[str, FormatterStrategy] = {
     "athena_query": AthenaQueryFormatter(),
     "cloudwatch_query": CloudWatchQueryFormatter(),
     "cloudwatch_log_groups": CloudWatchLogGroupsFormatter(),
-    "grade_events_query": GradeEventsQueryFormatter(),
     "web_search": WebSearchFormatter(),
     "pr_list": GitPRListFormatter(),
     "pr_detail": GitPRDetailFormatter(),

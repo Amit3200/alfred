@@ -218,4 +218,9 @@ def build_git_tool_registry(
 
         register_schedule_tools(registry, data_dir)
 
+    if wants_module(COMPANY_SCRIPT_TOOLS, allowed):
+        from backend.tools.company_script_tool import register_company_script_tools
+
+        register_company_script_tools(registry, config=config, data_dir=data_dir)
+
     return registry

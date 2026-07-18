@@ -39,7 +39,7 @@ _TECH_SIGNALS = (
     "test",
     "logging",
     "instrument",
-    "fp_id",
+    "order_id",
     "stack trace",
     "exception",
     "implement",
@@ -296,7 +296,7 @@ def gate_create_pr(
                 f"Which repository? (default: `{config.git.main_repo}` — reply *use default* or give `owner/repo`)"
             )
         else:
-            questions.append("Which repository (`owner/name`, e.g. `YourOrg/cipher`)?")
+            questions.append("Which repository (`owner/name`, e.g. `YourOrg/backend`)?")
         new_awaiting.append("repo")
 
     if not draft.get("goal") or len(str(draft.get("goal") or "")) < 12:

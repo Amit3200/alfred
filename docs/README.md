@@ -17,7 +17,7 @@ Planning and reference materials for Alfred.
 
 ## Current status (2026-07-18)
 
-**Shipped (v0):** Slack channel `@mentions`, git mirrors + PR review, JIRA, AWS (Athena/CloudWatch/grade_events), Graphify, Google Workspace (Sheets/Docs), cron schedules, observability + task checkpoints, GitHub PR bot (with public URL), Admin UI & API authentication, planning mode, self-learning playbooks.
+**Shipped (v0):** Slack channel `@mentions`, git mirrors + PR review, JIRA, AWS (Athena/CloudWatch), Graphify, Google Workspace (Sheets/Docs), cron schedules, observability + task checkpoints, GitHub PR bot (with public URL), Admin UI & API authentication, planning mode, self-learning playbooks.
 
 **Shipped (v0.1):** SQLite task queue + background worker, unified direct-action router (`detect_direct_action`), keyword + heuristic + LLM skill routing, context pruning (stack traces / long URLs), checkpoint timeline in Admin UI.
 

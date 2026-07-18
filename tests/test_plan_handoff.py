@@ -17,7 +17,7 @@ from backend.orchestrator.workflow_gates import gate_create_pr
 
 def _config() -> AlfredConfig:
     cfg = AlfredConfig()
-    cfg.git = GitConfig(enabled=True, token="tok", main_repo="Org/cipher", write_enabled=True)
+    cfg.git = GitConfig(enabled=True, token="tok", main_repo="Org/backend", write_enabled=True)
     return cfg
 
 
@@ -25,7 +25,7 @@ def test_adopt_session_plan_for_task(tmp_path: Path):
     plans = tmp_path / "plans"
     plans.mkdir()
     source = plans / "plan_old.md"
-    source.write_text("# Task Plan\n- [ ] Add logging for missing fp_id\n", encoding="utf-8")
+    source.write_text("# Task Plan\n- [ ] Add logging for missing order_id\n", encoding="utf-8")
     session = ConversationSession(
         key="slack:C1:1",
         source="slack",
@@ -44,7 +44,7 @@ def test_adopt_session_plan_for_task(tmp_path: Path):
     adopted = adopt_session_plan_for_task(task, session, tmp_path)
     assert adopted
     assert plan_exists_for_task(task.id, tmp_path)
-    assert "fp_id" in resolve_plan_for_task(task.id, session=session, data_dir=tmp_path) or ""
+    assert "order_id" in resolve_plan_for_task(task.id, session=session, data_dir=tmp_path) or ""
 
 
 def test_gate_create_pr_inherits_plan_session(tmp_path: Path):
@@ -52,7 +52,7 @@ def test_gate_create_pr_inherits_plan_session(tmp_path: Path):
     plans.mkdir()
     plan_path = plans / "plan_plan123.md"
     plan_path.write_text(
-        "# Task Plan\n- [ ] Add null guard when fp_id missing in checkout handler with unit test\n",
+        "# Task Plan\n- [ ] Add null guard when order_id missing in checkout handler with unit test\n",
         encoding="utf-8",
     )
     session = ConversationSession(
@@ -63,8 +63,8 @@ def test_gate_create_pr_inherits_plan_session(tmp_path: Path):
         metadata={
             "plan_file": str(plan_path),
             "workflow_plan": {
-                "goal": "Add null guard when fp_id missing in checkout handler with unit test",
-                "repo": "Org/cipher",
+                "goal": "Add null guard when order_id missing in checkout handler with unit test",
+                "repo": "Org/backend",
                 "ready": True,
             },
         },
@@ -93,7 +93,7 @@ def test_gate_create_pr_plan_handoff_phrase():
         metadata={
             "workflow_plan": {
                 "goal": "Instrument checkout duplicate order detection with metrics",
-                "repo": "Org/cipher",
+                "repo": "Org/backend",
             }
         },
     )
@@ -103,8 +103,8 @@ def test_gate_create_pr_plan_handoff_phrase():
         channel_id="C1",
         thread_ts="1",
         raw_text="implement the plan",
-        cleaned_intent="implement the plan on Org/cipher",
+        cleaned_intent="implement the plan on Org/backend",
     )
     result = gate_create_pr(task, _config(), session=session, slack_context=None)
     assert result.ready
-    assert "Org/cipher" in (result.enriched_intent or "")
+    assert "Org/backend" in (result.enriched_intent or "")

@@ -18,7 +18,6 @@ export type ResponsePayload = {
     | "athena_query"
     | "cloudwatch_query"
     | "cloudwatch_log_groups"
-    | "grade_events_query"
     | "google_sheet"
     | "google_doc";
   data: Record<string, unknown>;
@@ -53,8 +52,6 @@ export function ChatMessageContent({ content, payload }: Props) {
       return <RepoListView data={payload.data} />;
     case "error":
       return <div className="alfred-chat-error">{String(payload.data.message || content)}</div>;
-    case "grade_events_query":
-      return <GradeEventsQueryView data={payload.data} content={content} />;
     case "athena_query":
     case "cloudwatch_query":
     case "cloudwatch_log_groups":
@@ -158,113 +155,9 @@ function RepoListView({ data }: { data: Record<string, unknown> }) {
   );
 }
 
-function formatEventTimestamp(value: string): string {
-  const trimmed = value.trim();
-  if (!trimmed) return "—";
-  const numeric = Number(trimmed);
-  if (!Number.isNaN(numeric) && numeric > 1_000_000_000_000) {
-    return new Date(numeric).toISOString().replace("T", " ").replace(".000Z", " UTC");
-  }
-  return trimmed;
-}
-
-function shortValue(value: string, max = 12): string {
-  if (!value || value === "—") return "—";
-  if (value.length <= max + 1) return value;
-  return `${value.slice(0, max)}…`;
-}
-
-function GradeEventsQueryView({
-  data,
-  content,
-}: {
-  data: Record<string, unknown>;
-  content: string;
-}) {
-  const rows = (data.rows as Record<string, string>[]) || [];
-  const guardrails = (data.guardrails as Record<string, unknown>) || {};
-  const rowCount = Number(data.row_count ?? rows.length);
-  const window = String(guardrails.time_window || "").replace(/_/g, " ");
-  const limit = guardrails.limit;
-  const showAnalysis =
-    content.trim().length > 0 && !content.includes("```") && payloadLooksLikeAnalysis(content);
-
-  if (!rows.length) {
-    return (
-      <div className="alfred-grade-events">
-        {showAnalysis ? (
-          <div className="alfred-grade-events-analysis">
-            <ChatMarkdown content={content} />
-          </div>
-        ) : null}
-        <p className="alfred-chat-empty-result">{content || "No matching grade events."}</p>
-      </div>
-    );
-  }
-
-  return (
-    <div className="alfred-grade-events">
-      <div className="alfred-grade-events-meta">
-        <span className="alfred-grade-events-meta-title">grade_events</span>
-        <span>
-          {rowCount} row{rowCount === 1 ? "" : "s"}
-          {window ? ` · ${window}` : ""}
-          {limit != null ? ` · limit ${String(limit)}` : ""}
-        </span>
-      </div>
-      {showAnalysis ? (
-        <div className="alfred-grade-events-analysis">
-          <ChatMarkdown content={content} />
-        </div>
-      ) : null}
-      <div className="alfred-grade-events-list">
-        {rows.slice(0, 25).map((row, index) => (
-          <article key={index} className="alfred-grade-event-card">
-            <header className="alfred-grade-event-header">
-              <code className="alfred-grade-event-kind">{row.kind || "event"}</code>
-              <time className="alfred-grade-event-time">{formatEventTimestamp(String(row.timestamp || ""))}</time>
-            </header>
-            <dl className="alfred-grade-event-fields">
-              {[
-                ["category", row.category],
-                ["environment", row.environment],
-                ["platform", row.platform],
-                ["merchant_id", row.merchant_id],
-                ["session_id", row.session_id],
-                ["fp_id", row.fp_id],
-                ["source", row.source],
-                ["error", row.error || "none"],
-              ].map(([label, value]) => (
-                <div key={label} className="alfred-grade-event-field">
-                  <dt>{label}</dt>
-                  <dd title={String(value || "")}>{shortValue(String(value || "—"), label === "fp_id" ? 18 : 14)}</dd>
-                </div>
-              ))}
-            </dl>
-            {row.data ? (
-              <details className="alfred-grade-event-data">
-                <summary>data payload</summary>
-                <pre>{truncateJson(String(row.data), 1200)}</pre>
-              </details>
-            ) : null}
-          </article>
-        ))}
-      </div>
-      {rows.length > 25 ? (
-        <p className="alfred-chat-empty-result">… and {rows.length - 25} more row(s)</p>
-      ) : null}
-    </div>
-  );
-}
-
 function payloadLooksLikeAnalysis(content: string): boolean {
   const lower = content.toLowerCase();
-  return !lower.startsWith("grade_events `") && !lower.startsWith("athena `");
-}
-
-function truncateJson(text: string, max: number): string {
-  if (text.length <= max) return text;
-  return `${text.slice(0, max)}…`;
+  return !lower.startsWith("athena `");
 }
 
 function AwsQueryView({
@@ -303,7 +196,7 @@ function AwsQueryView({
   return (
     <div className="alfred-aws-query">
       {content && payloadLooksLikeAnalysis(content) ? (
-        <div className="alfred-grade-events-analysis">
+        <div className="alfred-aws-query-analysis">
           <ChatMarkdown content={content} />
         </div>
       ) : null}

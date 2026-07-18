@@ -64,12 +64,12 @@ End with **Open questions** if anything is still unclear.
 # Example
 
 ```
-@alfred plan add fp_id null guard in checkout handler with unit test
+@alfred plan add order_id null guard in checkout handler with unit test
 ```
 
 ```
 alfred plan
 → Alfred asks what to plan
-→ User: "instrument duplicate order detection in cipher"
+→ User: "instrument duplicate order detection in backend"
 → Alfred returns checklist saved to .alfred/plans/
 ```

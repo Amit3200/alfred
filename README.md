@@ -42,18 +42,19 @@ Config and encrypted secrets live in `.alfred/` (not a SaaS). Optional Ollama on
 | **Git write (Phase 1)** | Opt-in (`git.write_enabled`): isolated branch, `write_file`, read-only debug scripts, draft PR via `create_pr` skill. |
 | **PR review** | Summarize/review from URL or thread; GitHub App `@alfred review` on PR comments (optional, needs public URL). |
 | **JIRA** | Search, get, update, comment, create, link PRs; assignee resolution via `assignee_map`; workspace identity map. |
-| **AWS (read-only)** | `athena_query`, `cloudwatch_query`, `list_cloudwatch_log_groups`; domain **`grade_events_query`** via local playbooks with guardrails (LIMIT, partition windows). |
+| **AWS (read-only)** | `athena_query`, `cloudwatch_query`, `list_cloudwatch_log_groups`; company tables via local playbooks + `athena_query`. |
 | **Google Workspace** | Read/write Sheets, read/create/append Docs (OAuth or service account). |
 | **Schedules** | Cron jobs via `schedule_management` skill — enqueue recurring tasks to Slack channels. |
 | **Graphify** | Optional code graphs on sync — `query_graph` when `git.graphify_enabled`. |
 | **Task queue** | Persistent SQLite queue + background worker; checkpoint timeline in Admin → Usage. |
 | **Playbooks** | `.alfred/playbooks/*.md` — company triggers, formatting, investigation tools (local only). |
+| **Company scripts** | `.alfred/scripts/` — nested packages; Alfred can create/edit via tools; Admin → Scripts for review; playbooks link via `scripts:` + `run_company_script`. |
 | **Skills** | Bundled `skills/*.md` — investigate, review PR, git status, JIRA, AWS, summarize alerts. |
 | **AI** | Ollama, OpenAI-compat, Anthropic, Gemini, Kimi — per-task routing (`investigation`, `skill_matching`, …). |
 | **Task Planning** | Checklist-Based Task Planning Mode — pre-plans complex workflows, executes checklist step-by-step (`.alfred/plans/`). |
 | **Self-Improving** | Meta-Learning loop reflects on completed queries and writes playbooks to `.alfred/playbooks/`. |
 | **Prompts Registry** | Centralized `prompts.yaml` registry to configure all system, format, planning, and learning instructions. |
-| **Admin UI** | Chat, secrets, AI routing, integrations, repo mirrors, usage (tokens + est. cost), health. |
+| **Admin UI** | Chat, secrets, AI routing, integrations, repo mirrors, playbooks, scripts, usage (tokens + est. cost), health. |
 | **CLI** | `exec`, `git sync`, `slack emojis`, `up` / `stop`, Ollama helpers. |
 
 ### Shipped skills (`skills/`)
@@ -186,20 +187,20 @@ git:
 alfred git sync
 ```
 
-**Optional — Phase 1 PR write flow:** Admin → Integrations → enable **Phase 1 git write**, set `main_repo` to your primary repo (e.g. `YourOrg/cipher`), and route **Workflow execution** to a capable coding model in Admin → AI.
+**Optional — Phase 1 PR write flow:** Admin → Integrations → enable **Phase 1 git write**, set `main_repo` to your primary repo (e.g. `YourOrg/backend`), and route **Workflow execution** to a capable coding model in Admin → AI.
 
 ```yaml
 git:
   write_enabled: true
-  main_repo: YourOrg/cipher
+  main_repo: YourOrg/backend
   default_base_branch: main
 ```
 
-Then in Slack: `@alfred pr on cipher — add logging when fp_id is missing, include a unit test`
+Then in Slack: `@alfred pr on backend — add logging when order_id is missing, include a unit test`
 
 **Plan before implementing:**
 ```
-@alfred plan instrument checkout handler for missing fp_id cases
+@alfred plan instrument checkout handler for missing order_id cases
 alfred plan -i
 ```
 
@@ -249,7 +250,7 @@ Logs: `.alfred/alfred.log`
 | Slack | `@alfred what are my open PRs?` |
 | Git | `@alfred where is X handled in org/repo?` |
 | JIRA | `@alfred status of TECH-123` |
-| AWS | `@alfred pull grade events for fp_id …` (with playbook + config) |
+| AWS | `@alfred query athena for order_id …` (with playbook + config) |
 | Usage | Admin → Usage — tokens, est. cost, tools |
 
 ---
@@ -286,7 +287,6 @@ Alfred includes **read-only** AWS tools via `pip install alfred-agent[aws]` (bot
 | `athena_query` | Run SQL against Glue/Athena |
 | `cloudwatch_query` | Logs Insights on a log group or mapped service |
 | `list_cloudwatch_log_groups` | Discover log group paths |
-| `grade_events_query` | Guardrailed queries on a configured event table (via company playbook) |
 
 IAM errors are surfaced with needed actions — Alfred does not guess credentials.
 
@@ -307,29 +307,31 @@ aws:
   athena_output_location: s3://your-bucket/athena/queries/
   log_group_map:
     checkout-api: /ecs/checkout-api
-  grade_events_table: grade_events
-  grade_events_s3_location: s3://your-data-bucket/path/   # documentation / validation
 ```
 
 **Secrets:** optional `aws_access_key_id` / `aws_secret_access_key` in Admin → Secrets. Profile takes precedence when configured on the host.
 
 ### Domain event tables (playbooks)
 
-Generic AWS querying is in `skills/aws_query.md`. **Company-specific tables** (partition columns, filter semantics, response format) belong in **`.alfred/playbooks/`**:
+Generic AWS querying is in `skills/aws_query.md`. **Company-specific tables** (partition columns, filter semantics, SQL examples) belong in **`.alfred/playbooks/`**:
 
 ```yaml
 ---
-name: grade_events
+name: checkout_events
 mode: investigation
 triggers:
-  - grade events
   - checkout events
+  - order events
 allowed_tools:
-  - grade_events_query
+  - run_company_script
+  - athena_query
+scripts:
+  - daily_error_summary
 ---
-```
 
-Document database, table, S3 path, partition keys (`date`, `hour`), and which IDs to filter on (`fp_id`, `session_id`, `merchant_id`).
+Document database, table, S3 path, partition keys, and which IDs to filter on for common questions.
+Prefer `run_company_script` when a linked script exists.
+```
 
 ### Health check
 
@@ -587,7 +589,7 @@ Full design: [`docs/build-reference/v0.md`](docs/build-reference/v0.md)
 | Purpose | Generic investigation, review, JIRA, AWS | Company rules — alerts, tables, event dumps |
 | Shipped with Alfred | Yes | No — you create locally |
 | Commit to git? | **Yes** | **No** |
-| Example | `skills/aws_query.md` | `my-alerts.md`, `grade-events.md` |
+| Example | `skills/aws_query.md` | `my-alerts.md`, `checkout-events.md` |
 
 Format: [`docs/playbooks/README.md`](docs/playbooks/README.md)
 
@@ -603,7 +605,7 @@ Format: [`docs/playbooks/README.md`](docs/playbooks/README.md)
 @alfred where is duplicate order handled in backend?
 @alfred list my open TECH tickets
 @alfred status of TECH-123
-@alfred pull grade events for fp_id 019ee783-2bf1-76ab-a65d-f6f18a9272e7
+@alfred query athena checkout_events for order_id abc-123 in the last 24h
 @alfred query cloudwatch logs for checkout-api errors in the last hour
 @alfred map all slack users to jira and github
 ```

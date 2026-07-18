@@ -86,7 +86,7 @@ def test_build_export_zip_roundtrip(tmp_path: Path):
     data_dir = tmp_path / ".alfred"
     data_dir.mkdir()
     manager = ConfigManager(data_dir)
-    manager.init(company_name="Flexype")
+    manager.init(company_name="Acme Corp")
 
     zip_path = tmp_path / "export.zip"
     count = build_export_zip(data_dir, zip_path)

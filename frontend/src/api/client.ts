@@ -58,9 +58,6 @@ export type AlfredConfig = {
     athena_workgroup: string;
     athena_output_location: string;
     log_group_map: Record<string, string>;
-    grade_events_database: string;
-    grade_events_table: string;
-    grade_events_s3_location: string;
   };
   jira: {
     enabled: boolean;
@@ -260,6 +257,10 @@ function encodePlaybookPath(filename: string): string {
     .split("/")
     .map((part) => encodeURIComponent(part))
     .join("/");
+}
+
+function encodeScriptPath(relativePath: string): string {
+  return encodePlaybookPath(relativePath);
 }
 
 export const api = {
@@ -610,6 +611,46 @@ export const api = {
       return api.createPlaybook(filename, content);
     }
   },
+
+  listScripts: () => request<ScriptsListResponse>("/api/scripts", {}, true),
+  getScriptExample: () => request<ScriptExampleResponse>("/api/scripts/example", {}, true),
+  getScriptFile: (relativePath: string) =>
+    request<ScriptFileDetail>(`/api/scripts/files/${encodeScriptPath(relativePath)}`, {}, true),
+  createScriptPackage: (body: {
+    package_path: string;
+    runtime?: string;
+    description?: string;
+    entry?: string;
+  }) =>
+    request<{ ok: boolean; package: ScriptPackageSummary }>(
+      "/api/scripts/packages",
+      { method: "POST", body: JSON.stringify(body) },
+      true,
+    ),
+  createScriptFile: (relativePath: string, content = "") =>
+    request<{ ok: boolean; relative_path: string }>(
+      `/api/scripts/files/${encodeScriptPath(relativePath)}`,
+      { method: "POST", body: JSON.stringify({ relative_path: relativePath, content }) },
+      true,
+    ),
+  saveScriptFile: (relativePath: string, content: string) =>
+    request<{ ok: boolean; relative_path: string }>(
+      `/api/scripts/files/${encodeScriptPath(relativePath)}`,
+      { method: "PUT", body: JSON.stringify({ content }) },
+      true,
+    ),
+  deleteScriptPath: (relativePath: string) =>
+    request<{ ok: boolean; removed: string }>(
+      `/api/scripts/files/${encodeScriptPath(relativePath)}`,
+      { method: "DELETE" },
+      true,
+    ),
+  deleteScriptPackage: (packageName: string) =>
+    request<{ ok: boolean; removed: string }>(
+      `/api/scripts/packages/${encodeScriptPath(packageName)}`,
+      { method: "DELETE" },
+      true,
+    ),
 };
 
 export type ChatSessionSummary = {
@@ -638,7 +679,6 @@ export type ResponsePayload = {
     | "athena_query"
     | "cloudwatch_query"
     | "cloudwatch_log_groups"
-    | "grade_events_query"
     | "google_sheet"
     | "google_doc";
   data: Record<string, unknown>;
@@ -1087,6 +1127,44 @@ export type LogEvent = {
 export type PlaybookExampleResponse = {
   filename: string;
   content: string;
+};
+
+export type ScriptArgMeta = {
+  name: string;
+  description?: string;
+  required?: boolean;
+  default?: string | null;
+};
+
+export type ScriptPackageSummary = {
+  name: string;
+  description?: string;
+  runtime: string;
+  entry: string;
+  relative_path: string;
+  kind: string;
+  file_count: number;
+  files: string[];
+  args: ScriptArgMeta[];
+};
+
+export type ScriptsListResponse = {
+  directory: string;
+  packages: ScriptPackageSummary[];
+  example_available: boolean;
+};
+
+export type ScriptFileDetail = {
+  relative_path: string;
+  content: string;
+  size_bytes?: number;
+  updated_at?: string | null;
+  is_manifest?: boolean;
+};
+
+export type ScriptExampleResponse = {
+  package_path: string;
+  files: Record<string, string>;
 };
 
 function buildObservabilityQuery(params: ObservabilityQuery & { limit?: number; offset?: number }) {

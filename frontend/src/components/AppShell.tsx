@@ -11,6 +11,7 @@ import { HealthPanel } from "./panels/HealthPanel";
 import { IntegrationsPanel } from "./panels/IntegrationsPanel";
 import { RepoMirrorsPanel } from "./panels/RepoMirrorsPanel";
 import { PlaybooksPanel } from "./panels/PlaybooksPanel";
+import { ScriptsPanel } from "./panels/ScriptsPanel";
 import { SecretsPanel } from "./panels/SecretsPanel";
 import { UsagePanel } from "./panels/UsagePanel";
 import { SchedulesPanel } from "./panels/SchedulesPanel";
@@ -35,6 +36,8 @@ function SettingsContent() {
       return <RepoMirrorsPanel />;
     case "playbooks":
       return <PlaybooksPanel />;
+    case "scripts":
+      return <ScriptsPanel />;
     case "health":
       return <HealthPanel />;
     case "usage":

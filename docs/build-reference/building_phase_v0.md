@@ -8,7 +8,7 @@
 
 ## Summary
 
-Alfred is **directionally aligned** with the v0 architecture: local-first, pluggable AI, Slack ingress, session memory, Markdown playbooks, read-only git investigation, JIRA (**including writes**), Google Workspace (**including writes**), **AWS (Athena + CloudWatch + grade_events)**, Graphify, cron schedules, planning mode, self-learning playbooks, and observability with cost estimates.
+Alfred is **directionally aligned** with the v0 architecture: local-first, pluggable AI, Slack ingress, session memory, Markdown playbooks, read-only git investigation, JIRA (**including writes**), Google Workspace (**including writes**), **AWS (Athena + CloudWatch)**, Graphify, cron schedules, planning mode, self-learning playbooks, and observability with cost estimates.
 
 **v0.1 routing/queue polish is shipped.** **v0.2 polish**, **v1 governance**, and **Phase 1 git write / plan→PR** are largely shipped. Remaining work clusters into **automation surface (v2)** and **tool extensibility (v3 — MCP + generic APIs, not started)**; see [Recommended next build steps](#recommended-next-build-steps).
 
@@ -49,7 +49,7 @@ Use these when reading gaps below:
 | **4** | Thread context | 🟡 Partial | v0 fetch + prune done; **v0.2** message relevancy ranking |
 | **5** | Investigation + ReAct + read tools | ✅ Done | v0 read paths; Hermes loop optional |
 | **6** | Workflow skills (write git, governance) | 🟡 Partial | JIRA + Google writes exist ungated; git writes **v2**; governance **v1** |
-| **7** | AWS + admin UI | ✅ Done | v0 — Athena/CloudWatch/grade_events; ECS/S3 tools **v2** |
+| **7** | AWS + admin UI | ✅ Done | v0 — Athena/CloudWatch; ECS/S3 tools **v2** |
 | **8** | Distribution | ✅ Done | v0 — Docker, README, ECS/EC2 patterns, SQLite queue |
 
 **Legend:** ✅ Done · 🟡 Partial
@@ -119,7 +119,7 @@ Use these when reading gaps below:
 | ReAct agent loop | ✅ | v0 | |
 | Git read tools | ✅ | v0 | |
 | JIRA tools | ✅ | v0 | |
-| AWS tools (Athena, CloudWatch, grade_events) | ✅ | v0 | |
+| AWS tools (Athena, CloudWatch) | ✅ | v0 | |
 | Graphify `query_graph` | 🟡 | v0 | Optional, `graphify_enabled` |
 | Google Workspace tools | ✅ | v0 | Sheets read/write, Docs read/create/append |
 | Web search (`web_search`) | ✅ | **v0.2 polish** | DuckDuckGo (optional `uv sync --extra web`) or Tavily; `web_research` skill |
@@ -139,6 +139,7 @@ Use these when reading gaps below:
 | Self-learning playbook review | ✅ | **v0.2 polish** | Pending queue in `.alfred/pending_playbooks.json`; approve/reject in Playbooks admin UI |
 | Lazy skill index | ✅ | **v0.2 polish** | Metadata-first `PlaybookStore`; bodies load on match; shared store + admin invalidation |
 | Lazy tool registration | ✅ | **v0.2 polish** | `build_git_tool_registry(allowed_tools=…)` skips unused integration modules/handlers |
+| Company scripts (`.alfred/scripts/`) | ✅ | **v0.2 polish** | Nested packages; agent write tools + Admin → Scripts UI; `run_company_script` + playbook `scripts:` links |
 
 ---
 
@@ -175,8 +176,8 @@ Company investigation playbooks (e.g. event dumps) → `.alfred/playbooks/` with
 - Google Workspace: Sheets/Docs via OAuth or service account
 - Web search: `web_search` tool (DuckDuckGo or Tavily) for external docs and errors — opt-in under Integrations
 - Cron schedules: background jobs enqueue tasks to Slack channels
-- AWS: Athena, CloudWatch Logs, grade_events (guardrailed)
-- Structured Slack/UI rendering for AWS and grade_events
+- AWS: Athena, CloudWatch Logs
+- Structured Slack/UI rendering for AWS query results
 - Graphify optional on sync
 - Admin UI: Chat, Usage, Health (secured behind username/password/token auth)
 - Modern Theme 2.0 aesthetics with flat minimalistic style, sharp corners, and SVG line charts
@@ -445,7 +446,7 @@ Defer until v1: confirmation governance (audit + write policies). Defer until v2
 | Unified direct router | `routing/intent.py` consolidates JIRA/git/investigate fast paths (v0.1) |
 | JIRA/Google writes before git writes | API write tools shipped; governance (v1) must gate all write surfaces |
 | First-party tools only (until v3) | New SaaS integrations require Python client + `register_*_tools`; MCP planned to reduce that burden |
-| grade_events in playbooks | Company table semantics; tool enforces guardrails |
+| Domain Athena playbooks | Company table semantics live in `.alfred/playbooks/` with `athena_query` |
 
 ---
 

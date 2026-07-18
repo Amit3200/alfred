@@ -21,6 +21,42 @@ from backend.tools.result import ToolResult
 
 logger = logging.getLogger(__name__)
 
+_SCHEDULE_PLAYBOOK_TOOLS = (
+    "run_company_script",
+    "list_company_scripts",
+    "athena_query",
+    "cloudwatch_query",
+    "list_cloudwatch_log_groups",
+)
+
+
+def _schedule_playbook_frontmatter(skill_name: str, title: str) -> str:
+    tools_yaml = "".join(f"  - {tool}\n" for tool in _SCHEDULE_PLAYBOOK_TOOLS)
+    return (
+        "---\n"
+        f"name: {skill_name}\n"
+        f"description: Scheduled job — {title}\n"
+        "mode: workflow\n"
+        "triggers:\n"
+        f"  - run {skill_name}\n"
+        "allowed_tools:\n"
+        f"{tools_yaml}"
+        "---\n"
+    )
+
+
+def _schedule_playbook_body(instructions: str) -> str:
+    return (
+        "# Objective\n"
+        f"{instructions}\n\n"
+        "# Execution\n"
+        "1. Prefer **`run_company_script`** when instructions name a script under "
+        "`.alfred/scripts/` — pass structured `args`, do not rewrite the script logic.\n"
+        "2. For ad-hoc AWS reads, use `athena_query` / `cloudwatch_query` with LIMIT and "
+        "partition filters documented in your domain playbooks.\n"
+        "3. Reply in Slack with a concise summary and key numbers; attach tables when useful.\n"
+    )
+
 CREATE_SCHEDULE = ToolSchema(
     name="create_schedule",
     description=(
@@ -127,17 +163,7 @@ def register_schedule_tools(registry: ToolRegistry, data_dir: Path | None) -> No
             p_dir.mkdir(parents=True, exist_ok=True)
             p_file = p_dir / f"{skill_name}.md"
 
-            content = (
-                "---\n"
-                f"name: {skill_name}\n"
-                f"description: Scheduled job to {name}\n"
-                "mode: workflow\n"
-                "triggers:\n"
-                f"  - run {skill_name}\n"
-                "---\n\n"
-                "# Objective\n"
-                f"{instructions}\n"
-            )
+            content = _schedule_playbook_frontmatter(skill_name, name) + "\n" + _schedule_playbook_body(instructions)
             p_file.write_text(content, encoding="utf-8")
             logger.info("Created scheduled skill playbook at %s", p_file)
         except Exception as exc:
@@ -305,17 +331,7 @@ def register_schedule_tools(registry: ToolRegistry, data_dir: Path | None) -> No
                 final_instructions = instructions if instructions is not None else existing_instructions
                 final_name = name if name is not None else target["name"]
 
-                content = (
-                    "---\n"
-                    f"name: {skill_name}\n"
-                    f"description: Scheduled job to {final_name}\n"
-                    "mode: workflow\n"
-                    "triggers:\n"
-                    f"  - run {skill_name}\n"
-                    "---\n\n"
-                    "# Objective\n"
-                    f"{final_instructions}\n"
-                )
+                content = _schedule_playbook_frontmatter(skill_name, final_name) + "\n" + _schedule_playbook_body(final_instructions)
                 p_file.write_text(content, encoding="utf-8")
 
             return ToolResult(

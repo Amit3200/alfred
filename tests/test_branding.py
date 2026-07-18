@@ -37,11 +37,11 @@ def test_logo_store_save_and_clear(tmp_path: Path):
 
 def test_branding_service_upload_and_snapshot(tmp_path: Path):
     manager = ConfigManager(tmp_path)
-    manager.init(company_name="Flexype")
+    manager.init(company_name="Acme Corp")
     service = BrandingService(manager)
     snapshot = service.upload_logo(b"\x89PNG\r\n\x1a\n", content_type="image/png")
     assert snapshot["has_logo"] is True
-    assert snapshot["display_title"] == "Alfred × Flexype"
+    assert snapshot["display_title"] == "Alfred × Acme Corp"
     assert snapshot["logo_url"].startswith("/api/branding/logo?v=")
 
 

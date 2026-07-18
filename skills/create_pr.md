@@ -63,7 +63,7 @@ If the user sends only `@alfred pr`, `alfred pr`, or similar **without** a concr
 
 1. **Stop** — do not call write tools yet.
 2. Ask clarifying questions in the thread:
-   - Which repo? (default: `git.main_repo` if configured, e.g. cipher)
+   - Which repo? (default: `git.main_repo` if configured, e.g. `YourOrg/backend`)
    - What should the PR implement? (problem, expected behavior, tests)
 3. Use Slack/thread history when it contains the bug, stack trace, or feature request.
 4. After the user replies in the same thread, continue from Step 0 below.
@@ -74,7 +74,7 @@ Alfred's workflow gate handles this automatically in Slack/UI chat; the skill re
 
 ## Step 0 — Confirm repo and intent
 
-1. Identify target repo from the user message, thread context, or `git.main_repo` (e.g. `YourOrg/cipher`).
+1. Identify target repo from the user message, thread context, or `git.main_repo` (e.g. `YourOrg/backend`).
 2. Use `grep_repo`, `read_file`, and `git_log` to understand existing patterns **before** editing.
 3. If the request is ambiguous or high-risk, reply with clarifying questions — do not write yet.
 
@@ -121,7 +121,7 @@ Before `write_file`:
 
 ## Step 5 — Commit, push, open draft PR
 
-1. `git_commit` — conventional message, e.g. `fix(checkout): guard null fp_id in handler`
+1. `git_commit` — conventional message, e.g. `fix(checkout): guard null order_id in handler`
 2. `git_push_branch` — push the feature branch (never protected branches)
 3. `create_pull_request` with:
    - **title** — concise, conventional
@@ -168,7 +168,7 @@ Reply in Slack with the PR URL and a summary of changes.
 # Example Slack request
 
 ```
-@alfred pr on cipher — add logging when fp_id is missing in the checkout handler, include a unit test
+@alfred pr on backend — add logging when order_id is missing in the checkout handler, include a unit test
 ```
 
 Expected tool order: `grep_repo` → `read_file` → `git_prepare_branch` → `write_file` (code + test) → `git_commit` → `git_push_branch` → `create_pull_request`.

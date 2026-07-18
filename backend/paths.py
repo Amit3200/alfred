@@ -50,8 +50,17 @@ def playbooks_dir(data_dir: Path | None = None) -> Path:
     return get_data_dir(data_dir) / "playbooks"
 
 
+def company_scripts_dir(data_dir: Path | None = None) -> Path:
+    """Company-specific Python scripts — local only, under `.alfred/scripts/`."""
+    return get_data_dir(data_dir) / "scripts"
+
+
 def bundled_playbooks_dir() -> Path:
     return Path(__file__).resolve().parent.parent / "docs" / "playbooks"
+
+
+def bundled_scripts_examples_dir() -> Path:
+    return Path(__file__).resolve().parent.parent / "docs" / "scripts" / "examples"
 
 
 def bundled_skills_dir() -> Path:

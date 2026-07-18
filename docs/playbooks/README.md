@@ -47,19 +47,31 @@ For domain data sources (Athena tables, event dumps, internal APIs), use **`mode
 
 ```yaml
 ---
-name: grade_events
+name: checkout_events
 description: Query checkout events in Athena
 mode: investigation
 triggers:
-  - grade events
   - checkout events
+  - order events
 allowed_tools:
-  - grade_events_query
+  - athena_query
 requires_thread_context: false
 ---
 ```
 
 Document **where to query** (database, table, S3, region, partitions) and **what to query** (which filters/IDs for which user questions). Generic AWS skills live in `skills/aws_query.md`; table-specific rules belong here.
+
+Link curated scripts from **`.alfred/scripts/`** when queries are repetitive:
+
+```yaml
+scripts:
+  - daily_error_summary
+allowed_tools:
+  - run_company_script
+  - athena_query
+```
+
+See [`docs/scripts/README.md`](../scripts/README.md).
 
 ## Triggers
 

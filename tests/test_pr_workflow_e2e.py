@@ -17,7 +17,7 @@ from backend.tools.result import ToolResult
 
 def _config() -> AlfredConfig:
     return AlfredConfig(
-        git=GitConfig(enabled=True, token="tok", write_enabled=True, main_repo="Org/cipher"),
+        git=GitConfig(enabled=True, token="tok", write_enabled=True, main_repo="Org/backend"),
         governance=GovernanceConfig(enabled=True, require_confirmation=True),
     )
 
@@ -43,7 +43,7 @@ def test_publish_flow_requires_then_allows_after_approval(tmp_path: Path):
         channel_id="C1",
         thread_ts="1",
         raw_text="alfred pr",
-        cleaned_intent="alfred pr on Org/cipher: add fp_id guard",
+        cleaned_intent="alfred pr on Org/backend: add order_id guard",
     )
     session = ConversationSession(
         key="slack:C1:1",
@@ -53,14 +53,14 @@ def test_publish_flow_requires_then_allows_after_approval(tmp_path: Path):
     )
     registry.governance = GovernanceContext(_config(), task, session=session, data_dir=tmp_path)
 
-    staging = registry.run("write_file", {"repo": "Org/cipher", "path": "src/a.py"}, allowed=["write_file"])
+    staging = registry.run("write_file", {"repo": "Org/backend", "path": "src/a.py"}, allowed=["write_file"])
     assert staging.kind == "write_file_ok"
-    commit = registry.run("git_commit", {"repo": "Org/cipher", "message": "fix"}, allowed=["git_commit"])
+    commit = registry.run("git_commit", {"repo": "Org/backend", "message": "fix"}, allowed=["git_commit"])
     assert commit.kind == "git_commit_ok"
 
     blocked = registry.run(
         "git_push_branch",
-        {"repo": "Org/cipher", "branch": "alfred/fix"},
+        {"repo": "Org/backend", "branch": "alfred/fix"},
         allowed=["git_push_branch"],
     )
     assert blocked.kind == "error"
@@ -69,13 +69,13 @@ def test_publish_flow_requires_then_allows_after_approval(tmp_path: Path):
     registry.governance = GovernanceContext(_config(), task, session=session, data_dir=tmp_path)
     push = registry.run(
         "git_push_branch",
-        {"repo": "Org/cipher", "branch": "alfred/fix"},
+        {"repo": "Org/backend", "branch": "alfred/fix"},
         allowed=["git_push_branch"],
     )
     assert push.kind == "git_push_branch_ok"
     pr = registry.run(
         "create_pull_request",
-        {"repo": "Org/cipher", "title": "Fix", "head": "alfred/fix", "base": "main"},
+        {"repo": "Org/backend", "title": "Fix", "head": "alfred/fix", "base": "main"},
         allowed=["create_pull_request"],
     )
     assert pr.kind == "create_pull_request_ok"

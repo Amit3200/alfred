@@ -66,7 +66,6 @@ AWS_TOOLS = frozenset(
         "athena_query",
         "cloudwatch_query",
         "list_cloudwatch_log_groups",
-        "grade_events_query",
     }
 )
 
@@ -82,6 +81,16 @@ GOOGLE_TOOLS = frozenset(
 )
 
 WEB_TOOLS = frozenset({"web_search"})
+
+COMPANY_SCRIPT_TOOLS = frozenset(
+    {
+        "list_company_scripts",
+        "read_company_script_file",
+        "write_company_script_file",
+        "create_company_script_package",
+        "run_company_script",
+    }
+)
 
 SCHEDULE_TOOLS = frozenset(
     {
@@ -99,5 +108,6 @@ ALL_KNOWN_TOOLS = (
     | AWS_TOOLS
     | GOOGLE_TOOLS
     | WEB_TOOLS
+    | COMPANY_SCRIPT_TOOLS
     | SCHEDULE_TOOLS
 )

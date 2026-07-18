@@ -201,7 +201,7 @@ def pr_cmd(
         click.echo(
             "Usage: alfred pr [CONTEXT] --repo owner/name\n"
             "       alfred pr -i   # interactive prompts\n"
-            "Example: alfred pr \"add fp_id logging in checkout handler with unit test\" --repo YourOrg/cipher"
+            "Example: alfred pr \"add order_id logging in checkout handler with unit test\" --repo YourOrg/backend"
         )
         raise SystemExit(1)
     intent = build_cli_create_pr_intent(
@@ -236,7 +236,7 @@ def plan_cmd(
         click.echo(
             "Usage: alfred plan [TASK DESCRIPTION]\n"
             "       alfred plan -i   # interactive prompts\n"
-            "Example: alfred plan \"instrument checkout handler for missing fp_id\""
+            "Example: alfred plan \"instrument checkout handler for missing order_id\""
         )
         raise SystemExit(1)
     intent = build_cli_plan_intent(

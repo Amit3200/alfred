@@ -1,8 +1,6 @@
 """AWS tools — Athena queries and CloudWatch Logs Insights."""
 
 from __future__ import annotations
-from backend.integrations.aws.grade_events import GradeEventsClient
-
 
 from typing import Any
 
@@ -111,68 +109,12 @@ LIST_CLOUDWATCH_LOG_GROUPS = ToolSchema(
     },
 )
 
-GRADE_EVENTS_QUERY = ToolSchema(
-    name="grade_events_query",
-    description=(
-        "Query a configured grade_events Athena table with built-in guardrails. "
-        "Requires a domain playbook in .alfred/playbooks/. Always applies LIMIT 200 unless full_data=true."
-    ),
-    parameters={
-        "type": "object",
-        "properties": {
-            "kind": {"type": "string", "description": "Event kind filter."},
-            "merchant_id": {"type": "string", "description": "Merchant ID filter."},
-            "session_id": {"type": "string", "description": "Checkout session ID filter."},
-            "fp_id": {"type": "string", "description": "AcmeCorp fp_id filter."},
-            "environment": {"type": "string", "description": "Environment filter, e.g. production."},
-            "category": {"type": "string", "description": "Event category filter."},
-            "platform": {"type": "string", "description": "Platform filter."},
-            "date": {
-                "type": "string",
-                "description": "Partition date YYYY-MM-DD.",
-            },
-            "date_from": {
-                "type": "string",
-                "description": "Inclusive start partition date YYYY-MM-DD.",
-            },
-            "date_to": {
-                "type": "string",
-                "description": "Inclusive end partition date YYYY-MM-DD.",
-            },
-            "hour": {
-                "type": "string",
-                "description": "Partition hour (00-23).",
-            },
-            "errors_only": {
-                "type": "boolean",
-                "description": "When true, only rows with non-empty error.",
-            },
-            "full_data": {
-                "type": "boolean",
-                "description": (
-                    "Only set true when the user explicitly asks for full/unlimited data. "
-                    "Otherwise capped at 200 rows."
-                ),
-            },
-            "limit": {
-                "type": "integer",
-                "description": "Row limit when full_data=true (max 5000). Ignored otherwise (always 200).",
-            },
-            "max_wait_seconds": {
-                "type": "integer",
-                "description": "Max seconds to wait for Athena (default 120).",
-            },
-        },
-        "required": [],
-    },
-)
-
 
 def _enforce_athena_guardrails(sql: str) -> str:
-    """Backup guardrail when grade_events is queried via raw athena_query."""
+    """Append a default LIMIT to bare SELECT queries."""
     cleaned = sql.strip().rstrip(";")
     lower = cleaned.lower()
-    if "grade_events" not in lower or "limit" in lower:
+    if not lower.startswith("select") or "limit" in lower:
         return cleaned
     return f"{cleaned}\nLIMIT 200"
 
@@ -223,33 +165,6 @@ def register_aws_tools(registry: ToolRegistry, config: AlfredConfig) -> None:
         except (RuntimeError, ValueError) as exc:
             return ToolResult.error(str(exc))
 
-    def grade_events_handler(args: dict[str, Any]) -> ToolResult:
-        try:
-            pass
-
-            client = GradeEventsClient.from_config(config)
-            data = client.query(
-                kind=str(args.get("kind") or "") or None,
-                merchant_id=str(args.get("merchant_id") or "") or None,
-                session_id=str(args.get("session_id") or "") or None,
-                fp_id=str(args.get("fp_id") or "") or None,
-                environment=str(args.get("environment") or "") or None,
-                category=str(args.get("category") or "") or None,
-                platform=str(args.get("platform") or "") or None,
-                date=str(args.get("date") or "") or None,
-                date_from=str(args.get("date_from") or "") or None,
-                date_to=str(args.get("date_to") or "") or None,
-                hour=str(args.get("hour") or "") or None,
-                errors_only=bool(args.get("errors_only")),
-                full_data=bool(args.get("full_data")),
-                limit=int(args.get("limit") or 200),
-                max_wait_seconds=int(args.get("max_wait_seconds") or 120),
-            )
-            return ToolResult.grade_events_query(data)
-        except (RuntimeError, ValueError) as exc:
-            return ToolResult.error(str(exc))
-
     registry.register(ATHENA_QUERY, athena_handler)
     registry.register(CLOUDWATCH_QUERY, cloudwatch_handler)
     registry.register(LIST_CLOUDWATCH_LOG_GROUPS, list_groups_handler)
-    registry.register(GRADE_EVENTS_QUERY, grade_events_handler)

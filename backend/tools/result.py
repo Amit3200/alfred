@@ -72,17 +72,6 @@ class ToolResult:
         return cls(kind="cloudwatch_log_groups", data={"groups": groups, "prefix": prefix})
 
     @classmethod
-    def grade_events_query(cls, data: dict[str, Any]) -> ToolResult:
-        truncated_data = dict(data)
-        if "rows" in truncated_data and isinstance(truncated_data["rows"], list):
-            rows = truncated_data["rows"]
-            if len(rows) > 150:
-                rows = rows[:150]
-                truncated_data["note"] = f"Truncated from {len(data['rows'])} rows to 150 rows for prompt safety."
-            truncated_data["rows"] = _truncate_row_fields(rows)
-        return cls(kind="grade_events_query", data=truncated_data)
-
-    @classmethod
     def web_search(cls, data: dict[str, Any]) -> ToolResult:
         payload = dict(data)
         results = list(payload.get("results") or [])

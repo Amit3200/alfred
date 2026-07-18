@@ -170,18 +170,6 @@ class AWSConfig(BaseModel):
             "e.g. 'checkout-api': '/ecs/checkout-api'."
         ),
     )
-    grade_events_database: str = Field(
-        default="",
-        description="Glue/Athena database for grade_events. Falls back to athena_database.",
-    )
-    grade_events_table: str = Field(
-        default="grade_events",
-        description="Athena table name for AcmeCorp checkout event dumps.",
-    )
-    grade_events_s3_location: str = Field(
-        default="",
-        description="S3 location of grade_events data (documentation / validation).",
-    )
 
 
 class GoogleConfig(BaseModel):
@@ -219,6 +207,19 @@ class WebSearchConfig(BaseModel):
         description="Default max results per search.",
     )
     api_key: str = Field(default="", description="Provider API key (Tavily) — stored encrypted.")
+
+
+class ScriptsConfig(BaseModel):
+    enabled: bool = Field(
+        default=True,
+        description="Enable run_company_script tools for `.alfred/scripts/`.",
+    )
+    timeout_seconds: int = Field(
+        default=120,
+        ge=5,
+        le=600,
+        description="Max seconds for company script execution.",
+    )
 
 
 class JiraConfig(BaseModel):
@@ -444,6 +445,7 @@ class AlfredConfig(BaseModel):
     jira: JiraConfig = Field(default_factory=JiraConfig)
     google: GoogleConfig = Field(default_factory=GoogleConfig)
     web_search: WebSearchConfig = Field(default_factory=WebSearchConfig)
+    scripts: ScriptsConfig = Field(default_factory=ScriptsConfig)
     ai: AIConfig = Field(default_factory=AIConfig)
     skills: SkillsConfig = Field(default_factory=SkillsConfig)
     branding: BrandingConfig = Field(default_factory=BrandingConfig)

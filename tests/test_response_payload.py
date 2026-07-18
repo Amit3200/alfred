@@ -12,7 +12,7 @@ def test_response_payload_accepts_jira_kinds():
 
 
 def test_response_payload_accepts_aws_kinds():
-    for kind in ("athena_query", "cloudwatch_query", "cloudwatch_log_groups", "grade_events_query"):
+    for kind in ("athena_query", "cloudwatch_query", "cloudwatch_log_groups"):
         payload = ResponsePayload(kind=kind, data={})
         assert payload.kind == kind
 

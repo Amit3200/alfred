@@ -31,6 +31,7 @@ class Playbook:
     bundled: bool = False
     fetch_urls: list[str] = field(default_factory=list)
     fetch_ttl_minutes: int = 60
+    scripts: list[str] = field(default_factory=list)
     _body: str | None = field(default=None, repr=False, compare=False)
 
     @property
@@ -276,6 +277,17 @@ class PlaybookStore:
             sections.append(playbook.body.strip())
             sections.append("")
 
+        from backend.integrations.company_scripts.catalog import CompanyScriptStore
+
+        store = CompanyScriptStore(data_dir)
+        linked_scripts: list[str] = []
+        for playbook in playbooks:
+            linked_scripts.extend(playbook.scripts)
+        if linked_scripts:
+            script_block = store.format_catalog_for_prompt(script_names=linked_scripts)
+            if script_block:
+                sections.extend(["", script_block, ""])
+
         from backend.routing.playbook_fetch import format_playbook_dynamic_context
 
         dynamic = format_playbook_dynamic_context(playbooks, data_dir=data_dir)
@@ -353,6 +365,7 @@ def _parse_playbook_index(path: Path, *, bundled: bool) -> Playbook:
     if mode not in ("conversational", "investigation", "workflow"):
         mode = "conversational"
     allowed_tools = _normalize_str_list(meta.get("allowed_tools"))
+    scripts = _normalize_str_list(meta.get("scripts"))
     requires_thread_context = bool(meta.get("requires_thread_context", False))
     fetch_urls = _normalize_str_list(meta.get("fetch_urls"))
     fetch_ttl_minutes = int(meta.get("fetch_ttl_minutes") or 60)
@@ -369,6 +382,7 @@ def _parse_playbook_index(path: Path, *, bundled: bool) -> Playbook:
         description=description,
         mode=mode,  # type: ignore[arg-type]
         allowed_tools=allowed_tools,
+        scripts=scripts,
         requires_thread_context=requires_thread_context,
         bundled=bundled,
         fetch_urls=fetch_urls,
@@ -442,8 +456,9 @@ def _format_catalog_entry(playbook: Playbook, *, max_triggers: int) -> str:
     if len(playbook.triggers) > max_triggers:
         trigger_bits += f", +{len(playbook.triggers) - max_triggers} more"
     repo_note = f" [{', '.join(playbook.repos)}]" if playbook.repos else ""
+    script_note = f" scripts: {', '.join(f'`{s}`' for s in playbook.scripts)}" if playbook.scripts else ""
     kind = "skill" if playbook.mode in ("investigation", "workflow") else "playbook"
-    return f"- **{playbook.name}** ({kind}{repo_note}) — {label}. Triggers: {trigger_bits}"
+    return f"- **{playbook.name}** ({kind}{repo_note}) — {label}.{script_note} Triggers: {trigger_bits}"
 
 
 def _repo_matches(repos: list[str], intent_lower: str, repo_lower: str) -> bool:

@@ -20,6 +20,8 @@ allowed_tools:
   - athena_query
   - cloudwatch_query
   - list_cloudwatch_log_groups
+  - run_company_script
+  - list_company_scripts
 requires_thread_context: false
 ---
 
@@ -27,7 +29,9 @@ requires_thread_context: false
 
 Answer questions about production data and logs using read-only AWS tools.
 
-Company-specific Athena tables (e.g. event dumps) belong in **`.alfred/playbooks/`** — not bundled skills. When a domain playbook matches, use its configured tools.
+Company-specific Athena tables (e.g. event dumps) belong in **`.alfred/playbooks/`** — not bundled skills.  
+Parameterized queries with fixed partition logic belong in **`.alfred/scripts/`** — link them from playbooks  
+via `scripts:` and call **`run_company_script`** instead of rewriting SQL each time.
 
 # Execution steps
 

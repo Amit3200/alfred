@@ -37,6 +37,8 @@ WRITE_STAGING_TOOLS: frozenset[str] = frozenset(
         "write_file",
         "write_debug_script",
         "git_commit",
+        "write_company_script_file",
+        "create_company_script_package",
     }
 )
 
@@ -69,6 +71,10 @@ def tool_action_summary(tool_name: str, arguments: dict[str, Any]) -> str:
         return f"Commit on `{args.get('repo', '?')}`: {str(args.get('message', ''))[:120]}"
     if tool_name in ("write_file", "write_debug_script"):
         return f"Write file `{args.get('path') or args.get('filename', '?')}` in `{args.get('repo', '?')}`"
+    if tool_name == "write_company_script_file":
+        return f"Write company script file `{args.get('relative_path', '?')}` under `.alfred/scripts/`"
+    if tool_name == "create_company_script_package":
+        return f"Create company script package `{args.get('package_path', '?')}` under `.alfred/scripts/`"
     if tool_name == "git_prepare_branch":
         return f"Create branch `{args.get('branch_name', '?')}` from latest `{args.get('base_branch') or 'main'}`"
     if tool_name.startswith("jira") or tool_name in (

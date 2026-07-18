@@ -94,7 +94,7 @@ def test_detect_investigate_what_do_we_use_from_thread_repo():
         scope_id="1",
         thread_id="1",
         turns=[
-            ConversationTurn(role="user", content="do you have access to cipher repo?"),
+            ConversationTurn(role="user", content="do you have access to backend repo?"),
             ConversationTurn(
                 role="assistant",
                 content="Yes — I have access to the `AcmeCorp/platform` repo.",

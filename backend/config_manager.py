@@ -4,6 +4,7 @@ from __future__ import annotations
 import secrets as py_secrets
 import shutil
 from backend.paths import bundled_playbooks_dir
+from backend.integrations.company_scripts.catalog import seed_example_scripts
 from backend.integrations.google.credentials import credentials_json_type
 
 
@@ -74,7 +75,11 @@ class ConfigManager:
         )
         self.save_merged(config, secrets_obj)
         self._seed_playbooks()
+        self._seed_company_scripts()
         return config
+
+    def _seed_company_scripts(self) -> None:
+        seed_example_scripts(self.data_dir)
 
     def _seed_playbooks(self) -> None:
         """Create `.alfred/playbooks/` with an example file when empty."""

@@ -16,7 +16,7 @@ from backend.routing.playbooks import PlaybookStore
 
 def _config(**git_kw) -> AlfredConfig:
     cfg = AlfredConfig()
-    cfg.git = GitConfig(enabled=True, token="tok", main_repo="Org/cipher", write_enabled=True, **git_kw)
+    cfg.git = GitConfig(enabled=True, token="tok", main_repo="Org/backend", write_enabled=True, **git_kw)
     return cfg
 
 
@@ -38,13 +38,13 @@ def test_gate_create_pr_with_context_ready():
     task = Task(
         source="cli",
         user_id="cli",
-        raw_text="alfred pr on Org/cipher: add logging when fp_id is missing with unit test",
-        cleaned_intent="alfred pr on Org/cipher: add logging when fp_id is missing with unit test",
+        raw_text="alfred pr on Org/backend: add logging when order_id is missing with unit test",
+        cleaned_intent="alfred pr on Org/backend: add logging when order_id is missing with unit test",
     )
     result = gate_create_pr(task, _config(), session=None, slack_context=None)
     assert result.ready
     assert result.enriched_intent
-    assert "Org/cipher" in result.enriched_intent
+    assert "Org/backend" in result.enriched_intent
 
 
 def test_gate_create_pr_multi_turn_session():
@@ -53,7 +53,7 @@ def test_gate_create_pr_multi_turn_session():
         source="slack",
         scope_id="C1",
         thread_id="1",
-        metadata={"workflow_create_pr": {"awaiting": ["goal"], "repo": "Org/cipher"}},
+        metadata={"workflow_create_pr": {"awaiting": ["goal"], "repo": "Org/backend"}},
         turns=[],
     )
     task = Task(
@@ -61,8 +61,8 @@ def test_gate_create_pr_multi_turn_session():
         user_id="U1",
         channel_id="C1",
         thread_ts="1",
-        raw_text="add fp_id null guard with unit test",
-        cleaned_intent="add fp_id null guard with unit test",
+        raw_text="add order_id null guard with unit test",
+        cleaned_intent="add order_id null guard with unit test",
     )
     result = gate_create_pr(task, _config(), session=session, slack_context=None)
     assert result.ready
@@ -95,7 +95,7 @@ def test_gate_plan_with_description_ready():
 
 def test_build_cli_intents():
     cfg = _config()
-    assert "cipher" in build_cli_create_pr_intent("add tests", repo="Org/cipher", interactive=False, config=cfg)
+    assert "backend" in build_cli_create_pr_intent("add tests", repo="Org/backend", interactive=False, config=cfg)
     assert build_cli_plan_intent("fix bug", repo=None, interactive=False, config=cfg).startswith("alfred plan")
 
 

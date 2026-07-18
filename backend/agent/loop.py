@@ -212,7 +212,7 @@ def _execute_tool(
         checkpoint_name = "jira_tool_call"
     elif name.startswith(("git", "github")):
         checkpoint_name = "git_tool_call"
-    elif name.startswith(("athena", "cloudwatch", "grade_events")):
+    elif name.startswith(("athena", "cloudwatch")):
         checkpoint_name = "aws_tool_call"
 
     log_checkpoint(checkpoint_name, name, "started")
