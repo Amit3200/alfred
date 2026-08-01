@@ -49,20 +49,35 @@ class GovernanceContext:
 
         if requires_confirmation(tool_name):
             if self._confirmation_required_for_source():
-                if not session_has_write_approval(self.session, self._gov):
-                    summary = tool_action_summary(tool_name, arguments)
-                    msg = confirmation_required_message(tool_name, summary)
-                    self._audit(
-                        tool_name,
-                        arguments,
-                        kind="confirmation_required",
-                        success=False,
-                        message=msg,
-                        blocked=True,
-                    )
-                    return ToolResult.error(msg)
+                if not self._tool_auto_approved(tool_name):
+                    if not session_has_write_approval(self.session, self._gov):
+                        summary = tool_action_summary(tool_name, arguments)
+                        msg = confirmation_required_message(tool_name, summary)
+                        self._audit(
+                            tool_name,
+                            arguments,
+                            kind="confirmation_required",
+                            success=False,
+                            message=msg,
+                            blocked=True,
+                        )
+                        return ToolResult.error(msg)
 
         return None
+
+    def _tool_auto_approved(self, tool_name: str) -> bool:
+        if tool_name in self._gov.auto_approve_tools:
+            return True
+        sync = self.config.slack.list_jira_sync
+        if (
+            sync.enabled
+            and sync.auto_approve_jira_create
+            and tool_name == "jira_create_issue"
+        ):
+            from backend.integrations.slack.list_jira_sync import sync_channel_allowed
+
+            return sync_channel_allowed(self.task.channel_id or "", self.config)
+        return False
 
     def _confirmation_required_for_source(self) -> bool:
         if not self._gov.require_confirmation:

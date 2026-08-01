@@ -15,7 +15,7 @@ from backend.governance.confirmation import (
     session_has_write_approval,
 )
 from backend.governance.context import GovernanceContext
-from backend.models.config import AlfredConfig, GovernanceConfig
+from backend.models.config import AlfredConfig, GovernanceConfig, JiraConfig, SlackConfig, SlackListJiraSyncConfig
 from backend.models.session import ConversationSession
 from backend.models.task import Task
 from backend.tools.registry import ToolRegistry
@@ -85,6 +85,39 @@ def test_publish_tools_require_confirmation(tmp_path: Path):
     )
     assert blocked is not None
     assert "requires explicit approval" in blocked.data["message"]
+
+
+def test_auto_approve_tools_skips_jira_create_confirmation(tmp_path: Path):
+    config = _config(auto_approve_tools=["jira_create_issue"])
+    task = _task()
+    ctx = GovernanceContext(config, task, data_dir=tmp_path)
+    assert ctx.check_before_run(
+        "jira_create_issue",
+        {"project": "TECH-SUPPORT", "summary": "Bug", "issue_type": "Bug"},
+    ) is None
+
+
+def test_list_jira_sync_auto_approves_jira_create_in_watched_channel(tmp_path: Path):
+    config = AlfredConfig(
+        governance=GovernanceConfig(),
+        slack=SlackConfig(
+            enabled=True,
+            allowed_channels=["*"],
+            list_jira_sync=SlackListJiraSyncConfig(
+                enabled=True,
+                list_id="F0A5AS3HF9S",
+                jira_project="TECH-SUPPORT",
+                channel_ids=["GTECH"],
+            ),
+        ),
+        jira=JiraConfig(enabled=True),
+    )
+    task = _task(channel_id="GTECH")
+    ctx = GovernanceContext(config, task, data_dir=tmp_path)
+    assert ctx.check_before_run(
+        "jira_create_issue",
+        {"project": "TECH-SUPPORT", "summary": "Bug", "issue_type": "Bug"},
+    ) is None
 
 
 def test_session_approval_allows_publish(tmp_path: Path):

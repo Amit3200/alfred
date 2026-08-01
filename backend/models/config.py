@@ -43,6 +43,13 @@ class SlackListJiraSyncConfig(BaseModel):
         default=True,
         description="Post JIRA link in the Slack thread after creation.",
     )
+    auto_approve_jira_create: bool = Field(
+        default=True,
+        description=(
+            "When enabled with list_jira_sync, skip yes/proceed for jira_create_issue "
+            "in watched Slack channels (agent @alfred path)."
+        ),
+    )
 
 
 class SlackConfig(BaseModel):
@@ -461,6 +468,13 @@ class GovernanceConfig(BaseModel):
     write_allowed_users: list[str] = Field(
         default_factory=list,
         description="If set, only these Slack user IDs may invoke write tools.",
+    )
+    auto_approve_tools: list[str] = Field(
+        default_factory=list,
+        description=(
+            "Write tools that skip yes/proceed confirmation (still audited). "
+            "Example: jira_create_issue for trusted Slack ticket flows."
+        ),
     )
 
 
