@@ -97,6 +97,105 @@ def test_transition_issue_picks_matching_status(mock_session_cls):
     assert result["status"] == "In Review"
 
 
+@patch("backend.integrations.jira.api.requests.Session")
+def test_create_issue_resilient_falls_back_when_reporter_invalid(mock_session_cls):
+    session = MagicMock()
+    mock_session_cls.return_value = session
+    calls: list[dict] = []
+
+    def fake_request(method, url, **kwargs):
+        resp = MagicMock()
+        if method == "GET" and url.endswith("/myself"):
+            resp.status_code = 200
+            resp.content = b'{"accountId":"token-user"}'
+            resp.json.return_value = {"accountId": "token-user"}
+            return resp
+        if method == "GET" and "/user/search" in url:
+            resp.status_code = 200
+            resp.content = b"[]"
+            resp.json.return_value = []
+            return resp
+        if method == "POST" and url.endswith("/issue"):
+            fields = (kwargs.get("json") or {}).get("fields") or {}
+            calls.append(fields)
+            reporter = (fields.get("reporter") or {}).get("accountId")
+            if reporter == "unknown-user":
+                resp.status_code = 400
+                resp.text = '{"errors":{"reporter":"invalid"}}'
+                resp.json.return_value = {"errors": {"reporter": "invalid"}}
+                resp.reason = "Bad Request"
+                return resp
+            resp.status_code = 201
+            resp.content = b'{"key":"TS-9"}'
+            resp.json.return_value = {"key": "TS-9"}
+            return resp
+        resp.status_code = 200
+        resp.content = b"{}"
+        resp.json.return_value = {}
+        return resp
+
+    session.request.side_effect = fake_request
+
+    client = JiraApiClient(_config().jira, api_token="secret")
+    client._token_account_id = "token-user"
+    client.resolve_account_id = MagicMock(side_effect=lambda ident: "unknown-user" if ident else None)
+
+    result = client.create_issue(
+        project="TS",
+        summary="Test ticket",
+        issue_type="Task",
+        reporter="External Person",
+        resilient=True,
+    )
+    assert result["key"] == "TS-9"
+    assert any((c.get("reporter") or {}).get("accountId") == "token-user" for c in calls)
+
+
+@patch("backend.integrations.jira.api.requests.Session")
+def test_create_issue_resilient_drops_assignee_on_failure(mock_session_cls):
+    session = MagicMock()
+    mock_session_cls.return_value = session
+
+    def fake_request(method, url, **kwargs):
+        resp = MagicMock()
+        if method == "GET" and url.endswith("/myself"):
+            resp.status_code = 200
+            resp.content = b'{"accountId":"token-user"}'
+            resp.json.return_value = {"accountId": "token-user"}
+            return resp
+        if method == "POST" and url.endswith("/issue"):
+            fields = (kwargs.get("json") or {}).get("fields") or {}
+            if fields.get("assignee"):
+                resp.status_code = 400
+                resp.text = '{"errors":{"assignee":"invalid"}}'
+                resp.json.return_value = {"errors": {"assignee": "invalid"}}
+                resp.reason = "Bad Request"
+                return resp
+            resp.status_code = 201
+            resp.content = b'{"key":"TS-10"}'
+            resp.json.return_value = {"key": "TS-10"}
+            return resp
+        resp.status_code = 200
+        resp.content = b"[]"
+        resp.json.return_value = []
+        return resp
+
+    session.request.side_effect = fake_request
+
+    client = JiraApiClient(_config().jira, api_token="secret")
+    client._token_account_id = "token-user"
+    client.resolve_account_id = MagicMock(return_value="bad-assignee")
+
+    result = client.create_issue(
+        project="TS",
+        summary="Test",
+        issue_type="Task",
+        assignee="Nobody",
+        resilient=True,
+    )
+    assert result["key"] == "TS-10"
+
+
 def test_check_jira_disabled():
     pass
 

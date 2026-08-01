@@ -91,6 +91,7 @@ When the user asks to map **all / everyone / whole workspace** (e.g. ~23 people)
 
 - **Required Fields:** Summary, Project Key, Issue Type (Task/Story/Epic/Bug), and Priority.
 - **Protocol:** If mandatory fields are missing, ask the user to clarify before calling `jira_create_issue`.
+- **Reporter / assignee:** Put the Slack submitter in `description`. Optional `reporter` only when they exist in JIRA; otherwise omit and Alfred uses the API token user. Never fail creation because assignee/reporter is unknown — leave unassigned.
 
 # Step-by-Step Execution Protocol
 

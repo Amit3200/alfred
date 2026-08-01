@@ -11,6 +11,7 @@ from backend.integrations.slack.list_jira_sync import (
     should_handle_message_event,
     sync_channel_allowed,
     try_sync_list_message,
+    _submitter_name,
 )
 from backend.models.config import AlfredConfig, JiraConfig, SlackConfig, SlackListJiraSyncConfig
 
@@ -139,9 +140,15 @@ def test_sync_creates_jira_for_not_picked(tmp_path: Path):
     assert call["project"] == "TECH-SUPPORT"
     assert call["issue_type"] == "Bug"
     assert call["priority"] == "Medium"
+    assert call["resilient"] is True
     assert "Integration with delivery app" in call["summary"]
     assert "Unable to download invoice" in call["description"]
     assert "QueensNdolls" in call["description"]
+
+
+def test_submitter_name_from_list_fields():
+    fields = {"Submitted by": "Amit Singh Sansoya", "Name": "Test"}
+    assert _submitter_name(fields, {}) == "Amit Singh Sansoya"
 
 
 def test_sync_skips_in_progress_status(tmp_path: Path):

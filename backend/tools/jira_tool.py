@@ -222,6 +222,14 @@ JIRA_CREATE_ISSUE = ToolSchema(
             },
             "priority": {"type": "string", "description": "Optional priority, e.g. High."},
             "description": {"type": "string", "description": "Optional description."},
+            "reporter": {
+                "type": "string",
+                "description": "Optional reporter name or email. Falls back to API token user if unknown.",
+            },
+            "assignee": {
+                "type": "string",
+                "description": "Optional assignee name or email. Omitted if user not found in JIRA.",
+            },
         },
         "required": ["project", "summary", "issue_type"],
     },
@@ -377,6 +385,9 @@ def register_jira_tools(registry: ToolRegistry, config: AlfredConfig) -> None:
                 issue_type=issue_type,
                 priority=str(args.get("priority") or "") or None,
                 description=str(args.get("description") or "") or None,
+                reporter=str(args.get("reporter") or "") or None,
+                assignee=str(args.get("assignee") or "") or None,
+                resilient=True,
             )
             return ToolResult.jira_action("create", result)
         except (RuntimeError, ValueError) as exc:

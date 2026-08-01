@@ -134,22 +134,35 @@ def try_sync_list_message(
         )
 
     priority = _map_priority(_field_value_ci(fields, "Severity"))
+    submitter = _submitter_name(fields, event)
     description = _build_description(
         event,
         fields,
         record_id=record_id,
         list_id=sync.list_id.strip(),
         channel_id=channel_id,
+        submitter=submitter,
     )
+
+    project_key = (sync.jira_project or config.jira.default_project or "").strip().upper()
+    if not project_key:
+        return ListJiraSyncResult(
+            created=False,
+            skipped=True,
+            skip_reason="missing_jira_project",
+            record_id=record_id,
+        )
 
     try:
         client = jira_client or JiraApiClient.from_alfred_config(config)
         created = client.create_issue(
-            project=sync.jira_project,
+            project=project_key,
             summary=summary,
             issue_type=sync.issue_type,
             priority=priority,
             description=description,
+            reporter=submitter or None,
+            resilient=True,
         )
     except Exception as exc:
         logger.exception("list_jira_sync failed for record %s", record_id)
@@ -243,6 +256,18 @@ def _build_summary(event: dict, fields: dict[str, str]) -> str:
     return ""
 
 
+def _submitter_name(fields: dict[str, str], event: dict) -> str:
+    for label in ("Submitted by", "submitted by", "Reporter", "reporter"):
+        value = fields.get(label) or _field_value_ci(fields, label)
+        if value.strip():
+            return value.strip()
+    text = str(event.get("text") or "")
+    if "reported" in text.lower():
+        # Workflow text like "<@U123> reported a bug" — name often in list fields instead.
+        pass
+    return ""
+
+
 def _build_description(
     event: dict,
     fields: dict[str, str],
@@ -250,8 +275,13 @@ def _build_description(
     record_id: str,
     list_id: str,
     channel_id: str,
+    submitter: str = "",
 ) -> str:
     lines = ["Auto-created from Slack List (Bugs tracker).", ""]
+    if submitter:
+        lines.append(f"Slack submitter: {submitter}")
+        lines.append("(JIRA reporter falls back to API token user if submitter has no JIRA account.)")
+        lines.append("")
     for label, value in fields.items():
         if label in _DESCRIPTION_SKIP or label.lower() in {name.lower() for name in _DESCRIPTION_SKIP}:
             continue

@@ -94,6 +94,50 @@ class JiraApiClient:
     def ping(self) -> dict[str, Any]:
         return self._request("GET", "/rest/api/3/myself")
 
+    def token_account_id(self) -> str | None:
+        """Account ID for the configured API token user (default reporter fallback)."""
+        cached = getattr(self, "_token_account_id", None)
+        if cached is not None:
+            return cached or None
+        try:
+            account_id = str(self.ping().get("accountId") or "").strip()
+        except Exception:
+            account_id = ""
+        self._token_account_id = account_id
+        return account_id or None
+
+    def resolve_account_id(self, identifier: str) -> str | None:
+        """Resolve a display name, email, or accountId to a JIRA accountId."""
+        needle = (identifier or "").strip()
+        if not needle:
+            return None
+        if re.fullmatch(r"\d{6}:[0-9a-f-]{36}", needle, re.I):
+            return needle
+
+        mapped = self.config.assignee_map.get(needle) or self.config.assignee_map.get(needle.lower())
+        if mapped:
+            needle = mapped.strip()
+
+        try:
+            users = self.search_users(needle, max_results=10)
+        except RuntimeError:
+            return None
+        if not users:
+            return None
+
+        if "@" in needle:
+            for user in users:
+                if str(user.get("emailAddress") or "").lower() == needle.lower():
+                    return str(user.get("accountId") or "") or None
+
+        lower = needle.lower()
+        for user in users:
+            display = str(user.get("displayName") or "").lower()
+            if display == lower or lower in display:
+                return str(user.get("accountId") or "") or None
+        account_id = str(users[0].get("accountId") or "").strip()
+        return account_id or None
+
     def search_users(self, query: str, *, max_results: int = 10) -> list[dict[str, Any]]:
         needle = (query or "").strip()
         if not needle:
@@ -298,6 +342,9 @@ class JiraApiClient:
         issue_type: str,
         priority: str | None = None,
         description: str | None = None,
+        reporter: str | None = None,
+        assignee: str | None = None,
+        resilient: bool = True,
     ) -> dict[str, Any]:
         project_key = project.strip().upper()
         self._project_allowed(project_key)
@@ -307,15 +354,89 @@ class JiraApiClient:
             raise ValueError("summary is required.")
         if not kind:
             raise ValueError("issue_type is required.")
-        fields: dict[str, Any] = {
+
+        base_fields: dict[str, Any] = {
             "project": {"key": project_key},
             "summary": title,
             "issuetype": {"name": kind},
         }
         if priority and priority.strip():
-            fields["priority"] = {"name": priority.strip()}
+            base_fields["priority"] = {"name": priority.strip()}
         if description and description.strip():
-            fields["description"] = _adf_paragraph(description.strip())
+            base_fields["description"] = _adf_paragraph(description.strip())
+
+        if not resilient:
+            fields = dict(base_fields)
+            self._apply_user_fields(fields, reporter=reporter, assignee=assignee)
+            return self._finalize_create(fields, project_key=project_key, title=title, kind=kind)
+
+        last_error = "JIRA create failed."
+        reporter_candidates: list[str | None] = []
+        preferred = self.resolve_account_id(reporter) if reporter else None
+        token = self.token_account_id()
+        if preferred:
+            reporter_candidates.append(preferred)
+        if token and token not in reporter_candidates:
+            reporter_candidates.append(token)
+        reporter_candidates.append(None)
+
+        assignee_id = self.resolve_account_id(assignee) if assignee else None
+
+        for drop_priority in (False, True):
+            for reporter_id in reporter_candidates:
+                fields = dict(base_fields)
+                if drop_priority:
+                    fields.pop("priority", None)
+                if reporter_id:
+                    fields["reporter"] = {"accountId": reporter_id}
+                if assignee_id:
+                    fields["assignee"] = {"accountId": assignee_id}
+                try:
+                    return self._finalize_create(
+                        fields,
+                        project_key=project_key,
+                        title=title,
+                        kind=kind,
+                    )
+                except RuntimeError as exc:
+                    last_error = str(exc)
+                    if assignee_id and "assignee" in fields:
+                        fields.pop("assignee", None)
+                        try:
+                            return self._finalize_create(
+                                fields,
+                                project_key=project_key,
+                                title=title,
+                                kind=kind,
+                            )
+                        except RuntimeError as retry_exc:
+                            last_error = str(retry_exc)
+                    continue
+
+        raise RuntimeError(last_error)
+
+    def _apply_user_fields(
+        self,
+        fields: dict[str, Any],
+        *,
+        reporter: str | None,
+        assignee: str | None,
+    ) -> None:
+        reporter_id = self.resolve_account_id(reporter) if reporter else None
+        assignee_id = self.resolve_account_id(assignee) if assignee else None
+        if reporter_id:
+            fields["reporter"] = {"accountId": reporter_id}
+        if assignee_id:
+            fields["assignee"] = {"accountId": assignee_id}
+
+    def _finalize_create(
+        self,
+        fields: dict[str, Any],
+        *,
+        project_key: str,
+        title: str,
+        kind: str,
+    ) -> dict[str, Any]:
         data = self._request("POST", "/rest/api/3/issue", json={"fields": fields})
         key = str(data.get("key") or "")
         return {
