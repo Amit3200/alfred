@@ -107,6 +107,39 @@ def build_slack_bolt_app(
             )
             worker.start()
 
+    if config.slack.list_jira_sync.enabled:
+        from backend.integrations.slack.list_jira_sync import (
+            announce_sync_result,
+            should_handle_message_event,
+            try_sync_list_message,
+        )
+
+        @app.event("message")
+        def handle_list_jira_sync_message(event: dict, client: Any, logger: Any) -> None:  # noqa: ARG001
+            if not should_handle_message_event(event, bot_user_id=bot_user_id):
+                return
+            if data_dir is None:
+                return
+
+            def _run_sync() -> None:
+                try:
+                    result = try_sync_list_message(event, config, data_dir=data_dir)
+                    if result.created or result.error:
+                        announce_sync_result(
+                            client,
+                            event,
+                            result,
+                            config.slack.list_jira_sync,
+                        )
+                except Exception:
+                    logger.exception("list_jira_sync handler failed")
+
+            threading.Thread(
+                target=_run_sync,
+                daemon=True,
+                name="alfred-list-jira-sync",
+            ).start()
+
     @app.action("feedback_good")
     def handle_feedback_good(ack: Any, body: dict, respond: Any) -> None:
         ack()

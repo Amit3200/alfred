@@ -15,12 +15,43 @@ class ServerConfig(BaseModel):
     admin_password: str | None = None
 
 
+class SlackListJiraSyncConfig(BaseModel):
+    """Auto-create JIRA bugs when Slack List workflow posts eligible tickets."""
+
+    enabled: bool = Field(
+        default=False,
+        description="Listen for Slack List workflow messages and create JIRA issues automatically.",
+    )
+    list_id: str = Field(
+        default="",
+        description="Slack List ID (e.g. F0A5AS3HF9S). Empty = any list record in allowed channels.",
+    )
+    jira_project: str = Field(
+        default="TECH-SUPPORT",
+        description="JIRA project key for auto-created issues.",
+    )
+    issue_type: str = Field(default="Bug", description="JIRA issue type name.")
+    eligible_statuses: list[str] = Field(
+        default_factory=lambda: ["Not picked"],
+        description="Create JIRA only when Slack List Status matches one of these labels.",
+    )
+    channel_ids: list[str] = Field(
+        default_factory=list,
+        description="Slack channel IDs to watch. Empty = use slack.allowed_channels.",
+    )
+    announce_in_thread: bool = Field(
+        default=True,
+        description="Post JIRA link in the Slack thread after creation.",
+    )
+
+
 class SlackConfig(BaseModel):
     enabled: bool = False
     bot_token: str = ""
     signing_secret: str = ""
     app_token: str = ""
     allowed_channels: list[str] = Field(default_factory=lambda: ["*"])
+    list_jira_sync: SlackListJiraSyncConfig = Field(default_factory=SlackListJiraSyncConfig)
     loading_messages: list[str] = Field(
         default_factory=list,
         description=(

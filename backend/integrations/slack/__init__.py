@@ -1,5 +1,7 @@
-"""Slack ingress package."""
+"""Slack ingress package.
 
-from backend.integrations.slack.listener import SlackSocketRunner, slack_listener_ready
+Import submodules directly (e.g. ``backend.integrations.slack.listener``) to avoid
+import cycles through ``slack_lists`` ↔ ``listener`` ↔ ``list_jira_sync``.
+"""
 
-__all__ = ["SlackSocketRunner", "slack_listener_ready"]
+__all__: list[str] = []

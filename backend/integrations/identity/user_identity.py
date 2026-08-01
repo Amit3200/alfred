@@ -35,14 +35,23 @@ _IDENTITY_FIELD_MARKERS = (
 )
 
 _IDENTITY_ACTION_MARKERS = (
-    "map",
-    "mapping",
-    "mapped",
     "assignee map",
     "user map",
+    "identity map",
     "identity",
     "cross-reference",
     "cross reference",
+)
+
+_CREATE_JIRA_RE = re.compile(
+    r"\b(?:create|file|raise|open|log|submit)\b.*\b(?:jira|issue|ticket|bug)\b"
+    r"|\b(?:jira|issue|ticket|bug)\b.*\b(?:create|file|raise|open|log|submit)\b",
+    re.I,
+)
+
+_PRIORITY_MAP_RE = re.compile(
+    r"\bmap\s+(?:from|to)\b.*\b(?:severity|priority|high|medium|low)\b",
+    re.I,
 )
 
 _NAME_OF_PERSON_RE = re.compile(
@@ -81,8 +90,17 @@ def is_workspace_identity_request(intent: str) -> bool:
     return False
 
 
+def looks_like_jira_create_request(intent: str) -> bool:
+    """True when the user wants a new JIRA issue, not identity lookup."""
+    return bool(_CREATE_JIRA_RE.search(intent or ""))
+
+
 def is_user_identity_lookup(intent: str) -> bool:
     """True when the user wants Slack/JIRA identity fields, not ticket search."""
+    if looks_like_jira_create_request(intent):
+        return False
+    if _PRIORITY_MAP_RE.search(intent or ""):
+        return False
     if is_workspace_identity_request(intent):
         return True
     lower = (intent or "").lower()

@@ -127,6 +127,37 @@ def extract_embedded_list_records(
     return results
 
 
+def list_record_to_field_map(
+    record: dict[str, Any],
+    *,
+    schema: list[dict[str, Any]] | None = None,
+) -> dict[str, str]:
+    """Map Slack List column labels to display values."""
+    fields = record.get("fields") or []
+    if not isinstance(fields, list):
+        return {}
+
+    schema_by_key = _schema_by_key(schema or [])
+    schema_by_column = _schema_by_column(schema or [])
+    mapping: dict[str, str] = {}
+
+    for field in fields:
+        if not isinstance(field, dict):
+            continue
+        label = _field_label(field, schema_by_key=schema_by_key, schema_by_column=schema_by_column)
+        value = _field_value(field, schema_by_key=schema_by_key, schema_by_column=schema_by_column)
+        if label and value:
+            mapping[label] = value
+
+    if not mapping.get("Name") and not mapping.get("Title"):
+        title = _field_value_by_key(fields, "name", schema=schema) or _field_value_by_key(
+            fields, "title", schema=schema
+        )
+        if title:
+            mapping["Name"] = title
+    return mapping
+
+
 def format_list_record(
     record: dict[str, Any],
     *,

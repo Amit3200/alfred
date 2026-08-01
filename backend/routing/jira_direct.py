@@ -1,7 +1,10 @@
 """Direct JIRA tool routing for unambiguous ticket questions."""
 
 from __future__ import annotations
-from backend.integrations.identity.user_identity import detect_user_identity_action
+from backend.integrations.identity.user_identity import (
+    detect_user_identity_action,
+    looks_like_jira_create_request,
+)
 
 
 import re
@@ -53,7 +56,8 @@ def detect_jira_direct_action(
     session: Any | None = None,
 ) -> tuple[str, dict[str, Any]] | None:
     if task is not None:
-
+        if looks_like_jira_create_request(intent):
+            return None
 
         if identity := detect_user_identity_action(
             intent, config, task, session=session, data_dir=data_dir

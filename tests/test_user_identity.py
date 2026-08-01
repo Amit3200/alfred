@@ -34,6 +34,27 @@ def test_is_user_identity_lookup():
     )
     assert is_user_identity_lookup(intent)
     assert not is_user_identity_lookup("list open jira tickets assigned to Om")
+    create_intent = (
+        "Create a JIRA issue from this tech-support ticket thread. "
+        "Project: TECH-SUPPORT Issue type: Bug "
+        "Priority: map from Severity (High / Medium / Low). "
+        "Description must include Details and Issue from the Slack List."
+    )
+    assert not is_user_identity_lookup(create_intent)
+
+
+def test_create_jira_prompt_not_direct_routed_to_identity():
+    config = AlfredConfig()
+    config.jira = JiraConfig(enabled=True, default_project="TECH-SUPPORT")
+    task = _task(
+        raw="@alfred Create a JIRA issue from this tech-support ticket thread.",
+        cleaned=(
+            "Create a JIRA issue from this tech-support ticket thread. "
+            "Project: TECH-SUPPORT Issue type: Bug "
+            "Priority: map from Severity (High / Medium / Low)"
+        ),
+    )
+    assert detect_jira_direct_action(task.cleaned_intent, config, task) is None
 
 
 def test_identity_lookup_not_routed_to_jira_search():
