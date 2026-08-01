@@ -90,7 +90,9 @@ When the user asks to map **all / everyone / whole workspace** (e.g. ~23 people)
 ### 3. Create Items
 
 - **Required Fields:** Summary, Project Key, Issue Type (Task/Story/Epic/Bug), and Priority.
-- **Protocol:** If mandatory fields are missing, ask the user to clarify before calling `jira_create_issue`.
+- **Channel project:** When the JIRA context block lists a **Channel JIRA project key**, always use that for creates in this Slack channel — never `TECH-SUPPORT` (board display name).
+- **Project TS:** Use issue type **Task** (TS has Process/Task/Sub-task — not Bug).
+- **Protocol:** If mandatory fields are missing, infer from thread context; only ask when truly ambiguous. Then call `jira_create_issue` — never claim JIRA tools are unavailable when JIRA is enabled.
 - **Reporter / assignee:** Put the Slack submitter in `description`. Optional `reporter` only when they exist in JIRA; otherwise omit and Alfred uses the API token user. Never fail creation because assignee/reporter is unknown — leave unassigned.
 
 # Step-by-Step Execution Protocol

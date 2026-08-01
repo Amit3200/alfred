@@ -278,8 +278,15 @@ class PlaybookStore:
             sections.append("")
 
         from backend.integrations.company_scripts.catalog import CompanyScriptStore
+        from backend.config_manager import ConfigManager
 
-        store = CompanyScriptStore(data_dir)
+        merged_config = None
+        if data_dir is not None:
+            try:
+                merged_config, _ = ConfigManager(data_dir).load_merged()
+            except Exception:
+                merged_config = None
+        store = CompanyScriptStore(data_dir, config=merged_config)
         linked_scripts: list[str] = []
         for playbook in playbooks:
             linked_scripts.extend(playbook.scripts)

@@ -85,6 +85,18 @@ async def _lifespan(app: FastAPI):
         except Exception:
             logger.exception("Mirror workspace cleanup failed")
 
+        try:
+            if config.scripts.enabled and config.scripts.remote.repo and config.scripts.remote.sync_on_startup:
+                from backend.integrations.company_scripts.sync import sync_scripts_repository
+
+                result = sync_scripts_repository(config, manager.data_dir)
+                if result.get("ok"):
+                    logger.info("Scripts repo sync: %s", result.get("message"))
+                elif not result.get("skipped"):
+                    logger.warning("Scripts repo sync failed: %s", result.get("message"))
+        except Exception:
+            logger.exception("Scripts repo startup sync failed")
+
     yield
     slack_runner.stop()
     scheduler.stop()

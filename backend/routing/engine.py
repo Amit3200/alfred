@@ -12,6 +12,7 @@ if TYPE_CHECKING:
 from backend.models.config import AlfredConfig
 from backend.routing.bm25 import route_by_bm25
 from backend.routing.heuristics import create_pr_route_decision, route_by_heuristic
+from backend.routing.jira_direct import jira_create_route_decision
 from backend.routing.keyword import playbook_for_decision, route_by_keyword
 from backend.routing.llm import LLMSkillMatcher
 from backend.routing.tool_availability import playbook_has_runnable_tools
@@ -46,6 +47,15 @@ class SkillRouter:
                 ):
                     logger.debug("Skill route: %s via create-pr priority", playbook.name)
                     return RouteResult(playbook=playbook, decision=create_pr)
+
+            jira_create = jira_create_route_decision(context, self._store, self._config)
+            if jira_create.matched:
+                playbook = playbook_for_decision(jira_create, self._store)
+                if playbook is not None and playbook_has_runnable_tools(
+                    playbook.allowed_tools, self._config
+                ):
+                    logger.debug("Skill route: %s via jira-create priority", playbook.name)
+                    return RouteResult(playbook=playbook, decision=jira_create)
 
         keyword = route_by_keyword(context, self._store)
         if keyword.matched:

@@ -48,7 +48,7 @@ Config and encrypted secrets live in `.alfred/` (not a SaaS). Optional Ollama on
 | **Graphify** | Optional code graphs on sync — `query_graph` when `git.graphify_enabled`. |
 | **Task queue** | Persistent SQLite queue + background worker; checkpoint timeline in Admin → Usage. |
 | **Playbooks** | `.alfred/playbooks/*.md` — company triggers, formatting, investigation tools (local only). |
-| **Company scripts** | `.alfred/scripts/` — nested packages; Alfred can create/edit via tools; Admin → Scripts for review; playbooks link via `scripts:` + `run_company_script`. |
+| **Company scripts** | Local `.alfred/scripts/` plus optional Git repo (`scripts.remote.repo`, e.g. `FlexyPe/alfred_scripts`); `alfred scripts sync`; isolated venv for deps; playbooks link via `scripts:` + `run_company_script`. See [docs/scripts/remote-repo.md](docs/scripts/remote-repo.md). |
 | **Skills** | Bundled `skills/*.md` — investigate, review PR, git status, JIRA, AWS, summarize alerts. |
 | **AI** | Ollama, OpenAI-compat, Anthropic, Gemini, Kimi — per-task routing (`investigation`, `skill_matching`, …). |
 | **Task Planning** | Checklist-Based Task Planning Mode — pre-plans complex workflows, executes checklist step-by-step (`.alfred/plans/`). |

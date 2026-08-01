@@ -5,7 +5,7 @@ from __future__ import annotations
 import re
 
 from backend.routing.git_direct import looks_like_code_investigation
-from backend.routing.jira_direct import looks_like_jira_question
+from backend.routing.jira_direct import looks_like_jira_question, jira_create_route_decision
 from backend.integrations.identity.user_identity import is_user_identity_lookup
 
 
@@ -157,7 +157,11 @@ def route_by_heuristic(
     if config.jira.enabled:
         pass
 
-        if looks_like_jira_question(context.intent):
+        if looks_like_jira_question(
+            context.intent,
+            session_turns=context.session_turns,
+            thread_context=context.thread_context,
+        ):
             for name in ("jira_management", "jira_ticket"):
                 if store.get_by_name(name):
                     return RouteDecision(

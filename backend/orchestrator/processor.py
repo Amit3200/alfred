@@ -185,6 +185,20 @@ class TaskProcessor:
             repo=repo_hint,
         )
         investigation = self._skill_router.route_investigation(route_context).playbook
+        if investigation is None and self.config.jira.enabled:
+            from backend.routing.jira_intent import (
+                looks_like_jira_create_followup,
+                looks_like_jira_create_request,
+            )
+
+            if looks_like_jira_create_request(task.cleaned_intent) or looks_like_jira_create_followup(
+                task.cleaned_intent,
+                session_turns=route_context.session_turns,
+                thread_context=route_context.thread_context,
+            ):
+                investigation = self._playbooks.get_by_name("jira_management")
+                if investigation:
+                    logger.info("Forced jira_management for JIRA create intent (routing miss)")
 
         workflow_response, workflow_meta = self._try_workflow_entry(
             investigation,
@@ -401,7 +415,36 @@ class TaskProcessor:
                         )
                         if inv_patch:
                             metadata_patch = {**(metadata_patch or {}), **inv_patch}
-                    elif not content:
+                if response is None and self.config.jira.enabled and (
+                    not content or _looks_like_missing_tools_reply(raw)
+                ):
+                    from backend.routing.jira_intent import (
+                        looks_like_jira_create_followup,
+                        looks_like_jira_create_request,
+                    )
+
+                    if looks_like_jira_create_request(task.cleaned_intent) or looks_like_jira_create_followup(
+                        task.cleaned_intent,
+                        session_turns=route_context.session_turns,
+                        thread_context=route_context.thread_context,
+                    ):
+                        inv = self._playbooks.get_by_name("jira_management")
+                        if inv and inv.allowed_tools:
+                            set_call_kind("investigation")
+                            inv_name, inv_provider, inv_model = self._resolve_llm("investigation")
+                            response, inv_patch = self._run_investigation(
+                                inv,
+                                messages,
+                                provider=inv_provider,
+                                model=inv_model,
+                                task=task,
+                                session=session,
+                            )
+                            if inv_patch:
+                                metadata_patch = {**(metadata_patch or {}), **inv_patch}
+
+                if response is None:
+                    if not content:
                         response = AssistantResponse.from_text(
                             "I couldn't generate a reply — the model returned an empty response. "
                             "For Kimi K2.6, try again or check Admin → AI; large Slack summaries "
@@ -409,14 +452,6 @@ class TaskProcessor:
                         )
                     else:
                         response = AssistantResponse.from_text(content)
-                elif content:
-                    response = AssistantResponse.from_text(content)
-                else:
-                    response = AssistantResponse.from_text(
-                        "I couldn't generate a reply — the model returned an empty response. "
-                        "For Kimi K2.6, try again or check Admin → AI; large Slack summaries "
-                        "may need a playbook for ticket formatting."
-                    )
 
         if session_key and self.session_store:
             raise_if_cancelled(self._data_dir_path(), task.id)
@@ -940,6 +975,22 @@ class TaskProcessor:
 
         messages.append(Message(role="user", content=user_content))
         return messages
+
+
+_MISSING_TOOLS_REPLY_MARKERS = (
+    "don't currently have jira",
+    "do not currently have jira",
+    "don't have jira",
+    "no jira ticket creation",
+    "jira tools are not available",
+    "jira tools aren't available",
+    "only have athena",
+)
+
+
+def _looks_like_missing_tools_reply(raw: str) -> bool:
+    lower = (raw or "").lower()
+    return any(marker in lower for marker in _MISSING_TOOLS_REPLY_MARKERS)
 
 
 def _tool_result_to_response(result: ToolResult) -> AssistantResponse | None:

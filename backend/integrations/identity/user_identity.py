@@ -43,10 +43,9 @@ _IDENTITY_ACTION_MARKERS = (
     "cross reference",
 )
 
-_CREATE_JIRA_RE = re.compile(
-    r"\b(?:create|file|raise|open|log|submit)\b.*\b(?:jira|issue|ticket|bug)\b"
-    r"|\b(?:jira|issue|ticket|bug)\b.*\b(?:create|file|raise|open|log|submit)\b",
-    re.I,
+from backend.routing.jira_intent import (
+    looks_like_jira_create_followup,
+    looks_like_jira_create_request,
 )
 
 _PRIORITY_MAP_RE = re.compile(
@@ -137,11 +136,6 @@ def is_workspace_identity_request(intent: str) -> bool:
         if _mentions_jira(intent):
             return True
     return False
-
-
-def looks_like_jira_create_request(intent: str) -> bool:
-    """True when the user wants a new JIRA issue, not identity lookup."""
-    return bool(_CREATE_JIRA_RE.search(intent or ""))
 
 
 def is_user_identity_lookup(intent: str) -> bool:

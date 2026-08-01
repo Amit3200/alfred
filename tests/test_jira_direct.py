@@ -9,6 +9,7 @@ from backend.models.config import AlfredConfig, JiraConfig
 def test_looks_like_jira_question():
     assert looks_like_jira_question("what is the status of ENG-42")
     assert looks_like_jira_question("open jira tickets in ENG")
+    assert looks_like_jira_question("create the above ticket in TS board")
     assert not looks_like_jira_question("hello there")
 
 

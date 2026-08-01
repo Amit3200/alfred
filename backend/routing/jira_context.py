@@ -38,6 +38,37 @@ _LIST_HINTS = (
 
 _DEFAULT_CLOSED_STATUSES = ("Done", "Closed", "Resolved", "Cancelled")
 
+_INTENT_PROJECT_KEY_RE = re.compile(r"\b(TS|TECH)\b(?:\s+board)?", re.I)
+
+
+def resolve_jira_project_for_task(task: Task, config: AlfredConfig) -> str | None:
+    """Best project key for this Slack channel / thread (never board display names like TECH-SUPPORT)."""
+    jira = config.jira
+    channel_id = (task.channel_id or "").strip()
+
+    if channel_id and jira.channel_projects.get(channel_id):
+        return jira.channel_projects[channel_id].strip().upper()
+
+    sync = config.slack.list_jira_sync
+    if sync.enabled and sync.jira_project.strip():
+        if not sync.channel_ids or channel_id in sync.channel_ids:
+            return sync.jira_project.strip().upper()
+
+    combined = f"{task.cleaned_intent}\n{task.raw_text}"
+    lower = combined.lower()
+    if "#tech-support" in lower or "tech-support channel" in lower:
+        if sync.jira_project.strip():
+            return sync.jira_project.strip().upper()
+
+    for match in _INTENT_PROJECT_KEY_RE.finditer(combined):
+        key = match.group(1).upper()
+        if key == "TS":
+            return "TS"
+        if key == "TECH" and "TECH-SUPPORT" not in combined.upper():
+            return "TECH"
+
+    return None
+
 
 def jira_project_keys(config: JiraConfig) -> list[str]:
     if config.allowed_projects:
@@ -69,8 +100,34 @@ def format_jira_context_for_prompt(
         parts.append(f"- Active JIRA ticket: `{active_ticket}` (referenced in thread context)")
 
     projects = jira_project_keys(jira)
-    if projects:
+    channel_project = resolve_jira_project_for_task(task, config)
+    if channel_project:
+        parts.append(
+            f"- **Channel JIRA project key:** `{channel_project}` — use this for create/search "
+            "in this channel. `TECH-SUPPORT` is a board name, not a project key."
+        )
+        if channel_project not in projects:
+            projects = [channel_project, *projects]
+    elif projects:
         parts.append(f"- Default project scope: {', '.join(f'`{p}`' for p in projects)}")
+    else:
+        parts.append("- Default project scope: not configured — ask or infer from thread context.")
+
+    from backend.routing.jira_intent import (
+        looks_like_jira_create_followup,
+        looks_like_jira_create_request,
+    )
+
+    if looks_like_jira_create_request(task.cleaned_intent) or looks_like_jira_create_followup(
+        task.cleaned_intent,
+        session_turns=tuple(turn.content for turn in session.turns[-6:]) if session else (),
+    ):
+        parts.append(
+            "- **Action:** User wants a new JIRA issue — call `jira_create_issue` with the channel "
+            "project key above. Use issue type **Task** for project `TS` unless the user specifies "
+            "otherwise. Pull summary/description from thread context; do not claim tools are missing."
+        )
+
     if jira.assignee_map:
         mapped = ", ".join(f"`{k}` → `{v}`" for k, v in list(jira.assignee_map.items())[:8])
         parts.append(f"- Known assignee mappings: {mapped}")
@@ -236,7 +293,10 @@ def detect_jira_list_action(
     if not config.jira.enabled or task is None:
         return None
 
-    from backend.integrations.identity.user_identity import is_user_identity_lookup, looks_like_slack_ticket_list_request
+    from backend.integrations.identity.user_identity import (
+        is_user_identity_lookup,
+        looks_like_slack_ticket_list_request,
+    )
     if is_user_identity_lookup(intent):
         return None
     if looks_like_slack_ticket_list_request(intent):

@@ -138,7 +138,7 @@ def register_company_script_tools(
         return
 
     def list_handler(_args: dict[str, Any]) -> ToolResult:
-        store = CompanyScriptStore(data_dir)
+        store = CompanyScriptStore(data_dir, config=config)
         scripts = store.list_scripts()
         return ToolResult(
             kind="company_script_list",

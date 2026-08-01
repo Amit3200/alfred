@@ -565,6 +565,37 @@ def slack_emojis(
 
 
 @main.group()
+def scripts() -> None:
+    """Company script packages (local + remote Git repo)."""
+
+
+@scripts.command("sync")
+@click.option("--data-dir", type=click.Path(path_type=Path), default=None)
+def scripts_sync(data_dir: Path | None) -> None:
+    """Pull scripts.remote.repo, install requirements, and refresh the catalog."""
+    manager = ConfigManager(data_dir)
+    if not manager.is_initialized():
+        click.echo("Alfred not initialized. Run: alfred init")
+        raise SystemExit(1)
+    config, _ = manager.load_merged()
+    from backend.integrations.company_scripts.sync import sync_scripts_repository
+
+    result = sync_scripts_repository(config, manager.data_dir)
+    if result.get("skipped"):
+        click.echo(result.get("message") or "Skipped.")
+        return
+    if result.get("ok"):
+        click.echo(result.get("message") or "Scripts synced.")
+        if result.get("scripts_root"):
+            click.echo(f"Scripts root: {result['scripts_root']}")
+        if result.get("python"):
+            click.echo(f"Python: {result['python']}")
+    else:
+        click.echo(result.get("message") or "Scripts sync failed.", err=True)
+        raise SystemExit(1)
+
+
+@main.group()
 def git() -> None:
     """Manage local repository mirrors."""
 
@@ -591,6 +622,18 @@ def git_sync(data_dir: Path | None) -> None:
             click.echo(f"  • {item['repo']}: {item.get('action', 'ok')}")
         else:
             click.echo(f"  • {item['repo']}: ERROR {item.get('error')}")
+
+    if config.scripts.enabled and config.scripts.remote.repo and config.scripts.remote.sync_on_git_sync:
+        from backend.integrations.company_scripts.sync import sync_scripts_repository
+
+        scripts_result = sync_scripts_repository(config, manager.data_dir)
+        if scripts_result.get("skipped"):
+            click.echo(f"  • scripts: skipped ({scripts_result.get('message')})")
+        elif scripts_result.get("ok"):
+            click.echo(f"  • scripts: {scripts_result.get('message')}")
+        else:
+            click.echo(f"  • scripts: ERROR {scripts_result.get('message')}")
+
     if not all(item.get("ok") for item in results):
         raise SystemExit(1)
 

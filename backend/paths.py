@@ -51,8 +51,17 @@ def playbooks_dir(data_dir: Path | None = None) -> Path:
 
 
 def company_scripts_dir(data_dir: Path | None = None) -> Path:
-    """Company-specific Python scripts — local only, under `.alfred/scripts/`."""
+    """Local company script overrides — `.alfred/scripts/`."""
     return get_data_dir(data_dir) / "scripts"
+
+
+def scripts_venv_dir(data_dir: Path | None = None) -> Path:
+    """Isolated venv for remote script package dependencies."""
+    return get_data_dir(data_dir) / "scripts-venv"
+
+
+def scripts_sync_state_path(data_dir: Path | None = None) -> Path:
+    return get_data_dir(data_dir) / "scripts-sync.json"
 
 
 def bundled_playbooks_dir() -> Path:

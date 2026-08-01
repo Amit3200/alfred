@@ -20,6 +20,8 @@ from backend.integrations.company_scripts.manifest import (
     runtime_from_meta,
     script_aliases,
 )
+from backend.integrations.company_scripts.paths_helper import script_catalog_roots
+from backend.models.config import AlfredConfig
 from backend.paths import bundled_scripts_examples_dir, company_scripts_dir
 
 logger = logging.getLogger(__name__)
@@ -68,20 +70,23 @@ class CompanyScript:
 
 
 class CompanyScriptStore:
-    """Load script packages from `.alfred/scripts/`."""
+    """Load script packages from remote Git repo and local `.alfred/scripts/`."""
 
-    def __init__(self, data_dir: Path | None = None) -> None:
+    def __init__(self, data_dir: Path | None = None, *, config: AlfredConfig | None = None) -> None:
         self.data_dir = data_dir
+        self.config = config
         self.directory = company_scripts_dir(data_dir)
+        self.roots = script_catalog_roots(data_dir, config=config)
         self._scripts: list[CompanyScript] | None = None
         self._cache_mtime: float = 0.0
 
     def reload(self) -> None:
+        self.roots = script_catalog_roots(self.data_dir, config=self.config)
         self._scripts = None
         self._cache_mtime = 0.0
 
     def list_scripts(self) -> list[CompanyScript]:
-        mtime = self._tree_mtime(self.directory)
+        mtime = max((self._tree_mtime(root) for root in self.roots), default=0.0)
         if self._scripts is None or mtime > self._cache_mtime:
             self._scripts = self._load_scripts()
             self._cache_mtime = mtime
@@ -105,9 +110,8 @@ class CompanyScriptStore:
         if not scripts:
             return ""
         lines = [
-            "## Company scripts (`.alfred/scripts/`)",
-            "Prefer `run_company_script` for curated packages — they can include multiple "
-            "support files with a single entry point (`script.yaml`).",
+            "## Company scripts",
+            "Prefer `run_company_script` — packages may come from scripts.remote.repo and/or `.alfred/scripts/`.",
             "",
         ]
         for script in sorted(scripts, key=lambda item: item.name):
@@ -132,8 +136,16 @@ class CompanyScriptStore:
         )
 
     def _load_scripts(self) -> list[CompanyScript]:
-        root = self.directory
-        root.mkdir(parents=True, exist_ok=True)
+        by_name: dict[str, CompanyScript] = {}
+        for root in self.roots:
+            root.mkdir(parents=True, exist_ok=True)
+            for script in self._load_scripts_from_root(root):
+                by_name[script.name] = script
+        scripts = list(by_name.values())
+        logger.info("Indexed %d company script package(s) from %d root(s)", len(scripts), len(self.roots))
+        return scripts
+
+    def _load_scripts_from_root(self, root: Path) -> list[CompanyScript]:
         scripts: list[CompanyScript] = []
         package_dirs: set[Path] = set()
 
@@ -156,8 +168,6 @@ class CompanyScriptStore:
                 scripts.append(self._parse_legacy(root, path))
             except Exception:
                 logger.exception("Failed to load legacy script %s", path)
-
-        logger.info("Indexed %d company script package(s) under %s", len(scripts), root)
         return scripts
 
     @staticmethod

@@ -79,6 +79,7 @@ def build_command(
     package_dir: Path,
     args_json: str,
     meta: dict[str, Any],
+    python_executable: str | None = None,
 ) -> list[str]:
     if runtime == "custom":
         raw_cmd = meta.get("command")
@@ -89,7 +90,7 @@ def build_command(
 
     entry_rel = entry.relative_to(package_dir).as_posix()
     if runtime == "python3":
-        return ["python3", entry_rel, args_json]
+        return [(python_executable or "python3"), entry_rel, args_json]
     if runtime in {"bash", "sh"}:
         return ["bash", entry_rel, args_json]
     if runtime == "node":

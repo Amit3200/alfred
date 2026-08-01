@@ -23,6 +23,7 @@ from backend.integrations.company_scripts.filesystem import (
     scripts_root,
     write_script_file,
 )
+from backend.integrations.company_scripts.sync import load_scripts_sync_state, sync_scripts_repository
 from backend.paths import bundled_scripts_examples_dir
 
 router = APIRouter(prefix="/scripts", tags=["scripts"])
@@ -57,14 +58,32 @@ def _resolve_path(root: Path, relative: str, *, must_exist: bool = False) -> Pat
 
 @router.get("")
 def list_scripts(manager: ConfigManager = Depends(require_admin)) -> dict[str, Any]:
+    config, _ = manager.load_merged()
     root = scripts_root(manager.data_dir)
-    store = CompanyScriptStore(manager.data_dir)
+    store = CompanyScriptStore(manager.data_dir, config=config)
     packages = [package_row(store, script) for script in store.list_scripts()]
+    remote = config.scripts.remote
     return {
         "directory": str(root),
         "packages": packages,
         "example_available": bundled_scripts_examples_dir().is_dir(),
+        "remote": {
+            "repo": remote.repo,
+            "branch": remote.branch,
+            "path": remote.path,
+            "python_mode": remote.python_mode,
+            "synced": load_scripts_sync_state(manager.data_dir),
+        },
     }
+
+
+@router.post("/sync")
+def sync_scripts(manager: ConfigManager = Depends(require_admin)) -> dict[str, Any]:
+    config, _ = manager.load_merged()
+    result = sync_scripts_repository(config, manager.data_dir)
+    if not result.get("ok") and not result.get("skipped"):
+        raise HTTPException(status_code=400, detail=result.get("message") or "Scripts sync failed")
+    return result
 
 
 @router.get("/example")
@@ -168,7 +187,7 @@ def delete_script_package(
     manager: ConfigManager = Depends(require_admin),
 ) -> dict[str, Any]:
     root = scripts_root(manager.data_dir)
-    store = CompanyScriptStore(manager.data_dir)
+    store = CompanyScriptStore(manager.data_dir, config=manager.load_merged()[0])
     script = store.get(package_name)
     if script is None:
         raise HTTPException(status_code=404, detail=f"Script package {package_name!r} not found")

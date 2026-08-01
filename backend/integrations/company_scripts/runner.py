@@ -9,6 +9,11 @@ from pathlib import Path
 from typing import Any
 
 from backend.integrations.company_scripts.catalog import CompanyScriptStore
+from backend.integrations.company_scripts.deps import (
+    build_script_pythonpath,
+    resolve_python_executable,
+)
+from backend.integrations.company_scripts.paths_helper import script_catalog_roots
 from backend.integrations.company_scripts.manifest import build_command, normalize_script_ref
 from backend.models.config import AlfredConfig
 
@@ -48,7 +53,7 @@ def run_company_script(
     if not config.scripts.enabled:
         raise ValueError("Company scripts are disabled. Set scripts.enabled: true in config.")
 
-    store = CompanyScriptStore(data_dir)
+    store = CompanyScriptStore(data_dir, config=config)
     script = store.get(normalize_script_ref(script_name))
     if script is None:
         available = ", ".join(s.name for s in store.list_scripts()) or "(none)"
@@ -82,6 +87,9 @@ def run_company_script(
         package_dir=script.package_dir,
         args_json=args_json,
         meta=meta,
+        python_executable=resolve_python_executable(config.scripts, data_dir)
+        if script.runtime == "python3"
+        else None,
     )
 
     env = os.environ.copy()
@@ -89,6 +97,11 @@ def run_company_script(
     env["ALFRED_DATA_DIR"] = str(store.directory.parent)
     env["ALFRED_SCRIPT_NAME"] = script.name
     env["ALFRED_SCRIPT_ENTRY"] = script.entry.relative_to(script.package_dir).as_posix()
+    env["ALFRED_SCRIPTS_PYTHON"] = resolve_python_executable(config.scripts, data_dir)
+    env["PYTHONPATH"] = build_script_pythonpath(
+        script_catalog_roots(data_dir, config=config) + [script.package_dir],
+        existing=env.get("PYTHONPATH", ""),
+    )
 
     try:
         result = subprocess.run(

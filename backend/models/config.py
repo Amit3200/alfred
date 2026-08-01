@@ -27,8 +27,8 @@ class SlackListJiraSyncConfig(BaseModel):
         description="Slack List ID (e.g. F0A5AS3HF9S). Empty = any list record in allowed channels.",
     )
     jira_project: str = Field(
-        default="TECH-SUPPORT",
-        description="JIRA project key for auto-created issues.",
+        default="TS",
+        description="JIRA project key for auto-created issues (API key, not board name).",
     )
     issue_type: str = Field(default="Bug", description="JIRA issue type name.")
     eligible_statuses: list[str] = Field(
@@ -247,10 +247,49 @@ class WebSearchConfig(BaseModel):
     api_key: str = Field(default="", description="Provider API key (Tavily) — stored encrypted.")
 
 
+class ScriptsRemoteConfig(BaseModel):
+    """Pull curated script packages from a Git repo (e.g. FlexyPe/alfred_scripts)."""
+
+    repo: str = Field(
+        default="",
+        description="GitHub/GitLab slug, e.g. FlexyPe/alfred_scripts. Requires git.token in Secrets.",
+    )
+    branch: str = Field(default="main", description="Branch to clone/pull.")
+    path: str = Field(
+        default="scripts",
+        description="Directory inside the repo containing script packages (each with script.yaml).",
+    )
+    playbooks_path: str = Field(
+        default="",
+        description="Optional: sync playbooks/*.md from this repo subpath into .alfred/playbooks/.",
+    )
+    overwrite_local_playbooks: bool = Field(
+        default=False,
+        description="When syncing playbooks, overwrite existing local playbook files.",
+    )
+    requirements_file: str = Field(
+        default="",
+        description="Optional requirements path (relative to scripts path or repo root). Default: requirements.txt",
+    )
+    python_mode: Literal["isolated", "alfred"] = Field(
+        default="isolated",
+        description=(
+            "isolated = install requirements.txt into .alfred/scripts-venv; "
+            "alfred = run scripts with Alfred's Python (only use deps already in Alfred)."
+        ),
+    )
+    install_timeout_seconds: int = Field(default=300, ge=30, le=900)
+    sync_on_startup: bool = Field(default=True, description="Pull scripts repo when Alfred starts.")
+    sync_on_git_sync: bool = Field(
+        default=True,
+        description="Also pull when running `alfred git sync` or POST /api/git/mirrors/sync.",
+    )
+
+
 class ScriptsConfig(BaseModel):
     enabled: bool = Field(
         default=True,
-        description="Enable run_company_script tools for `.alfred/scripts/`.",
+        description="Enable run_company_script tools for company script packages.",
     )
     timeout_seconds: int = Field(
         default=120,
@@ -258,6 +297,7 @@ class ScriptsConfig(BaseModel):
         le=600,
         description="Max seconds for company script execution.",
     )
+    remote: ScriptsRemoteConfig = Field(default_factory=ScriptsRemoteConfig)
 
 
 class JiraConfig(BaseModel):
@@ -284,6 +324,13 @@ class JiraConfig(BaseModel):
         description=(
             "Map Slack display names or user IDs to JIRA assignee emails/accountIds, "
             "e.g. 'Alice Smith': 'alice@example.com'."
+        ),
+    )
+    channel_projects: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Slack channel ID → JIRA project key for create/search in that channel, "
+            "e.g. C0123ABC: TS for #tech-support."
         ),
     )
 
