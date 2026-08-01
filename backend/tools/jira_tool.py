@@ -339,6 +339,12 @@ def register_jira_tools(registry: ToolRegistry, config: AlfredConfig) -> None:
         jql = str(args.get("jql") or "").strip()
         if not jql:
             return ToolResult.error("jql is required.")
+        gov = getattr(registry, "governance", None)
+        task = getattr(gov, "task", None) if gov is not None else None
+        if task is not None:
+            from backend.routing.jira_context import scope_jql_for_task
+
+            jql = scope_jql_for_task(jql, task, config)
         try:
             issues = client.search_issues(
                 jql=jql,

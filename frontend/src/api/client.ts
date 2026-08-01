@@ -635,6 +635,8 @@ export const api = {
   },
 
   listScripts: () => request<ScriptsListResponse>("/api/scripts", {}, true),
+  syncScripts: () =>
+    request<ScriptsSyncResponse>("/api/scripts/sync", { method: "POST" }, true),
   getScriptExample: () => request<ScriptExampleResponse>("/api/scripts/example", {}, true),
   getScriptFile: (relativePath: string) =>
     request<ScriptFileDetail>(`/api/scripts/files/${encodeScriptPath(relativePath)}`, {}, true),
@@ -1172,10 +1174,41 @@ export type ScriptPackageSummary = {
   args: ScriptArgMeta[];
 };
 
+export type ScriptsRemoteInfo = {
+  repo: string;
+  branch: string;
+  path: string;
+  python_mode: string;
+  synced: {
+    repo?: string;
+    branch?: string;
+    action?: string;
+    synced_at?: string;
+    scripts_root?: string;
+    python_mode?: string;
+  };
+};
+
+export type ScriptsSyncResponse = {
+  ok: boolean;
+  skipped?: boolean;
+  message?: string;
+  repo?: string;
+  branch?: string;
+  action?: string;
+  scripts_root?: string;
+  scripts_path?: string;
+  python?: string;
+  python_mode?: string;
+  deps?: { ok?: boolean; message?: string };
+  playbooks?: { synced?: number; message?: string };
+};
+
 export type ScriptsListResponse = {
   directory: string;
   packages: ScriptPackageSummary[];
   example_available: boolean;
+  remote?: ScriptsRemoteInfo;
 };
 
 export type ScriptFileDetail = {

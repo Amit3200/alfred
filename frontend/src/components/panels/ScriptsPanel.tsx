@@ -3,9 +3,12 @@ import {
   FileAddOutlined,
   PlusOutlined,
   SaveOutlined,
+  SyncOutlined,
 } from "@ant-design/icons";
 import {
+  Alert,
   Button,
+  Descriptions,
   Empty,
   Flex,
   Input,
@@ -14,10 +17,11 @@ import {
   Select,
   Space,
   Tag,
+  Tooltip,
   Typography,
 } from "antd";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, type ScriptPackageSummary } from "../../api/client";
+import { api, type ScriptPackageSummary, type ScriptsRemoteInfo } from "../../api/client";
 import { useApp } from "../../context/AppContext";
 
 const { TextArea } = Input;
@@ -67,11 +71,20 @@ function groupPackages(items: ScriptPackageSummary[]): PackageGroup[] {
     }));
 }
 
+function formatSyncedAt(value?: string): string {
+  if (!value) return "Never synced";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return value;
+  return date.toLocaleString();
+}
+
 export function ScriptsPanel() {
   const { notify, dataDir } = useApp();
   const [packages, setPackages] = useState<ScriptPackageSummary[]>([]);
   const [directory, setDirectory] = useState("");
   const [exampleAvailable, setExampleAvailable] = useState(false);
+  const [remoteInfo, setRemoteInfo] = useState<ScriptsRemoteInfo | null>(null);
+  const [syncing, setSyncing] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedPackage, setSelectedPackage] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -108,6 +121,8 @@ export function ScriptsPanel() {
     [packages, selectedPackage],
   );
 
+  const remoteBranch = remoteInfo?.branch?.trim() || "main";
+
   const loadList = useCallback(async () => {
     setLoading(true);
     try {
@@ -115,6 +130,7 @@ export function ScriptsPanel() {
       setPackages(data.packages);
       setDirectory(data.directory);
       setExampleAvailable(data.example_available);
+      setRemoteInfo(data.remote ?? null);
       setSelectedPackage((prev) => {
         if (prev && data.packages.some((pkg) => pkg.name === prev)) return prev;
         return data.packages[0]?.name ?? null;
@@ -126,6 +142,41 @@ export function ScriptsPanel() {
       setLoading(false);
     }
   }, [notify]);
+
+  const syncRemoteScripts = async () => {
+    setSyncing(true);
+    try {
+      const result = await api.syncScripts();
+      if (result.skipped) {
+        notify("info", result.message || "Scripts sync skipped — configure scripts.remote.repo in config.");
+      } else if (result.ok) {
+        notify(
+          "success",
+          result.message || `Synced ${result.repo ?? "scripts repo"} @ ${result.branch ?? remoteBranch}`,
+        );
+        await loadList();
+      } else {
+        notify("error", result.message || "Scripts sync failed");
+      }
+    } catch (err) {
+      notify("error", err instanceof Error ? err.message : "Scripts sync failed");
+    } finally {
+      setSyncing(false);
+    }
+  };
+
+  const syncButton = (variant: "primary" | "default" = "default") => (
+    <Tooltip title={`Pull latest ${remoteBranch} from ${remoteInfo?.repo ?? "remote repo"}`}>
+      <Button
+        type={variant === "primary" ? "primary" : "default"}
+        icon={<SyncOutlined spin={syncing} />}
+        loading={syncing}
+        onClick={() => void syncRemoteScripts()}
+      >
+        Sync
+      </Button>
+    </Tooltip>
+  );
 
   const loadEditor = useCallback(
     async (relativePath: string) => {
@@ -289,14 +340,68 @@ export function ScriptsPanel() {
         Scripts
       </Typography.Title>
       <Typography.Paragraph className="alfred-page-desc">
-        Company script packages under{" "}
-        <Typography.Text code>{directory || `${dataDir}/scripts`}</Typography.Text>. Each package has a{" "}
-        <Typography.Text code>script.yaml</Typography.Text> manifest, one entry point, and optional helper
-        files. Referenced from playbooks via <Typography.Text code>scripts:</Typography.Text> and invoked with{" "}
+        Local packages live under{" "}
+        <Typography.Text code>{directory || `${dataDir}/scripts`}</Typography.Text>. When{" "}
+        <Typography.Text code>scripts.remote.repo</Typography.Text> is set in config, Alfred also loads packages
+        from that Git repo (local names override remote). Link from playbooks via{" "}
+        <Typography.Text code>scripts:</Typography.Text> and run with{" "}
         <Typography.Text code>run_company_script</Typography.Text>.
       </Typography.Paragraph>
 
+      {remoteInfo?.repo ? (
+        <div className="alfred-panel" style={{ marginBottom: 16, padding: 16 }}>
+          <Flex justify="space-between" align="flex-start" wrap="wrap" gap={12}>
+            <div style={{ flex: 1, minWidth: 280 }}>
+              <Typography.Text strong style={{ display: "block", marginBottom: 8 }}>
+                Remote scripts repo
+              </Typography.Text>
+              <Descriptions size="small" column={1} bordered>
+                <Descriptions.Item label="Repository">
+                  <Typography.Text code>{remoteInfo.repo}</Typography.Text>
+                </Descriptions.Item>
+                <Descriptions.Item label="Branch">
+                  {remoteInfo.branch || "main"}
+                </Descriptions.Item>
+                <Descriptions.Item label="Scripts path">
+                  <Typography.Text code>{remoteInfo.path || "scripts"}</Typography.Text>
+                </Descriptions.Item>
+                <Descriptions.Item label="Python mode">{remoteInfo.python_mode || "isolated"}</Descriptions.Item>
+                <Descriptions.Item label="Last sync">
+                  {formatSyncedAt(remoteInfo.synced?.synced_at)}
+                  {remoteInfo.synced?.action ? (
+                    <Typography.Text type="secondary"> ({remoteInfo.synced.action})</Typography.Text>
+                  ) : null}
+                </Descriptions.Item>
+              </Descriptions>
+            </div>
+            <Space direction="vertical" align="end">
+              {syncButton("primary")}
+              <Typography.Text type="secondary" style={{ fontSize: 12, maxWidth: 240, textAlign: "right" }}>
+                Pulls latest <Typography.Text code>{remoteBranch}</Typography.Text> — same as{" "}
+                <Typography.Text code>alfred scripts sync</Typography.Text>. Requires Git token in Secrets.
+              </Typography.Text>
+            </Space>
+          </Flex>
+        </div>
+      ) : (
+        <Alert
+          type="info"
+          showIcon
+          style={{ marginBottom: 16 }}
+          message="Remote scripts repo not configured"
+          description={
+            <>
+              Add <Typography.Text code>scripts.remote.repo</Typography.Text> (e.g.{" "}
+              <Typography.Text code>FlexyPe/alfred_scripts</Typography.Text>) to{" "}
+              <Typography.Text code>.alfred/config.yaml</Typography.Text>, then click Sync here or run{" "}
+              <Typography.Text code>alfred scripts sync</Typography.Text>.
+            </>
+          }
+        />
+      )}
+
       <Flex gap={8} wrap="wrap" style={{ marginBottom: 16 }}>
+        {remoteInfo?.repo ? syncButton("default") : null}
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setNewOpen(true)}>
           New package
         </Button>

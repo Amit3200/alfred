@@ -41,33 +41,57 @@ _DEFAULT_CLOSED_STATUSES = ("Done", "Closed", "Resolved", "Cancelled")
 _INTENT_PROJECT_KEY_RE = re.compile(r"\b(TS|TECH)\b(?:\s+board)?", re.I)
 
 
-def resolve_jira_project_for_task(task: Task, config: AlfredConfig) -> str | None:
-    """Best project key for this Slack channel / thread (never board display names like TECH-SUPPORT)."""
-    jira = config.jira
-    channel_id = (task.channel_id or "").strip()
-
-    if channel_id and jira.channel_projects.get(channel_id):
-        return jira.channel_projects[channel_id].strip().upper()
-
-    sync = config.slack.list_jira_sync
-    if sync.enabled and sync.jira_project.strip():
-        if not sync.channel_ids or channel_id in sync.channel_ids:
-            return sync.jira_project.strip().upper()
-
-    combined = f"{task.cleaned_intent}\n{task.raw_text}"
+def _project_from_intent(combined: str) -> str | None:
+    """Explicit project/board named in the user message."""
     lower = combined.lower()
-    if "#tech-support" in lower or "tech-support channel" in lower:
-        if sync.jira_project.strip():
-            return sync.jira_project.strip().upper()
-
+    if re.search(r"\bts\s+board\b", lower) or re.search(r"\bon\s+ts\b", lower):
+        return "TS"
     for match in _INTENT_PROJECT_KEY_RE.finditer(combined):
         key = match.group(1).upper()
         if key == "TS":
             return "TS"
         if key == "TECH" and "TECH-SUPPORT" not in combined.upper():
             return "TECH"
-
     return None
+
+
+def _project_from_channel(channel_id: str, config: AlfredConfig) -> str | None:
+    channel_id = (channel_id or "").strip()
+    if channel_id and config.jira.channel_projects.get(channel_id):
+        return config.jira.channel_projects[channel_id].strip().upper()
+
+    sync = config.slack.list_jira_sync
+    if sync.enabled and sync.jira_project.strip():
+        if not sync.channel_ids or channel_id in sync.channel_ids:
+            return sync.jira_project.strip().upper()
+    return None
+
+
+def resolve_channel_jira_project(task: Task, config: AlfredConfig) -> str | None:
+    """Project key from Slack channel mapping / list_jira_sync only (not defaults or intent)."""
+    return _project_from_channel(task.channel_id or "", config)
+
+
+def jira_projects_for_task(task: Task, config: AlfredConfig) -> list[str]:
+    """Project keys for JQL/search in this Slack message (intent → channel map → default)."""
+    combined = f"{task.cleaned_intent}\n{task.raw_text}"
+    if explicit := _project_from_intent(combined):
+        return [explicit]
+
+    if channel := _project_from_channel(task.channel_id or "", config):
+        return [channel]
+
+    lower = combined.lower()
+    if "#tech-support" in lower and config.slack.list_jira_sync.jira_project.strip():
+        return [config.slack.list_jira_sync.jira_project.strip().upper()]
+
+    return jira_project_keys(config.jira)
+
+
+def resolve_jira_project_for_task(task: Task, config: AlfredConfig) -> str | None:
+    """Best project key for this Slack channel / thread (never board display names like TECH-SUPPORT)."""
+    projects = jira_projects_for_task(task, config)
+    return projects[0] if projects else None
 
 
 def jira_project_keys(config: JiraConfig) -> list[str]:
@@ -99,15 +123,19 @@ def format_jira_context_for_prompt(
     if active_ticket:
         parts.append(f"- Active JIRA ticket: `{active_ticket}` (referenced in thread context)")
 
-    projects = jira_project_keys(jira)
-    channel_project = resolve_jira_project_for_task(task, config)
+    projects = jira_projects_for_task(task, config)
+    combined = f"{task.cleaned_intent}\n{task.raw_text}"
+    channel_project = resolve_channel_jira_project(task, config)
+    explicit_project = _project_from_intent(combined)
     if channel_project:
         parts.append(
             f"- **Channel JIRA project key:** `{channel_project}` — use this for create/search "
             "in this channel. `TECH-SUPPORT` is a board name, not a project key."
         )
-        if channel_project not in projects:
-            projects = [channel_project, *projects]
+    elif explicit_project:
+        parts.append(
+            f"- **Requested JIRA project key:** `{explicit_project}` — use this for create/search."
+        )
     elif projects:
         parts.append(f"- Default project scope: {', '.join(f'`{p}`' for p in projects)}")
     else:
@@ -282,6 +310,27 @@ def build_open_assigned_jql(assignees: list[str], project_keys: list[str]) -> st
     return " AND ".join(parts) + " ORDER BY updated DESC"
 
 
+_PROJECT_IN_JQL_RE = re.compile(r'project\s*=\s*"([A-Z][A-Z0-9]+)"', re.I)
+
+
+def scope_jql_for_task(jql: str, task: Task | None, config: AlfredConfig) -> str:
+    """Apply channel/intent project mapping when JQL targets the wrong project key."""
+    if not task or not jql.strip():
+        return jql
+    projects = jira_projects_for_task(task, config)
+    if len(projects) != 1:
+        return jql
+    expected = projects[0]
+    if match := _PROJECT_IN_JQL_RE.search(jql):
+        found = match.group(1).upper()
+        if found != expected:
+            return _PROJECT_IN_JQL_RE.sub(f'project = "{expected}"', jql, count=1)
+        return jql
+    if not re.search(r"\bproject\b", jql, re.I):
+        return f'project = "{expected}" AND ({jql})'
+    return jql
+
+
 def detect_jira_list_action(
     intent: str,
     config: AlfredConfig,
@@ -318,7 +367,7 @@ def detect_jira_list_action(
     if not assignees and wants_current_user(intent):
         assignees = ["currentUser()"]
 
-    projects = jira_project_keys(config.jira)
+    projects = jira_projects_for_task(task, config)
     if assignees or (projects and _looks_like_open_list(intent)):
         jql = build_open_assigned_jql(assignees, projects)
         return "jira_search", {"jql": jql, "max_results": 50}
