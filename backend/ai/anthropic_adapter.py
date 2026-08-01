@@ -2,10 +2,10 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from backend.ai.base import LLMProvider, LLMResponse, Message, ToolCall, ToolSchema
+from backend.ai.tool_arguments import parse_tool_call_arguments
 from backend.models.config import AIProviderConfig
 
 
@@ -67,7 +67,10 @@ class AnthropicProvider(LLMProvider):
                     ToolCall(
                         id=block.id,
                         name=block.name,
-                        arguments=block.input if isinstance(block.input, dict) else json.loads(block.input),
+                        arguments=parse_tool_call_arguments(
+                            block.input,
+                            tool_name=block.name or "",
+                        ),
                     )
                 )
         return LLMResponse(

@@ -2,11 +2,11 @@
 
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from backend.ai.base import LLMProvider, LLMResponse, Message, ToolCall, ToolSchema
 from backend.ai.openai_messages import message_to_openai_api
+from backend.ai.tool_arguments import parse_tool_call_arguments
 from backend.models.config import AIProviderConfig
 
 
@@ -85,9 +85,10 @@ class OpenAICompatProvider(LLMProvider):
         tool_calls: list[ToolCall] = []
         if choice.message.tool_calls:
             for tc in choice.message.tool_calls:
-                args = tc.function.arguments
-                if isinstance(args, str):
-                    args = json.loads(args)
+                args = parse_tool_call_arguments(
+                    tc.function.arguments,
+                    tool_name=tc.function.name or "",
+                )
                 tool_calls.append(
                     ToolCall(id=tc.id, name=tc.function.name, arguments=args)
                 )
