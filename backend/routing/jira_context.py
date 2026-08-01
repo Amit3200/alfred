@@ -236,8 +236,10 @@ def detect_jira_list_action(
     if not config.jira.enabled or task is None:
         return None
 
-    from backend.integrations.identity.user_identity import is_user_identity_lookup
+    from backend.integrations.identity.user_identity import is_user_identity_lookup, looks_like_slack_ticket_list_request
     if is_user_identity_lookup(intent):
+        return None
+    if looks_like_slack_ticket_list_request(intent):
         return None
 
     lower = intent.lower()

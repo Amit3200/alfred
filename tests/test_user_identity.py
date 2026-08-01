@@ -10,6 +10,7 @@ from backend.integrations.identity.user_identity import (
     is_user_identity_lookup,
     is_workspace_identity_request,
     list_slack_human_members,
+    looks_like_slack_ticket_list_request,
     _match_github_login,
 )
 from backend.models.config import AlfredConfig, JiraConfig
@@ -98,6 +99,29 @@ def test_format_user_identity_result_includes_assignee_map():
     )
     assert "assignee_map" in text
     assert "alice@example.com" in text
+
+
+def test_slack_ticket_clarification_not_workspace_identity():
+    intent = (
+        "no I mean all the issues raised in slack not JIRA, go through #tech-support "
+        "from 1st July 2026 onwards and figure out all the tickets filled here."
+    )
+    assert looks_like_slack_ticket_list_request(intent)
+    assert not is_workspace_identity_request(intent)
+    assert not is_user_identity_lookup(intent)
+
+
+def test_slack_ticket_list_not_routed_to_jira_search():
+    config = AlfredConfig()
+    config.jira = JiraConfig(enabled=True, default_project="TS")
+    task = _task(
+        raw="@alfred list tickets in slack not jira",
+        cleaned=(
+            "list all the tickets/bug raised in slack which are still not resolved "
+            "(one which doesn't have reaction of ✅) from 1st July 2026 onwards"
+        ),
+    )
+    assert detect_jira_list_action(task.cleaned_intent, config, task) is None
 
 
 def test_workspace_identity_request_routes_to_bulk_tool():

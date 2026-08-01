@@ -54,6 +54,51 @@ _PRIORITY_MAP_RE = re.compile(
     re.I,
 )
 
+_NEGATED_JIRA_RE = re.compile(
+    r"\b(?:not|no|without|instead of|don't|do not|skip|ignore|exclude)\s+jira\b",
+    re.I,
+)
+
+_SLACK_TICKET_LIST_MARKERS = (
+    "raised in slack",
+    "in slack not",
+    "slack not jira",
+    "without reaction",
+    "white_check_mark",
+    "bugs tracker",
+    "submit a ticket",
+    "tickets filled",
+    "workflow post",
+    "unresolved",
+    "not resolved",
+    "figure out all the",
+    "go through #",
+    "channel history",
+)
+
+
+def _mentions_jira(intent: str) -> bool:
+    """True when JIRA is referenced as a target, not excluded (e.g. 'not JIRA')."""
+    text = intent or ""
+    if _NEGATED_JIRA_RE.search(text):
+        return False
+    return "jira" in text.lower()
+
+
+def looks_like_slack_ticket_list_request(intent: str) -> bool:
+    """Slack channel ticket triage — not identity map or JIRA search."""
+    lower = (intent or "").lower()
+    if not any(word in lower for word in ("ticket", "tickets", "bug", "bugs", "issue", "issues")):
+        return False
+    if any(marker in lower for marker in _SLACK_TICKET_LIST_MARKERS):
+        return True
+    if "slack" in lower and _NEGATED_JIRA_RE.search(lower):
+        return True
+    if "slack" in lower and any(h in lower for h in ("list", "summarize", "find", "scan", "show")):
+        if any(h in lower for h in ("unresolved", "open", "not picked", "without")):
+            return True
+    return False
+
 _NAME_OF_PERSON_RE = re.compile(
     r"\b(?:name of|for|about)\s+(?:person|user|member|employee)?\s*([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)",
     re.I,
@@ -79,13 +124,17 @@ _BOT_LABELS = frozenset({"alfred", "slackbot"})
 
 def is_workspace_identity_request(intent: str) -> bool:
     """True when the user wants a bulk Slack workspace identity map."""
+    if looks_like_slack_ticket_list_request(intent):
+        return False
     lower = (intent or "").lower()
     if any(marker in lower for marker in _WORKSPACE_MARKERS):
         return True
     if "all" in lower and any(
         word in lower for word in ("slack", "user", "member", "people", "team", "workspace")
     ):
-        if any(word in lower for word in ("map", "identity", "jira", "github", "email", "assignee")):
+        if any(word in lower for word in ("map", "identity", "github", "email", "assignee")):
+            return True
+        if _mentions_jira(intent):
             return True
     return False
 
@@ -97,6 +146,8 @@ def looks_like_jira_create_request(intent: str) -> bool:
 
 def is_user_identity_lookup(intent: str) -> bool:
     """True when the user wants Slack/JIRA identity fields, not ticket search."""
+    if looks_like_slack_ticket_list_request(intent):
+        return False
     if looks_like_jira_create_request(intent):
         return False
     if _PRIORITY_MAP_RE.search(intent or ""):
@@ -105,7 +156,7 @@ def is_user_identity_lookup(intent: str) -> bool:
         return True
     lower = (intent or "").lower()
     has_slack = "slack" in lower
-    has_jira = "jira" in lower
+    has_jira = _mentions_jira(intent)
     has_field = any(marker in lower for marker in _IDENTITY_FIELD_MARKERS)
     has_action = any(marker in lower for marker in _IDENTITY_ACTION_MARKERS)
     if has_slack and has_jira and (has_field or has_action):
