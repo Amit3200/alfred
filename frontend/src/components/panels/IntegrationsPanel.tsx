@@ -1,8 +1,8 @@
-import { ReloadOutlined, PlusOutlined, DeleteOutlined, ApiOutlined, CheckCircleOutlined, InfoCircleOutlined } from "@ant-design/icons";
+import { ReloadOutlined, PlusOutlined, DeleteOutlined, ApiOutlined, CheckCircleOutlined, InfoCircleOutlined, SyncOutlined } from "@ant-design/icons";
 import { Button, Col, Flex, Input, Row, Select, Switch, Typography, Modal } from "antd";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, type AlfredConfig, type GoogleOAuthStatus } from "../../api/client";
+import { api, type AlfredConfig, type GoogleOAuthStatus, type IntegrationSyncStatusResponse } from "../../api/client";
 import { useApp } from "../../context/AppContext";
 import { integrationDotClass, integrationHealth, type HealthCheck } from "../../health";
 import { JsonCredentialField } from "../ui/JsonCredentialField";
@@ -167,7 +167,7 @@ function getLogo(name: string) {
 }
 
 export function IntegrationsPanel() {
-  const { config, updateConfig, saveConfig, testIntegration, notify, secrets, setSecrets, saveSecrets, checks } =
+  const { config, updateConfig, saveConfig, testIntegration, notify, secrets, setSecrets, saveSecrets, checks, load } =
     useApp();
   const [availableRepos, setAvailableRepos] = useState<string[]>([]);
   const [reposSource, setReposSource] = useState<string>("configured");
@@ -198,6 +198,83 @@ export function IntegrationsPanel() {
   const [googleOAuth, setGoogleOAuth] = useState<GoogleOAuthStatus | null>(null);
   const [connectingGoogle, setConnectingGoogle] = useState(false);
   const [savingGoogleCredentials, setSavingGoogleCredentials] = useState(false);
+  const [syncStatus, setSyncStatus] = useState<IntegrationSyncStatusResponse | null>(null);
+  const [syncLoading, setSyncLoading] = useState<string | null>(null);
+
+  const loadSyncStatus = useCallback(async () => {
+    try {
+      setSyncStatus(await api.getIntegrationSyncStatus());
+    } catch {
+      setSyncStatus(null);
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadSyncStatus();
+  }, [loadSyncStatus]);
+
+  useEffect(() => {
+    if (activeModal === "slack" || activeModal === "jira") {
+      void loadSyncStatus();
+    }
+  }, [activeModal, loadSyncStatus]);
+
+  const runSlackUserSync = async () => {
+    setSyncLoading("slack");
+    try {
+      const result = await api.syncSlackUsers();
+      if (!result.ok) {
+        notify("error", result.error ?? "Slack user sync failed");
+        return;
+      }
+      notify(
+        "success",
+        result.skipped
+          ? `Slack cache is fresh (${result.user_count ?? 0} users).`
+          : `Synced ${result.user_count ?? 0} Slack users.`,
+      );
+      await loadSyncStatus();
+    } catch (err) {
+      notify("error", err instanceof Error ? err.message : "Slack user sync failed");
+    } finally {
+      setSyncLoading(null);
+    }
+  };
+
+  const runJiraContextSync = async (applyAssigneeMap: boolean) => {
+    setSyncLoading(applyAssigneeMap ? "jira-map" : "jira");
+    try {
+      const result = await api.syncJiraContext(applyAssigneeMap);
+      if (!result.ok) {
+        notify("error", result.error ?? "JIRA context sync failed");
+        return;
+      }
+      const parts = [
+        `${result.project_count ?? 0} projects`,
+        `${result.identity_count ?? 0} Slack identities`,
+        `${result.matched_jira ?? 0} JIRA matches`,
+      ];
+      if (applyAssigneeMap && (result.assignee_map_added ?? 0) > 0) {
+        parts.push(`${result.assignee_map_added} new assignee mappings saved`);
+        await load();
+      }
+      notify("success", `JIRA context synced: ${parts.join(" · ")}`);
+      await loadSyncStatus();
+    } catch (err) {
+      notify("error", err instanceof Error ? err.message : "JIRA context sync failed");
+    } finally {
+      setSyncLoading(null);
+    }
+  };
+
+  const formatSyncWhen = (value?: string) => {
+    if (!value) return "Never synced";
+    try {
+      return new Date(value).toLocaleString();
+    } catch {
+      return value;
+    }
+  };
 
   const loadAvailableRepos = useCallback(async () => {
     if (!config?.git.enabled) {
@@ -655,10 +732,27 @@ export function IntegrationsPanel() {
               />
             </Col>
           </Row>
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--alfred-border)" }}>
+            <Flex justify="space-between" align="center" wrap="wrap" gap={8}>
+              <div>
+                <Typography.Text strong>Workspace users</Typography.Text>
+                <Typography.Paragraph type="secondary" style={{ marginBottom: 0, fontSize: 12 }}>
+                  Cached locally and refreshed every {syncStatus?.slack_refresh_hours ?? 1}h.
+                  Last sync: {formatSyncWhen(syncStatus?.slack_users?.last_sync_at)} (
+                  {syncStatus?.slack_users?.user_count ?? 0} users)
+                </Typography.Paragraph>
+              </div>
+              <Button
+                icon={<SyncOutlined />}
+                loading={syncLoading === "slack"}
+                onClick={() => void runSlackUserSync()}
+              >
+                Sync Slack users
+              </Button>
+            </Flex>
+          </div>
         </div>
       </Modal>
-
-      {/* Git Modal */}
       <Modal
         title="Git Mirror Integration"
         open={activeModal === "git"}
@@ -1069,6 +1163,30 @@ export function IntegrationsPanel() {
               />
             </Col>
           </Row>
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--alfred-border)" }}>
+            <Typography.Text strong>Boards & identity context</Typography.Text>
+            <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+              Sync JIRA projects and Slack↔JIRA identity map Alfred uses for routing and assignees.
+              Last sync: {formatSyncWhen(syncStatus?.jira_context?.last_sync_at)} ·{" "}
+              {syncStatus?.jira_snapshot?.project_count ?? 0} projects ·{" "}
+              {syncStatus?.jira_snapshot?.matched_jira ?? 0} JIRA matches
+            </Typography.Paragraph>
+            <Flex gap={8} wrap="wrap" style={{ marginTop: 8 }}>
+              <Button
+                icon={<SyncOutlined />}
+                loading={syncLoading === "jira"}
+                onClick={() => void runJiraContextSync(false)}
+              >
+                Sync JIRA context
+              </Button>
+              <Button
+                loading={syncLoading === "jira-map"}
+                onClick={() => void runJiraContextSync(true)}
+              >
+                Sync & merge assignee map
+              </Button>
+            </Flex>
+          </div>
         </div>
       </Modal>
 

@@ -41,6 +41,7 @@ body
     store = PlaybookStore(tmp_path)
     config = default_config()
     config.git.enabled = True
+    config.routing.phrase_routing_enabled = True
 
     router = SkillRouter(config, store, llm_router=None)
     result = router.route_investigation(

@@ -24,7 +24,10 @@ allowed_tools:
   - jira_update_issue
   - jira_add_comment
   - jira_create_issue
+  - jira_assign_issue
   - get_jira_issue
+  - transition_jira_issue
+  - link_jira_issue
   - lookup_user_identity
   - build_workspace_identity_map
 requires_thread_context: true

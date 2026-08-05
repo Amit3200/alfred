@@ -4,6 +4,7 @@ Planning and reference materials for Alfred.
 
 | Folder | Purpose |
 |--------|---------|
+| [`architecture/`](architecture/) | Routing revamp diagrams, phase status, capabilities example |
 | [`playbooks/`](playbooks/) | **Example** playbooks — copy into `.alfred/playbooks/` locally (**never commit** company playbooks) |
 | [`build-reference/`](build-reference/) | Blueprints, v0 plan, and implementation tracker |
 
@@ -12,23 +13,27 @@ Planning and reference materials for Alfred.
 | Audience | Read |
 |----------|------|
 | **Operators / new installs** | [`README.md`](../README.md) — setup, CLI, AWS, Slack |
+| **Architecture (current)** | [`architecture/overview.md`](architecture/overview.md) — context diagram + LangGraph flow |
+| **Implementation progress** | [`architecture/implementation-status.md`](architecture/implementation-status.md) |
+| **Routing/tools revamp spec** | [`architecture/routing-and-tools-plan.md`](architecture/routing-and-tools-plan.md) |
 | **Contributors picking next work** | [`build-reference/building_phase_v0.md`](build-reference/building_phase_v0.md) |
-| **Architecture deep dive** | [`build-reference/v0.md`](build-reference/v0.md) |
+| **Original layer design** | [`build-reference/v0.md`](build-reference/v0.md) |
 
-## Current status (2026-07-18)
+## Current status (2026-08-05)
 
-**Shipped (v0):** Slack channel `@mentions`, git mirrors + PR review, JIRA, AWS (Athena/CloudWatch), Graphify, Google Workspace (Sheets/Docs), cron schedules, observability + task checkpoints, GitHub PR bot (with public URL), Admin UI & API authentication, planning mode, self-learning playbooks.
+**Shipped (Phases 0–4 routing revamp):**
 
-**Shipped (v0.1):** SQLite task queue + background worker, unified direct-action router (`detect_direct_action`), keyword + heuristic + LLM skill routing, context pruning (stack traces / long URLs), checkpoint timeline in Admin UI.
+- Tool planner (rules + plan templates + LLM fallback)
+- LangGraph orchestration (plan → validate → execute → ground → format)
+- Capability bundles + policy layer on playbooks
+- Plan templates in `.alfred/playbooks/` (`type: plan_template`)
+- Plan-first investigation routing; phrase routing **off by default**
+- Repo doc BM25 index + multi-repo index on sync
+- Tools catalog API/CLI + Admin **Tools** panel
+- Routing trace store + Admin **Routing** debugger panel
+- SQLite LangGraph checkpoints
 
-**Next (recommended order):**
-
-| Priority | Target | Focus |
-|----------|--------|--------|
-| 1 | **v1** | Governance — audit log, confirmation UX, write policies (gate JIRA/Google writes too) |
-| 2 | **v0.2 polish** | Thread relevancy ranking, BM25 playbook matcher |
-| 3 | **v2** | Git write tools + `deploy_hotfix` workflow skill; ECS/S3 read tools |
-| — | **Ops** | Self-learning playbook review gate, schedule UX polish, doc/test hardening |
+**Optional follow-ups:** LangSmith export, Graphify on all repos on sync, skill linter CI.
 
 **Won't do:** Slack DMs / App Home Chat.
 
@@ -40,11 +45,13 @@ Full gap analysis and build sequence: [`building_phase_v0.md`](build-reference/b
 |--------|----------------|
 | `building_phase_v0.md`, `v0.md`, `idea.md`, `README.md` | `building_phase_v0.html` and other `**/*.html` in build-reference |
 | Example playbooks in `docs/playbooks/` | `.alfred/` (secrets, company playbooks, mirrors) |
+| `docs/architecture/capabilities.example.yaml` | `.alfred/capabilities.yaml` (local overrides) |
 | | `docs/build-reference/scratch/`, scratch `building_phase_*` files |
 
 ## Playbooks
 
 - Generic example: [`playbooks/example-slack-summaries.md`](playbooks/example-slack-summaries.md)
+- Plan template example: [`playbooks/example-plan-template.md`](playbooks/example-plan-template.md)
 - Format guide: [`playbooks/README.md`](playbooks/README.md)
 - Company-specific tables (e.g. event dumps) → create locally in `.alfred/playbooks/` — not in this repo
 

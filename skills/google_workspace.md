@@ -12,6 +12,7 @@ trigger_keywords:
 allowed_channels:
   - "*"
 allowed_tools:
+  - google_create_sheet
   - google_read_sheet
   - google_write_sheet
   - google_append_sheet
@@ -35,8 +36,9 @@ Use when the user asks about Google Sheets or Google Docs data, or wants to upda
 
 1. Extract `spreadsheet_id` from the URL: `https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit`
 2. **Read** → `google_read_sheet` with A1 range (e.g. `Sheet1!A1:Z100`).
-3. **Overwrite cells** → `google_write_sheet` with JSON rows in `values`.
-4. **Add rows** → `google_append_sheet` with anchor range (e.g. `Sheet1!A1`).
+3. **Create new** → `google_create_sheet` with title and optional `headers` / `rows`.
+4. **Overwrite cells** → `google_write_sheet` with `rows` array (or legacy JSON string in `values`).
+5. **Add rows** → `google_append_sheet` with anchor range (e.g. `Sheet1!A1`).
 
 ## Docs
 

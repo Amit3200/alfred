@@ -46,8 +46,12 @@ def test_processor_pr_review_uses_investigation_loop():
         "_prefetch_pr_context",
         return_value=("## Pre-fetched PR data\nPR #91", {"repo": "AcmeCorp/adhocs", "number": 91}),
     ):
-        with patch("backend.agent.loop.run_agent_loop", return_value="## 1. Executive Summary\nSafe.") as mock_loop:
-            response = processor.process(task)
+        with patch(
+            "backend.orchestrator.graph.nodes.run_agent_loop",
+            return_value="## 1. Executive Summary\nSafe.",
+        ) as mock_loop:
+            with patch("backend.agent.loop.run_agent_loop", return_value="## 1. Executive Summary\nSafe."):
+                response = processor.process(task)
 
     assert "Executive Summary" in response.payload.data["text"]
     mock_loop.assert_called_once()
@@ -85,9 +89,11 @@ def test_processor_metadata_summary_when_no_review_keyword():
     with patch("backend.tools.git_api.GitApiClient") as mock_client_cls:
         mock_client = mock_client_cls.from_alfred_config.return_value
         mock_client.get_pr.return_value = pr_detail
-        with patch("backend.agent.loop.run_agent_loop") as mock_loop:
-            with patch.object(processor, "_summarize_pr", return_value="Short summary from description."):
-                response = processor.process(task)
+        with patch("backend.orchestrator.graph.nodes.run_agent_loop") as mock_graph_loop:
+            with patch("backend.agent.loop.run_agent_loop") as mock_loop:
+                with patch.object(processor, "_summarize_pr", return_value="Short summary from description."):
+                    response = processor.process(task)
 
+    mock_graph_loop.assert_not_called()
     mock_loop.assert_not_called()
     assert "Short summary" in response.payload.data["text"]

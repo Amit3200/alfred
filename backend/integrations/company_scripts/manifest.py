@@ -15,6 +15,15 @@ _SAFE_NAME_RE = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9_/-]*$")
 _SAFE_PATH_PART = re.compile(r"^[a-zA-Z0-9][a-zA-Z0-9._-]*$")
 
 
+def parse_triggers(meta: dict[str, Any]) -> list[str]:
+    raw = meta.get("triggers") or meta.get("trigger_phrases") or []
+    if isinstance(raw, str):
+        return [raw.strip()] if raw.strip() else []
+    if not isinstance(raw, list):
+        return []
+    return [str(item).strip() for item in raw if str(item).strip()]
+
+
 def normalize_script_ref(name: str) -> str:
     return name.strip().replace("\\", "/").strip("/").replace("__", "/")
 

@@ -123,6 +123,7 @@ body
 
     config = default_config()
     config.google.enabled = True
+    config.routing.phrase_routing_enabled = True
     router = SkillRouter(config, store, llm_router=llm_router)
     result = router.route_investigation(
         RouteContext(intent="put this in a google doc", mode=RouteMode.INVESTIGATION)

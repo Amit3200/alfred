@@ -16,6 +16,8 @@ import { SecretsPanel } from "./panels/SecretsPanel";
 import { UsagePanel } from "./panels/UsagePanel";
 import { SchedulesPanel } from "./panels/SchedulesPanel";
 import { LogsPanel } from "./panels/LogsPanel";
+import { ToolsPanel } from "./panels/ToolsPanel";
+import { RoutingPanel } from "./panels/RoutingPanel";
 import { useApp } from "../context/AppContext";
 
 const { Content } = Layout;
@@ -38,6 +40,10 @@ function SettingsContent() {
       return <PlaybooksPanel />;
     case "scripts":
       return <ScriptsPanel />;
+    case "tools":
+      return <ToolsPanel />;
+    case "routing":
+      return <RoutingPanel />;
     case "health":
       return <HealthPanel />;
     case "usage":

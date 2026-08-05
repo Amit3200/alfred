@@ -16,6 +16,8 @@ from backend.tools.result import ToolResult
 def test_processor_uses_structured_pr_payload():
     config = default_config()
     config.git = GitConfig(enabled=True, provider="github", token="ghp_test")
+    config.routing.langgraph_enabled = False
+    config.routing.phrase_routing_enabled = True
 
     processor = TaskProcessor(config)
     processor.router = MagicMock()
@@ -35,20 +37,21 @@ def test_processor_uses_structured_pr_payload():
     registry = ToolRegistry()
     registry.last_result = ToolResult.pr_list(prs, state="open")
 
-    with patch("backend.agent.loop.run_agent_loop", return_value=""):
-        with patch.object(processor, "_try_unified_direct", return_value=(None, None)):
-            with patch(
-                "backend.tools.git_api.build_git_tool_registry",
-                return_value=registry,
-            ):
-                task = Task(
-                    source="slack",
-                    user_id="U1",
-                    channel_id="C1",
-                    raw_text="@alfred my open prs",
-                    cleaned_intent="my open prs",
-                )
-                response = processor.process(task)
+    with patch("backend.orchestrator.graph.nodes.run_agent_loop", return_value=""):
+        with patch("backend.agent.loop.run_agent_loop", return_value=""):
+            with patch.object(processor, "_try_unified_direct", return_value=(None, None)):
+                with patch(
+                    "backend.tools.git_api.build_git_tool_registry",
+                    return_value=registry,
+                ):
+                    task = Task(
+                        source="slack",
+                        user_id="U1",
+                        channel_id="C1",
+                        raw_text="@alfred my open prs",
+                        cleaned_intent="my open prs",
+                    )
+                    response = processor.process(task)
 
     assert response.payload.kind == "pr_list"
     reply = render_for_channel(response, "slack")

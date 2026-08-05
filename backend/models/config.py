@@ -85,6 +85,12 @@ class SlackConfig(BaseModel):
         le=200,
         description="Maximum thread replies to fetch before ranking.",
     )
+    user_cache_refresh_hours: float = Field(
+        default=1.0,
+        ge=0.25,
+        le=168.0,
+        description="Hours between automatic Slack users.list cache refreshes. Use Integrations → Sync for urgent refresh.",
+    )
 
 
 class GitHubAppConfig(BaseModel):
@@ -333,6 +339,84 @@ class JiraConfig(BaseModel):
             "e.g. C0123ABC: TS for #tech-support."
         ),
     )
+    project_aliases: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Board/display name or phrase → JIRA project key, "
+            "e.g. 'tech-support': TS, 'TECH-SUPPORT': TS, 'engineering': TECH."
+        ),
+    )
+    project_issue_types: dict[str, str] = Field(
+        default_factory=dict,
+        description="Optional project key → default issue type for creates, e.g. TS: Task.",
+    )
+
+
+class RepoKnowledgeConfig(BaseModel):
+    enabled: bool = Field(
+        default=True,
+        description="Enable on-demand repo doc search (search_repo_docs) instead of wholesale context injection.",
+    )
+    doc_paths: list[str] = Field(
+        default_factory=lambda: ["docs", "runbooks", "README.md"],
+        description="Paths under the shared mirror to index (files or directories).",
+    )
+    index_on_sync: bool = Field(
+        default=True,
+        description="Rebuild doc BM25 index when main repo mirror syncs.",
+    )
+    inject_overview: bool = Field(
+        default=False,
+        description="When false, skip injecting full overview/layout into every prompt (use doc tools instead).",
+    )
+    max_search_results: int = Field(default=8, ge=1, le=20)
+    max_read_chars: int = Field(default=12000, ge=1000, le=50000)
+
+
+class RoutingConfig(BaseModel):
+    tool_planner_enabled: bool = Field(
+        default=True,
+        description="Enable rule/LLM tool planning before agent execution.",
+    )
+    tool_planner_llm_fallback: bool = Field(
+        default=True,
+        description="Use LLM tool planner when rule-based plan confidence is low.",
+    )
+    tool_planner_min_confidence: float = Field(
+        default=0.55,
+        ge=0.0,
+        le=1.0,
+        description="Minimum confidence to accept a tool plan.",
+    )
+    langgraph_enabled: bool = Field(
+        default=True,
+        description="Route tool execution through LangGraph orchestration (plan → validate → execute → ground).",
+    )
+    langgraph_checkpoint: bool = Field(
+        default=True,
+        description="Persist LangGraph state to SQLite for pause/resume across confirmations.",
+    )
+    plan_first_routing: bool = Field(
+        default=True,
+        description="Resolve skill from tool plan + skill policy before keyword/BM25 router.",
+    )
+    skill_router_fallback: bool = Field(
+        default=True,
+        description="When plan-first misses, fall back to SkillRouter (keyword → BM25 → LLM).",
+    )
+    phrase_routing_enabled: bool = Field(
+        default=False,
+        description=(
+            "When false, investigation routing skips keyword/heuristic/BM25 tiers "
+            "(plan-first + plan templates + optional LLM fallback only)."
+        ),
+    )
+    plan_template_min_confidence: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Minimum confidence to accept a matched plan template.",
+    )
 
 
 class AIProviderConfig(BaseModel):
@@ -457,6 +541,12 @@ class ObservabilityConfig(BaseModel):
         default_factory=dict,
         description="Map Slack user IDs (or internal keys) to display names, e.g. U0522NX5GG0: amit",
     )
+    slack_user_preload_hours: float = Field(
+        default=1.0,
+        ge=0.25,
+        le=168.0,
+        description="Hours before observability dashboards refresh Slack user names from the API.",
+    )
     model_pricing: dict[str, ModelPricingConfig] = Field(
         default_factory=dict,
         description="Override token rates by model name (USD per 1M input/output tokens).",
@@ -544,6 +634,8 @@ class AlfredConfig(BaseModel):
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     orchestrator: OrchestratorConfig = Field(default_factory=OrchestratorConfig)
     governance: GovernanceConfig = Field(default_factory=GovernanceConfig)
+    routing: RoutingConfig = Field(default_factory=RoutingConfig)
+    repo_knowledge: RepoKnowledgeConfig = Field(default_factory=RepoKnowledgeConfig)
 
 
 class AlfredSecrets(BaseModel):

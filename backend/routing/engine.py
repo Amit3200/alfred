@@ -57,20 +57,27 @@ class SkillRouter:
                     logger.debug("Skill route: %s via jira-create priority", playbook.name)
                     return RouteResult(playbook=playbook, decision=jira_create)
 
+        phrase_routing = self._phrase_routing_enabled()
         keyword = route_by_keyword(context, self._store)
         if keyword.matched:
             playbook = playbook_for_decision(keyword, self._store)
             if playbook is not None:
-                if playbook_has_runnable_tools(playbook.allowed_tools, self._config):
-                    logger.debug("Skill route: %s via keyword", playbook.name)
-                    return RouteResult(playbook=playbook, decision=keyword)
-                logger.warning(
-                    "Skipping keyword match for %s — no runnable tools in %s",
-                    playbook.name,
-                    playbook.allowed_tools,
+                skip_investigation_phrase = (
+                    context.mode == RouteMode.INVESTIGATION
+                    and not phrase_routing
+                    and playbook.mode in ("investigation", "workflow")
                 )
+                if not skip_investigation_phrase:
+                    if playbook_has_runnable_tools(playbook.allowed_tools, self._config):
+                        logger.debug("Skill route: %s via keyword", playbook.name)
+                        return RouteResult(playbook=playbook, decision=keyword)
+                    logger.warning(
+                        "Skipping keyword match for %s — no runnable tools in %s",
+                        playbook.name,
+                        playbook.allowed_tools,
+                    )
 
-        if context.mode == RouteMode.INVESTIGATION:
+        if context.mode == RouteMode.INVESTIGATION and phrase_routing:
             heuristic = route_by_heuristic(context, self._store, self._config)
             if heuristic.matched:
                 playbook = playbook_for_decision(heuristic, self._store)
@@ -80,7 +87,7 @@ class SkillRouter:
                     logger.debug("Skill route: %s via heuristic", playbook.name)
                     return RouteResult(playbook=playbook, decision=heuristic)
 
-        if self._bm25_enabled():
+        if phrase_routing and self._bm25_enabled():
             bm25 = route_by_bm25(context, self._store, self._config)
             if bm25.matched:
                 playbook = playbook_for_decision(bm25, self._store)
@@ -132,6 +139,9 @@ class SkillRouter:
 
     def _bm25_enabled(self) -> bool:
         return bool(getattr(self._config.skills, "bm25_routing", True))
+
+    def _phrase_routing_enabled(self) -> bool:
+        return bool(getattr(self._config.routing, "phrase_routing_enabled", False))
 
     def _route_by_llm(self, context: RouteContext) -> RouteDecision:
         matcher = self._get_llm_matcher()

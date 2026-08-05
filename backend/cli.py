@@ -771,6 +771,46 @@ def github_review(
         click.echo(f"Preview:\n{body[:500]}{'…' if len(body) > 500 else ''}")
 
 
+@main.group()
+def tools() -> None:
+    """Inspect registered agent tools."""
+
+
+@tools.command("list")
+@click.option("--data-dir", type=click.Path(path_type=Path), default=None)
+@click.option("--domain", default=None, help="Filter by domain (git, jira, slack, …).")
+@click.option("--enabled-only", is_flag=True, help="Show only tools enabled by current config.")
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON instead of text.")
+def tools_list(
+    data_dir: Path | None,
+    domain: str | None,
+    enabled_only: bool,
+    as_json: bool,
+) -> None:
+    """List all Alfred tools grouped by domain with enablement and governance."""
+    import json
+
+    from backend.routing.playbook_store_registry import get_playbook_store
+    from backend.tools.list_catalog import build_tools_catalog, format_tools_cli
+
+    manager = ConfigManager(data_dir)
+    config, _ = manager.load_merged()
+    store = get_playbook_store(manager.data_dir)
+    catalog = build_tools_catalog(config, playbooks=store.list_playbooks())
+
+    if as_json:
+        tools_out = catalog.get("tools") or []
+        if domain:
+            tools_out = [t for t in tools_out if t.get("domain") == domain]
+        if enabled_only:
+            tools_out = [t for t in tools_out if t.get("enabled")]
+        payload = {**catalog, "tools": tools_out}
+        click.echo(json.dumps(payload, indent=2))
+        return
+
+    click.echo(format_tools_cli(catalog, enabled_only=enabled_only, domain=domain))
+
+
 @main.command("down")
 @click.option("--data-dir", type=click.Path(path_type=Path), default=None)
 @click.option("--with-ollama/--keep-ollama", default=True)

@@ -15,6 +15,7 @@ from backend.context.generator import (
     load_repo_context_for_prompt,
     resolve_main_repo,
 )
+from backend.context.doc_index import doc_index_status
 from backend.context.suggestions import (
     approve_suggestion,
     dismiss_suggestion,
@@ -40,27 +41,51 @@ def build_context_after_sync(
     *,
     sync_results: list[dict[str, Any]],
 ) -> dict[str, Any] | None:
-    """Regenerate context when main repo shared mirror synced successfully."""
+    """Regenerate context and doc indexes for successfully synced repos."""
     config, _ = manager.load_merged()
+    synced_ok = sorted({item["repo"] for item in sync_results if item.get("ok")})
+    if not synced_ok:
+        return None
+
     main = resolve_main_repo(config.git)
-    if not main:
-        return None
+    repo_results: list[dict[str, Any]] = []
+    manifest: dict[str, Any] | None = None
 
-    synced_ok = {item["repo"] for item in sync_results if item.get("ok")}
-    if main not in synced_ok:
-        return None
+    for repo in synced_ok:
+        entry: dict[str, Any] = {"repo": repo, "doc_index": False, "context": False}
+        if config.repo_knowledge.enabled and config.repo_knowledge.index_on_sync:
+            try:
+                from backend.context.doc_index import build_doc_index
 
-    try:
-        manifest = generate_repo_context(manager.data_dir, config.git, repo=main, ai=config.ai)
-        pending = list_pending_suggestions(manager.data_dir, config.git)
-        return {
-            "ok": True,
-            "manifest": manifest,
-            "suggestions_pending": len(pending),
-        }
-    except Exception as exc:
-        logger.warning("Repo context generation failed for %s: %s", main, exc)
-        return {"ok": False, "error": str(exc), "repo": main}
+                build_doc_index(
+                    manager.data_dir,
+                    config.git,
+                    repo=repo,
+                    config=config.repo_knowledge,
+                )
+                entry["doc_index"] = True
+            except Exception as exc:
+                logger.warning("Doc index build failed for %s: %s", repo, exc)
+                entry["doc_index_error"] = str(exc)
+        repo_results.append(entry)
+
+    if main and main in synced_ok:
+        try:
+            manifest = generate_repo_context(manager.data_dir, config.git, repo=main, ai=config.ai)
+            for entry in repo_results:
+                if entry["repo"] == main:
+                    entry["context"] = True
+        except Exception as exc:
+            logger.warning("Repo context generation failed for %s: %s", main, exc)
+            return {"ok": False, "error": str(exc), "repo": main, "repos": repo_results}
+
+    pending = list_pending_suggestions(manager.data_dir, config.git) if main else []
+    return {
+        "ok": True,
+        "manifest": manifest,
+        "repos": repo_results,
+        "suggestions_pending": len(pending),
+    }
 
 
 @router.get("")
@@ -73,6 +98,7 @@ def get_repo_context(manager: ConfigManager = Depends(require_admin)) -> dict[st
     pending = list_pending_suggestions(manager.data_dir, config.git)
     return {
         "status": status,
+        "doc_index": doc_index_status(manager.data_dir, config),
         "preview": preview,
         "suggestions": pending,
     }

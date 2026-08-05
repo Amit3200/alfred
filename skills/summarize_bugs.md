@@ -22,6 +22,8 @@ trigger_keywords:
 allowed_channels:
   - "*"
 requires_thread_context: false
+allowed_tools:
+  - slack_fetch_channel_history
 ---
 
 # Role

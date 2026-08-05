@@ -49,6 +49,7 @@ STRUCTURED_TOOL_KINDS = frozenset(
         "google_sheet",
         "google_doc",
         "web_search",
+        "slack_messages",
     }
 )
 
@@ -184,7 +185,7 @@ class TaskProcessor:
             slack_context=slack_context if include_context else None,
             repo=repo_hint,
         )
-        investigation = self._skill_router.route_investigation(route_context).playbook
+        investigation = self._resolve_investigation_skill(route_context, task)
         if investigation is None and self.config.jira.enabled:
             from backend.routing.jira_intent import (
                 looks_like_jira_create_followup,
@@ -231,6 +232,24 @@ class TaskProcessor:
         active_skill = review_skill or investigation
         set_skill_name(active_skill.name if active_skill else None)
 
+        tool_plan = None
+        scoped_binding = None
+        if active_skill and active_skill.mode in ("investigation", "workflow"):
+            scoped_binding = self._resolve_scoped_tools(
+                task,
+                route_context,
+                active_skill,
+            )
+            if scoped_binding and scoped_binding.plan:
+                tool_plan = scoped_binding.plan
+                logger.info(
+                    "Tool plan: strategy=%s confidence=%.2f tools=%s goal=%s",
+                    tool_plan.strategy,
+                    tool_plan.confidence,
+                    scoped_binding.allowed_tools,
+                    tool_plan.goal[:80],
+                )
+
         git_context_prompt = ""
         if active_skill and session and self.config.git.enabled:
             from backend.routing.git_context import format_session_git_context
@@ -274,21 +293,70 @@ class TaskProcessor:
 
         repo_context_prompt = ""
         if self.config.git.enabled:
-            from backend.context.generator import load_repo_context_for_prompt
+            rk = self.config.repo_knowledge
+            if rk.enabled and not rk.inject_overview:
+                repo_context_prompt = (
+                    "## Repository documentation\n"
+                    "Use `search_repo_docs` and `read_repo_doc` for runbook and documentation questions."
+                )
+            else:
+                from backend.context.generator import load_repo_context_for_prompt
 
-            repo_context_prompt = load_repo_context_for_prompt(
-                self._data_dir_path(),
-                self.config.git,
+                repo_context_prompt = load_repo_context_for_prompt(
+                    self._data_dir_path(),
+                    self.config.git,
+                )
+
+        from backend.routing.context_scope import build_context_envelope, format_context_envelope
+
+        context_envelope = build_context_envelope(
+            self.config,
+            task,
+            tool_plan=tool_plan,
+            slack_context=slack_context if include_context else None,
+            jira_context=jira_context_prompt,
+            google_context=google_context_prompt,
+            git_context=git_context_prompt,
+            repo_context=repo_context_prompt,
+            pr_context=pr_context_prompt,
+        )
+        scoped_context = format_context_envelope(context_envelope)
+
+        tool_manifest = scoped_binding.manifest_text if scoped_binding else ""
+
+        goal_spec_block = ""
+        subagent_block = ""
+        goal_spec = None
+        if tool_plan:
+            from backend.routing.goal_spec import goal_spec_from_plan
+            from backend.agent.subagents import (
+                build_subagent_manifest,
+                group_steps_by_domain,
+                should_use_subagents,
             )
+
+            goal_spec = goal_spec_from_plan(tool_plan)
+            if goal_spec:
+                criteria = "\n".join(f"- {c}" for c in goal_spec.success_criteria)
+                goal_spec_block = (
+                    f"## GoalSpec\n"
+                    f"Intent: `{goal_spec.intent_class}`\n"
+                    f"Goal: {goal_spec.goal}\n"
+                    f"Success criteria:\n{criteria}"
+                )
+            if should_use_subagents(tool_plan):
+                subagent_block = "\n\n".join(
+                    build_subagent_manifest(domain, steps)
+                    for domain, steps in group_steps_by_domain(tool_plan.steps or [])
+                )
 
         extra_system = "\n\n".join(
             part
             for part in (
-                repo_context_prompt,
-                git_context_prompt,
-                jira_context_prompt,
-                google_context_prompt,
-                pr_context_prompt,
+                scoped_context,
+                tool_manifest,
+                goal_spec_block,
+                subagent_block,
             )
             if part
         )
@@ -340,6 +408,10 @@ class TaskProcessor:
                 model=model_name,
                 task=task,
                 session=session,
+                scoped_tools=scoped_binding.allowed_tools if scoped_binding else None,
+                goal_spec=goal_spec,
+                route_context=route_context,
+                manifest_text=scoped_binding.manifest_text if scoped_binding else "",
             )
             if inv_patch:
                 metadata_patch = {**(metadata_patch or {}), **inv_patch}
@@ -373,6 +445,10 @@ class TaskProcessor:
                     model=model_name,
                     task=task,
                     session=session,
+                    scoped_tools=scoped_binding.allowed_tools if scoped_binding else None,
+                    goal_spec=goal_spec,
+                    route_context=route_context,
+                    manifest_text=scoped_binding.manifest_text if scoped_binding else "",
                 )
                 if inv_patch:
                     metadata_patch = {**(metadata_patch or {}), **inv_patch}
@@ -412,6 +488,10 @@ class TaskProcessor:
                             model=inv_model,
                             task=task,
                             session=session,
+                            scoped_tools=scoped_binding.allowed_tools if scoped_binding else None,
+                            goal_spec=goal_spec,
+                            route_context=route_context,
+                            manifest_text=scoped_binding.manifest_text if scoped_binding else "",
                         )
                         if inv_patch:
                             metadata_patch = {**(metadata_patch or {}), **inv_patch}
@@ -439,6 +519,10 @@ class TaskProcessor:
                                 model=inv_model,
                                 task=task,
                                 session=session,
+                                scoped_tools=scoped_binding.allowed_tools if scoped_binding else None,
+                                goal_spec=goal_spec,
+                                route_context=route_context,
+                                manifest_text=scoped_binding.manifest_text if scoped_binding else "",
                             )
                             if inv_patch:
                                 metadata_patch = {**(metadata_patch or {}), **inv_patch}
@@ -589,6 +673,45 @@ class TaskProcessor:
 
         return None, None
 
+    def _resolve_investigation_skill(self, route_context: Any, task: Task):
+        """Plan-first skill resolution; fall back to SkillRouter when needed."""
+        from backend.orchestrator.graph.skill_policy import resolve_policy_skill
+        from backend.routing.tool_planner import resolve_tool_plan
+
+        routing = self.config.routing
+        if routing.plan_first_routing and routing.tool_planner_enabled:
+            data_dir = self._data_dir_path()
+            plan = resolve_tool_plan(
+                self.config,
+                task,
+                route_context,
+                provider=None,
+                model=None,
+                skill_allowed=None,
+                data_dir=data_dir,
+                playbook_store=self._playbooks,
+            )
+            if plan and plan.confidence >= routing.tool_planner_min_confidence:
+                skill = resolve_policy_skill(
+                    plan,
+                    self._playbooks,
+                    fallback=None,
+                    data_dir=data_dir,
+                )
+                if skill is not None:
+                    logger.info(
+                        "Plan-first skill: %s intent=%s confidence=%.2f",
+                        skill.name,
+                        plan.intent_class,
+                        plan.confidence,
+                    )
+                    return skill
+
+        if not routing.skill_router_fallback:
+            return None
+
+        return self._skill_router.route_investigation(route_context).playbook
+
     def _build_route_context(
         self,
         task: Task,
@@ -682,7 +805,17 @@ class TaskProcessor:
             return None, None
 
         tool_name, tool_args = direct
-        if skill.allowed_tools and tool_name not in skill.allowed_tools:
+        if not skill.allowed_tools or tool_name not in skill.allowed_tools:
+            from backend.routing.git_direct import wants_pr_code_analysis, wants_pr_summary
+
+            if (
+                tool_name == "get_pr"
+                and wants_pr_summary(task.cleaned_intent)
+                and not wants_pr_code_analysis(task.cleaned_intent)
+            ):
+                git_skill = self._playbooks.get_by_name("git_status")
+                if git_skill and git_skill.name != skill.name:
+                    return self._try_unified_direct(git_skill, task, session)
             logger.info("Direct tool %s detected but not in allowed_tools for %s", tool_name, skill.name)
             return None, None
 
@@ -745,8 +878,11 @@ class TaskProcessor:
         if tool_name == "get_pr" and wants_pr_summary(task.cleaned_intent):
             detail = result.data.get("pr")
             if detail and not wants_pr_code_analysis(task.cleaned_intent):
-                from backend.integrations.git.pr_analysis import format_pr_context_for_prompt
-                summary = format_pr_context_for_prompt(detail)
+                summary = self._summarize_pr(detail, task)
+                if not summary:
+                    from backend.formatting.strategies import format_pr_detail
+
+                    summary = format_pr_detail({"pr": detail}, slack=task.source == "slack")
                 return AssistantResponse.from_text(summary), patch
 
         structured = _tool_result_to_response(result)
@@ -791,6 +927,101 @@ class TaskProcessor:
             f"I couldn't complete skill **{skill.name}**: {exc}."
         )
 
+    def _resolve_scoped_tools(
+        self,
+        task: Task,
+        route_context: Any,
+        skill: Playbook,
+    ):
+        from backend.observability.context import set_call_kind
+        from backend.routing.tool_plan_validator import validate_tool_plan
+        from backend.routing.tool_planner import resolve_tool_plan
+        from backend.tools.git_api import build_git_tool_registry
+
+        set_call_kind("skill_matching")
+        _, provider, model = self._resolve_llm("skill_matching")
+
+        plan = resolve_tool_plan(
+            self.config,
+            task,
+            route_context,
+            provider=provider if self.config.routing.tool_planner_llm_fallback else None,
+            model=model or None,
+            skill_allowed=list(skill.allowed_tools or []),
+            data_dir=self._data_dir_path(),
+            playbook_store=self._playbooks,
+        )
+
+        registry = build_git_tool_registry(
+            self.config,
+            workspace_id=mirror_workspace_key(task),
+            data_dir=self._data_dir_path(),
+            allowed_tools=skill.allowed_tools or None,
+        )
+        return validate_tool_plan(
+            plan,
+            registry,
+            skill_allowed=list(skill.allowed_tools or []),
+            skill_name=skill.name,
+        )
+
+    def _record_routing_trace(
+        self,
+        task: Task,
+        *,
+        skill: Any,
+        tool_plan: Any | None = None,
+        scoped_tools: list[str] | None = None,
+        graph_final: dict[str, Any] | None = None,
+        routing_strategy: str = "",
+    ) -> None:
+        from backend.orchestrator.graph.serialize import tool_plan_to_dict
+        from backend.routing.trace_store import build_trace_record, record_trace
+
+        plan_dict = tool_plan_to_dict(tool_plan) if tool_plan is not None else None
+        if graph_final and graph_final.get("tool_plan"):
+            plan_dict = graph_final.get("tool_plan")
+
+        steps: list[dict[str, Any]] = []
+        if graph_final:
+            steps = [
+                {"node": "extract_entities", "entities": graph_final.get("entities")},
+                {"node": "plan_tools", "plan": graph_final.get("tool_plan")},
+                {
+                    "node": "execute",
+                    "route": graph_final.get("route"),
+                    "scoped_tools": graph_final.get("scoped_tools"),
+                },
+                {
+                    "node": "ground",
+                    "passed": graph_final.get("grounding_passed"),
+                    "issues": graph_final.get("grounding_issues"),
+                },
+            ]
+
+        strategy = routing_strategy
+        if not strategy and plan_dict:
+            strategy = str(plan_dict.get("strategy") or "")
+
+        record_trace(
+            self._data_dir_path(),
+            build_trace_record(
+                task_id=task.id,
+                intent=task.cleaned_intent,
+                skill_name=skill.name if skill else "",
+                routing_strategy=strategy or "unknown",
+                tool_plan=plan_dict,
+                scoped_tools=scoped_tools or list(graph_final.get("scoped_tools") or []) if graph_final else [],
+                graph_route=str(graph_final.get("route") or "") if graph_final else "",
+                tool_trace=list(graph_final.get("tool_trace") or []) if graph_final else [],
+                grounding_passed=bool(graph_final.get("grounding_passed", True)) if graph_final else True,
+                grounding_issues=list(graph_final.get("grounding_issues") or []) if graph_final else [],
+                steps=steps,
+                source=task.source,
+                channel_id=task.channel_id,
+            ),
+        )
+
     def _run_investigation(
         self,
         skill: Playbook,
@@ -800,7 +1031,28 @@ class TaskProcessor:
         model: str,
         task: Task,
         session: ConversationSession | None,
+        scoped_tools: list[str] | None = None,
+        goal_spec: Any | None = None,
+        route_context: Any | None = None,
+        manifest_text: str = "",
     ) -> tuple[AssistantResponse, dict[str, Any] | None]:
+        if self.config.routing.langgraph_enabled and route_context is not None:
+            from backend.orchestrator.graph.runner import run_investigation_graph
+
+            return run_investigation_graph(
+                self,
+                skill,
+                messages,
+                provider=provider,
+                model=model,
+                task=task,
+                session=session,
+                route_context=route_context,
+                scoped_tools=scoped_tools,
+                goal_spec=goal_spec,
+                manifest_text=manifest_text,
+            )
+
         from backend.agent.loop import run_agent_loop
         from backend.routing.git_direct import looks_like_tool_json, strip_text_tool_markup
         from backend.routing.git_context import metadata_patch_for_tool_result
@@ -811,14 +1063,16 @@ class TaskProcessor:
             self.config,
             workspace_id=mirror_workspace_key(task),
             data_dir=self._data_dir_path(),
-            allowed_tools=skill.allowed_tools or None,
+            allowed_tools=scoped_tools or skill.allowed_tools or None,
         )
+        registry.clear_trace()
+        registry.current_task = task
         self._attach_governance(registry, task, session=session, skill_name=skill.name)
 
         runner = self.config.orchestrator.agent_runner
         log_checkpoint("agent_loop_start", runner, "started")
 
-        allowed_tools = skill.allowed_tools
+        allowed_tools = scoped_tools or skill.allowed_tools
         if not allowed_tools:
             allowed_tools = list(registry._tools.keys())
 
@@ -879,6 +1133,22 @@ class TaskProcessor:
                 return structured, patch
 
         if prose:
+            from backend.routing.grounding_gate import ToolTraceEntry, validate_agent_result
+
+            trace = [
+                ToolTraceEntry(
+                    tool=str(item.get("tool") or ""),
+                    success=bool(item.get("success")),
+                    result_kind=str(item.get("result_kind") or ""),
+                    observation=str(item.get("observation") or ""),
+                )
+                for item in registry.tool_trace
+            ]
+            if trace or goal_spec:
+                validation = validate_agent_result(prose, trace, goal_spec)
+                if not validation.passed:
+                    logger.warning("Grounding gate rejected reply: %s", validation.issues)
+                    return AssistantResponse.from_text(validation.fallback), patch
             return AssistantResponse.from_text(prose), patch
 
         if looks_like_tool_json(raw_stripped):

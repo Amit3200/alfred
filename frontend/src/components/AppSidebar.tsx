@@ -14,6 +14,8 @@ import {
   SettingOutlined,
   CalendarOutlined,
   FileSearchOutlined,
+  NodeIndexOutlined,
+  ToolOutlined,
 } from "@ant-design/icons";
 import { Layout, Menu, Typography, Select, Button } from "antd";
 import { useEffect, useMemo, useState } from "react";
@@ -26,7 +28,7 @@ import type { SettingsPage } from "../types";
 
 const { Sider } = Layout;
 
-const SETTINGS_KEYS = new Set(["branding", "ai", "secrets", "integrations", "repos", "playbooks", "scripts", "health", "usage", "schedules", "logs"]);
+const SETTINGS_KEYS = new Set(["branding", "ai", "secrets", "integrations", "repos", "playbooks", "scripts", "tools", "routing", "health", "usage", "schedules", "logs"]);
 
 type AppSidebarProps = {
   width: number;
@@ -104,6 +106,8 @@ export function AppSidebar({ width }: AppSidebarProps) {
                 { key: "repos", icon: <DatabaseOutlined />, label: "Repo mirrors" },
                 { key: "playbooks", icon: <FileTextOutlined />, label: "Playbooks" },
                 { key: "scripts", icon: <CodeOutlined />, label: "Scripts" },
+                { key: "tools", icon: <ToolOutlined />, label: "Tools" },
+                { key: "routing", icon: <NodeIndexOutlined />, label: "Routing" },
                 { key: "schedules", icon: <CalendarOutlined />, label: "Schedules" },
                 { key: "usage", icon: <BarChartOutlined />, label: "Usage" },
                 { key: "logs", icon: <FileSearchOutlined />, label: "Logs" },

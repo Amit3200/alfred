@@ -102,10 +102,14 @@ def test_processor_followup_reuses_session_pr_via_skill():
         return_value=("## Pre-fetched PR data\nRabbitMQ migration", {"repo": "AcmeCorp/adhocs", "number": 91}),
     ):
         with patch(
-            "backend.agent.loop.run_agent_loop",
+            "backend.orchestrator.graph.nodes.run_agent_loop",
             return_value="## 1. Executive Summary\n* **Business Impact:** High - RabbitMQ to SQS.",
         ) as mock_loop:
-            response = processor.process(task)
+            with patch(
+                "backend.agent.loop.run_agent_loop",
+                return_value="## 1. Executive Summary\n* **Business Impact:** High - RabbitMQ to SQS.",
+            ):
+                response = processor.process(task)
 
     mock_loop.assert_called_once()
     assert "RabbitMQ" in response.payload.data["text"]
@@ -158,10 +162,14 @@ def test_processor_retry_routes_to_review_skill():
         return_value=("## Pre-fetched PR data\nPR #2040", {"repo": "AcmeCorp/platform", "number": 2040}),
     ):
         with patch(
-            "backend.agent.loop.run_agent_loop",
+            "backend.orchestrator.graph.nodes.run_agent_loop",
             return_value="## 1. Executive Summary\n* **PR Objective:** Email in webhook",
         ) as mock_loop:
-            response = processor.process(task)
+            with patch(
+                "backend.agent.loop.run_agent_loop",
+                return_value="## 1. Executive Summary\n* **PR Objective:** Email in webhook",
+            ):
+                response = processor.process(task)
 
     mock_loop.assert_called_once()
     assert "Executive Summary" in response.payload.data["text"]
@@ -172,9 +180,6 @@ def test_processor_retry_routes_to_review_skill():
 
 def test_investigation_prefers_llm_text_over_last_tool_result():
     """PR review must return the model's analysis, not raw read_file output."""
-    pass
-    pass
-
     config = default_config()
     config.git = GitConfig(enabled=True, provider="github", token="ghp_test")
     processor = TaskProcessor(config)

@@ -94,6 +94,36 @@ class JiraApiClient:
     def ping(self) -> dict[str, Any]:
         return self._request("GET", "/rest/api/3/myself")
 
+    def list_projects(self) -> list[dict[str, Any]]:
+        """List JIRA projects visible to the API token user."""
+        projects: list[dict[str, Any]] = []
+        start_at = 0
+        while True:
+            payload = self._request(
+                "GET",
+                "/rest/api/3/project/search",
+                params={"startAt": start_at, "maxResults": 50},
+            )
+            values = payload.get("values") or []
+            for item in values:
+                key = str(item.get("key") or "").strip().upper()
+                name = str(item.get("name") or "").strip()
+                if not key:
+                    continue
+                projects.append(
+                    {
+                        "key": key,
+                        "name": name,
+                        "id": str(item.get("id") or ""),
+                        "project_type": str(item.get("projectTypeKey") or ""),
+                    }
+                )
+            if payload.get("isLast") or not values:
+                break
+            start_at += len(values)
+        projects.sort(key=lambda p: p["key"])
+        return projects
+
     def token_account_id(self) -> str | None:
         """Account ID for the configured API token user (default reporter fallback)."""
         cached = getattr(self, "_token_account_id", None)
@@ -332,6 +362,28 @@ class JiraApiClient:
             "url": updated.get("url"),
             "summary": updated.get("summary"),
             "updated_fields": list(fields.keys()),
+        }
+
+    def assign_issue(self, issue_key: str, *, assignee: str) -> dict[str, Any]:
+        key = issue_key.strip().upper()
+        self._issue_allowed(key)
+        needle = (assignee or "").strip()
+        if not needle:
+            raise ValueError("assignee is required (name, email, or account ID).")
+        account_id = self.resolve_account_id(needle)
+        if not account_id:
+            raise ValueError(f"Could not resolve JIRA assignee for {needle!r}.")
+        self._request(
+            "PUT",
+            f"/rest/api/3/issue/{key}/assignee",
+            json={"accountId": account_id},
+        )
+        updated = self.get_issue(key)
+        return {
+            "key": key,
+            "assignee": updated.get("assignee"),
+            "url": updated.get("url"),
+            "action": "assign",
         }
 
     def create_issue(

@@ -38,21 +38,26 @@ _LIST_HINTS = (
 
 _DEFAULT_CLOSED_STATUSES = ("Done", "Closed", "Resolved", "Cancelled")
 
-_INTENT_PROJECT_KEY_RE = re.compile(r"\b(TS|TECH)\b(?:\s+board)?", re.I)
 
-
-def _project_from_intent(combined: str) -> str | None:
-    """Explicit project/board named in the user message."""
-    lower = combined.lower()
-    if re.search(r"\bts\s+board\b", lower) or re.search(r"\bon\s+ts\b", lower):
-        return "TS"
-    for match in _INTENT_PROJECT_KEY_RE.finditer(combined):
-        key = match.group(1).upper()
-        if key == "TS":
-            return "TS"
-        if key == "TECH" and "TECH-SUPPORT" not in combined.upper():
-            return "TECH"
+def resolve_project_alias(text: str, config: JiraConfig) -> str | None:
+    """Resolve board/display name phrases to project keys via config.project_aliases."""
+    lower = (text or "").lower()
+    if not lower or not config.project_aliases:
+        return None
+    for alias, project_key in sorted(
+        config.project_aliases.items(),
+        key=lambda item: -len(str(item[0])),
+    ):
+        needle = str(alias).strip().lower()
+        key = str(project_key).strip().upper()
+        if needle and key and needle in lower:
+            return key
     return None
+
+
+def _project_from_intent(combined: str, config: JiraConfig) -> str | None:
+    """Explicit project/board named in the user message (config-driven aliases)."""
+    return resolve_project_alias(combined, config)
 
 
 def _project_from_channel(channel_id: str, config: AlfredConfig) -> str | None:
@@ -75,15 +80,11 @@ def resolve_channel_jira_project(task: Task, config: AlfredConfig) -> str | None
 def jira_projects_for_task(task: Task, config: AlfredConfig) -> list[str]:
     """Project keys for JQL/search in this Slack message (intent → channel map → default)."""
     combined = f"{task.cleaned_intent}\n{task.raw_text}"
-    if explicit := _project_from_intent(combined):
+    if explicit := _project_from_intent(combined, config.jira):
         return [explicit]
 
     if channel := _project_from_channel(task.channel_id or "", config):
         return [channel]
-
-    lower = combined.lower()
-    if "#tech-support" in lower and config.slack.list_jira_sync.jira_project.strip():
-        return [config.slack.list_jira_sync.jira_project.strip().upper()]
 
     return jira_project_keys(config.jira)
 
@@ -126,11 +127,11 @@ def format_jira_context_for_prompt(
     projects = jira_projects_for_task(task, config)
     combined = f"{task.cleaned_intent}\n{task.raw_text}"
     channel_project = resolve_channel_jira_project(task, config)
-    explicit_project = _project_from_intent(combined)
+    explicit_project = _project_from_intent(combined, config.jira)
     if channel_project:
         parts.append(
             f"- **Channel JIRA project key:** `{channel_project}` — use this for create/search "
-            "in this channel. `TECH-SUPPORT` is a board name, not a project key."
+            "in this channel (board display names are resolved via `jira.project_aliases`)."
         )
     elif explicit_project:
         parts.append(
@@ -150,10 +151,15 @@ def format_jira_context_for_prompt(
         task.cleaned_intent,
         session_turns=tuple(turn.content for turn in session.turns[-6:]) if session else (),
     ):
+        create_project = channel_project or explicit_project or (projects[0] if projects else "")
+        issue_type_hint = "Bug"
+        if create_project and config.jira.project_issue_types.get(create_project):
+            issue_type_hint = config.jira.project_issue_types[create_project]
         parts.append(
             "- **Action:** User wants a new JIRA issue — call `jira_create_issue` with the channel "
-            "project key above. Use issue type **Task** for project `TS` unless the user specifies "
-            "otherwise. Pull summary/description from thread context; do not claim tools are missing."
+            f"project key above. Default issue type for `{create_project}`: **{issue_type_hint}** "
+            "unless the user specifies otherwise. Pull summary/description from thread context; "
+            "do not claim tools are missing."
         )
 
     if jira.assignee_map:

@@ -104,3 +104,49 @@ def append_sheet(
         "updated_cells": updates.get("updatedCells", 0),
         "updated_rows": updates.get("updatedRows", 0),
     }
+
+
+def create_spreadsheet(
+    *,
+    title: str,
+    sheet_name: str = "Sheet1",
+    headers: list[Any] | None = None,
+    rows: list[list[Any]] | None = None,
+    credentials_json: str,
+    refresh_token: str = "",
+) -> dict[str, Any]:
+    """Create a new Google Spreadsheet and optionally populate initial rows."""
+    service = _sheets_service(credentials_json, refresh_token)
+    body: dict[str, Any] = {
+        "properties": {"title": title.strip()},
+        "sheets": [{"properties": {"title": (sheet_name or "Sheet1").strip() or "Sheet1"}}],
+    }
+    created = service.spreadsheets().create(body=body).execute()
+    spreadsheet_id = str(created.get("spreadsheetId") or "").strip()
+    if not spreadsheet_id:
+        raise RuntimeError("Google Sheets API did not return spreadsheetId.")
+    tab = (sheet_name or "Sheet1").strip() or "Sheet1"
+    url = f"https://docs.google.com/spreadsheets/d/{spreadsheet_id}/edit"
+    result: dict[str, Any] = {
+        "spreadsheet_id": spreadsheet_id,
+        "title": title.strip(),
+        "sheet_name": tab,
+        "url": url,
+        "row_count": 0,
+    }
+    data_rows: list[list[Any]] = []
+    if headers:
+        data_rows.append(list(headers))
+    if rows:
+        data_rows.extend(rows)
+    if data_rows:
+        write_result = write_sheet(
+            spreadsheet_id=spreadsheet_id,
+            range_a1=f"{tab}!A1",
+            values=data_rows,
+            credentials_json=credentials_json,
+            refresh_token=refresh_token,
+        )
+        result["updated_rows"] = write_result.get("updated_rows", len(data_rows))
+        result["row_count"] = len(data_rows)
+    return result

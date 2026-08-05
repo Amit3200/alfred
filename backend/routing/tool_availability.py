@@ -13,6 +13,7 @@ from backend.tools.catalog import (
     GOOGLE_TOOLS,
     GRAPHIFY_TOOLS,
     JIRA_MODULE_TOOLS,
+    REPO_DOC_TOOLS,
     SCHEDULE_TOOLS,
     WEB_TOOLS,
 )
@@ -26,6 +27,8 @@ def configured_tool_names(config: AlfredConfig) -> frozenset[str]:
         names |= GIT_API_TOOLS | GIT_LOCAL_TOOLS | GRAPHIFY_TOOLS
         if config.git.write_enabled:
             names |= GIT_WRITE_TOOLS
+        if config.repo_knowledge.enabled:
+            names |= REPO_DOC_TOOLS
 
     if config.jira.enabled:
         names |= JIRA_MODULE_TOOLS

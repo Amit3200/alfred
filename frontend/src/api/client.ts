@@ -24,6 +24,7 @@ export type AlfredConfig = {
     thread_relevance_enabled?: boolean;
     thread_relevance_top_n?: number;
     thread_fetch_limit?: number;
+    user_cache_refresh_hours?: number;
   };
   git: {
     enabled: boolean;
@@ -66,6 +67,10 @@ export type AlfredConfig = {
     api_token: string;
     default_project: string;
     allowed_projects: string[];
+    project_aliases?: Record<string, string>;
+    channel_projects?: Record<string, string>;
+    assignee_map?: Record<string, string>;
+    project_issue_types?: Record<string, string>;
   };
   google: {
     enabled: boolean;
@@ -581,6 +586,19 @@ export const api = {
   },
 
   listPlaybooks: () => request<PlaybooksListResponse>("/api/playbooks", {}, true),
+  getToolsCatalog: (params?: { domain?: string; enabled_only?: boolean }) => {
+    const q = new URLSearchParams();
+    if (params?.domain) q.set("domain", params.domain);
+    if (params?.enabled_only) q.set("enabled_only", "true");
+    const query = q.toString();
+    return request<ToolsCatalogResponse>(`/api/tools/catalog${query ? `?${query}` : ""}`, {}, true);
+  },
+  getRoutingTraces: (limit = 50) =>
+    request<RoutingTracesResponse>(`/api/routing/traces?limit=${limit}`, {}, true),
+  getRoutingTrace: (taskId: string) =>
+    request<RoutingTraceRecord>(`/api/routing/traces/${encodeURIComponent(taskId)}`, {}, true),
+  getCapabilityBundles: () =>
+    request<CapabilityBundlesResponse>("/api/routing/capabilities", {}, true),
   listPendingPlaybooks: () =>
     request<PendingPlaybooksResponse>("/api/playbooks/pending", {}, true),
   getPendingPlaybook: (pendingId: string) =>
@@ -637,6 +655,25 @@ export const api = {
   listScripts: () => request<ScriptsListResponse>("/api/scripts", {}, true),
   syncScripts: () =>
     request<ScriptsSyncResponse>("/api/scripts/sync", { method: "POST" }, true),
+
+  getIntegrationSyncStatus: () =>
+    request<IntegrationSyncStatusResponse>("/api/integrations/sync/status", {}, true),
+  syncSlackUsers: () =>
+    request<SlackUsersSyncResponse>(
+      "/api/integrations/sync/slack/users",
+      { method: "POST" },
+      true,
+    ),
+  syncJiraContext: (applyAssigneeMap = false) =>
+    request<JiraContextSyncResponse>(
+      "/api/integrations/sync/jira/context",
+      {
+        method: "POST",
+        body: JSON.stringify({ apply_assignee_map: applyAssigneeMap }),
+      },
+      true,
+    ),
+
   getScriptExample: () => request<ScriptExampleResponse>("/api/scripts/example", {}, true),
   getScriptFile: (relativePath: string) =>
     request<ScriptFileDetail>(`/api/scripts/files/${encodeScriptPath(relativePath)}`, {}, true),
@@ -1099,6 +1136,73 @@ export type PlaybooksListResponse = {
   example_available: boolean;
 };
 
+export type ToolCatalogEntry = {
+  name: string;
+  domain: string;
+  category: string;
+  domain_label: string;
+  description: string;
+  enabled: boolean;
+  integration: string;
+  governance: "read" | "staging" | "confirm" | "write";
+  skills: string[];
+};
+
+export type ToolCatalogDomain = {
+  name: string;
+  label: string;
+  tool_count: number;
+  enabled_count: number;
+  tools: ToolCatalogEntry[];
+};
+
+export type ToolsCatalogResponse = {
+  summary: {
+    total: number;
+    enabled: number;
+    disabled: number;
+    write_tools: number;
+    domain_count: number;
+  };
+  domains: ToolCatalogDomain[];
+  tools: ToolCatalogEntry[];
+};
+
+export type RoutingTraceRecord = {
+  task_id: string;
+  recorded_at: string;
+  intent: string;
+  skill_name: string;
+  routing_strategy: string;
+  tool_plan: Record<string, unknown> | null;
+  scoped_tools: string[];
+  graph_route: string;
+  tool_trace: Record<string, unknown>[];
+  grounding_passed: boolean;
+  grounding_issues: string[];
+  steps: Record<string, unknown>[];
+  source: string;
+  channel_id: string;
+};
+
+export type RoutingTracesResponse = {
+  traces: RoutingTraceRecord[];
+  count: number;
+};
+
+export type CapabilityBundleInfo = {
+  tools: string[];
+  policy_name: string;
+  context_injectors: string[];
+  subagent: string;
+  output_format: string;
+};
+
+export type CapabilityBundlesResponse = {
+  bundles: Record<string, CapabilityBundleInfo>;
+  count: number;
+};
+
 export type PlaybookDetail = PlaybookSummary & {
   content: string;
   ok?: boolean;
@@ -1187,6 +1291,50 @@ export type ScriptsRemoteInfo = {
     scripts_root?: string;
     python_mode?: string;
   };
+};
+
+export type IntegrationSyncStatusResponse = {
+  slack_users: {
+    last_sync_at?: string;
+    user_count?: number;
+    refresh_hours?: number;
+  };
+  jira_context: {
+    last_sync_at?: string;
+    project_count?: number;
+    identity_count?: number;
+    matched_jira?: number;
+    assignee_map_added?: number;
+  };
+  slack_refresh_hours: number;
+  observability_refresh_hours: number;
+  jira_snapshot: {
+    project_count?: number;
+    identity_count?: number;
+    matched_jira?: number;
+    assignee_suggestions?: number;
+  };
+};
+
+export type SlackUsersSyncResponse = {
+  ok: boolean;
+  skipped?: boolean;
+  reason?: string;
+  user_count?: number;
+  last_sync_at?: string;
+  error?: string;
+};
+
+export type JiraContextSyncResponse = {
+  ok: boolean;
+  project_count?: number;
+  identity_count?: number;
+  matched_jira?: number;
+  assignee_map_suggestion_count?: number;
+  assignee_map_added?: number;
+  projects_error?: string | null;
+  last_sync_at?: string;
+  error?: string;
 };
 
 export type ScriptsSyncResponse = {

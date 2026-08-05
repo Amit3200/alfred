@@ -1,4 +1,4 @@
-"""Alfred skill routing SDK — keyword, heuristic, and LLM-based playbook selection."""
+"""Alfred routing SDK — plan-first tool planning, policy skills, and SkillRouter fallback."""
 
 from backend.routing.engine import SkillRouter
 from backend.routing.llm import LLMSkillMatcher, parse_router_json

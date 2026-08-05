@@ -17,7 +17,9 @@ CONFIRMATION_REQUIRED_TOOLS: frozenset[str] = frozenset(
         "jira_update_issue",
         "jira_add_comment",
         "jira_create_issue",
+        "jira_assign_issue",
         # Google writes
+        "google_create_sheet",
         "google_write_sheet",
         "google_append_sheet",
         "google_create_doc",

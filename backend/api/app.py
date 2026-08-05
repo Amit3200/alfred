@@ -16,6 +16,7 @@ from fastapi.staticfiles import StaticFiles
 
 from backend.__version__ import __version__
 from backend.api.deps import require_admin
+from backend.api.routes import integrations_sync as integrations_sync_routes
 from backend.api.routes import auth as auth_routes
 from backend.api.routes import branding as branding_routes
 from backend.api.routes import chat as chat_routes
@@ -29,7 +30,9 @@ from backend.api.routes import ollama as ollama_routes
 from backend.api.routes import playbooks as playbooks_routes
 from backend.api.routes import scripts as scripts_routes
 from backend.api.routes import repo_context as repo_context_routes
+from backend.api.routes import routing as routing_routes
 from backend.api.routes import storage as storage_routes
+from backend.api.routes import tools as tools_routes
 from backend.config_manager import ConfigManager
 from backend.logging_config import setup_logging
 from backend.paths import bundled_web_dist
@@ -141,6 +144,9 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     app.include_router(storage_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
     app.include_router(playbooks_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
     app.include_router(scripts_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
+    app.include_router(tools_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
+    app.include_router(routing_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
+    app.include_router(integrations_sync_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
 
     static_dir = bundled_web_dist()
     if static_dir:
