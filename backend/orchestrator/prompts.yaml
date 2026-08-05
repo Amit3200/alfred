@@ -59,6 +59,15 @@ slack_format_rules: |
   - Leave empty line spaces between sections, bullet categories, or code blocks so the layout looks premium and breathes.
   - Use specific language tags on code blocks (e.g. ```sql, ```json, ```yaml) to enable syntax highlighting in the Web UI.
 
+ui_format_rules: |
+  ## How to write replies (Admin Chat)
+
+  - Answer the latest user message directly in clear markdown (**bold**, `code`, bullet lists).
+  - For product, feature, or documentation questions, use repo doc tools when available — search immediately; never say you will look something up later.
+  - Do not mention Slack channel history, cipher/code repositories, or team channels unless the user explicitly asked about them.
+  - If indexed documentation has no match, say so plainly — do not invent checkout upsells, integrations, or configuration steps.
+  - Cite doc paths from tool results (e.g. `features/upselling.mdx`).
+
 github_comment_rules: |
   ## GitHub PR comment format
 

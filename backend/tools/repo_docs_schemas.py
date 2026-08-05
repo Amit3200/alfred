@@ -8,7 +8,8 @@ SEARCH_REPO_DOCS = ToolSchema(
     name="search_repo_docs",
     description=(
         "Search indexed repository documentation and runbooks (BM25). "
-        "Use before answering doc/runbook questions — returns cited excerpts."
+        "Use before answering doc/runbook questions — returns cited excerpts. "
+        "Searches all configured doc repos when repo is omitted."
     ),
     parameters={
         "type": "object",
@@ -16,6 +17,10 @@ SEARCH_REPO_DOCS = ToolSchema(
             "query": {
                 "type": "string",
                 "description": "Natural language search query.",
+            },
+            "repo": {
+                "type": "string",
+                "description": "Optional repo slug (e.g. FlexyPe/docs). Defaults to all indexed doc repos.",
             },
             "limit": {
                 "type": "integer",
@@ -36,6 +41,10 @@ READ_REPO_DOC = ToolSchema(
                 "type": "string",
                 "description": "Doc path from search results or list_repo_docs.",
             },
+            "repo": {
+                "type": "string",
+                "description": "Repository slug (defaults to git.main_repo).",
+            },
         },
         "required": ["path"],
     },
@@ -43,10 +52,14 @@ READ_REPO_DOC = ToolSchema(
 
 LIST_REPO_DOCS = ToolSchema(
     name="list_repo_docs",
-    description="List indexed documentation paths for the main repository.",
+    description="List indexed documentation paths for a repository.",
     parameters={
         "type": "object",
         "properties": {
+            "repo": {
+                "type": "string",
+                "description": "Repository slug (defaults to git.main_repo).",
+            },
             "prefix": {
                 "type": "string",
                 "description": "Optional path prefix filter, e.g. docs/runbooks",

@@ -62,7 +62,7 @@ class UIChatService:
     def delete_chat(self, chat_id: str) -> bool:
         return self.store.delete(ui_session_key(chat_id))
 
-    def send_message(self, chat_id: str, content: str) -> dict[str, Any]:
+    def send_message(self, chat_id: str, content: str, *, persona: str = "support") -> dict[str, Any]:
         session = self.store.load(ui_session_key(chat_id))
         if session is None:
             raise KeyError(f"Chat not found: {chat_id}")
@@ -95,6 +95,14 @@ class UIChatService:
             session.metadata["title"] = _title_from_message(stripped)
             self.store.save(session)
 
+        from backend.routing.chat_persona import normalize_persona
+
+        requested_persona = normalize_persona(persona)
+        effective_persona = requested_persona
+        session.metadata["chat_persona"] = requested_persona
+        session.metadata["last_persona"] = effective_persona
+        self.store.save(session)
+
         task = Task(
             source=UI_SOURCE,
             user_id="admin-ui",
@@ -102,7 +110,12 @@ class UIChatService:
             thread_ts=chat_id,
             raw_text=stripped,
             cleaned_intent=stripped,
-            metadata={"chat_id": chat_id, "user_label": "Admin UI"},
+            metadata={
+                "chat_id": chat_id,
+                "user_label": "Admin UI",
+                "chat_persona": requested_persona,
+                "chat_persona_effective": effective_persona,
+            },
         )
         if self.queue is not None:
             self.store.append_user_turn(

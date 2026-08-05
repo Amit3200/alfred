@@ -76,9 +76,9 @@ class OpenAICompatProvider(LLMProvider):
                 }
                 for t in tools
             ]
-        elif self.provider_name == "kimi":
-            # Kimi K2.6 defaults to thinking mode — can return empty content with
-            # only reasoning_content, which breaks plain chat replies.
+        if self.provider_name == "kimi":
+            # Kimi K2.6 thinking mode can return empty assistant content (with tool_calls
+            # or only reasoning_content), which breaks OpenAI-compatible chat APIs.
             kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
         completion = client.chat.completions.create(**kwargs)
         choice = completion.choices[0]

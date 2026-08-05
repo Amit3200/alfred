@@ -426,8 +426,20 @@ def graph_report_path(data_dir: Path, repo_slug: str) -> Path | None:
     return path if path.is_file() else None
 
 
-def graph_status(data_dir: Path, git: GitConfig, *, ai: AIConfig | None = None) -> dict[str, Any]:
-    slug = resolve_main_repo(git)
+def graph_status(
+    data_dir: Path,
+    git: GitConfig,
+    *,
+    ai: AIConfig | None = None,
+    repo: str | None = None,
+) -> dict[str, Any]:
+    if repo:
+        try:
+            slug = resolve_repo_slug(repo, git)
+        except ValueError:
+            slug = repo.strip("/") or None
+    else:
+        slug = resolve_main_repo(git)
     available = graphify_cli_available()
     version = graphify_version() if available else None
     llm = graphify_llm_status(ai)
@@ -581,9 +593,15 @@ def graph_summary(data_dir: Path, repo_slug: str, *, limit: int = MAX_SUMMARY_NO
     }
 
 
-def graph_detail(data_dir: Path, git: GitConfig, *, ai: AIConfig | None = None) -> dict[str, Any]:
+def graph_detail(
+    data_dir: Path,
+    git: GitConfig,
+    *,
+    ai: AIConfig | None = None,
+    repo: str | None = None,
+) -> dict[str, Any]:
     """Full Graphify status payload for admin UI."""
-    status = graph_status(data_dir, git, ai=ai)
+    status = graph_status(data_dir, git, ai=ai, repo=repo)
     slug = status.get("repo")
     summary = graph_summary(data_dir, slug) if slug and status.get("present") else None
     return {**status, "summary": summary}

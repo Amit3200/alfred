@@ -52,8 +52,23 @@ def goal_spec_from_plan(plan: ToolPlan | None) -> GoalSpec | None:
         criteria.append("Reply references JIRA issue key or URL from tool result")
     if plan.intent_class.startswith("slack.summarize"):
         criteria.append("Summary based on fetched Slack messages, not invented content")
+    if plan.intent_class == "repo.docs.qa":
+        criteria.extend(
+            [
+                "Call search_repo_docs before answering",
+                "Use read_repo_doc when the search hit matches the asked integration/feature",
+                "Start with Yes or No for support/integration questions",
+                "If search finds nothing relevant, answer No — do not cite unrelated docs",
+                "Cite doc paths only from tool results",
+            ]
+        )
 
     failure = plan.goal
+    if plan.intent_class == "repo.docs.qa":
+        failure = (
+            "I couldn't answer from indexed documentation. "
+            "Try rephrasing or check Knowledge bases → FlexyPe/docs is indexed."
+        )
     if plan.missing_capabilities:
         failure = (
             f"I can't complete this yet — missing tools: {', '.join(plan.missing_capabilities)}."

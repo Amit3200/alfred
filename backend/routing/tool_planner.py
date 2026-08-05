@@ -43,10 +43,29 @@ _SUMMARIZE_ALERTS_RE = re.compile(
 )
 _READ_SHEET_RE = re.compile(r"\b(read|show|get|open)\b.{0,30}\b(sheet|spreadsheet)\b", re.I)
 _REPO_DOC_QA_RE = re.compile(
-    r"\b(runbook|documentation|docs?\s+say|what does (our|the)|how do we|playbook says?)\b",
+    r"(?:"
+    r"\b("
+    r"runbook|runbooks|documentation|docs?\s+say|what does (our|the)|how do we|playbook says?|"
+    r"as per (?:our |the )?docs|per (?:our |the )?docs|refer to (?:the )?doc|our docs|"
+    r"from (?:our |the )?docs|in (?:our |the )?documentation|"
+    r"how (?:can|do|to)|configured?|configure|integrat(?:e|d|ion)|setup|set up|"
+    r"onboarding|support doc|knowledge base|merchant|feature(?:s)?"
+    r")\b|"
+    r"\bhow\b.{0,80}\b(configur(?:e|ed|ing)|integrat(?:e|ed|ing)|setup|set up|connect|enable)\b|"
+    r"\bwhat (?:is|are) (?:the )?.{2,80} (?:all )?about\b|"
+    r"\bwhat's (?:the )?.{2,80} (?:all )?about\b|"
+    r"\btell me about\b|"
+    r"\bexplain (?:the )?.{3,80}\b|"
+    r"\bdescribe (?:the )?.{3,80}\b"
+    r")",
     re.I,
 )
 _SCRIPT_RUN_RE = re.compile(r"\b(run|execute|trigger)\b.{0,30}\b(script|report|metrics|job)\b", re.I)
+
+
+def looks_like_repo_doc_question(text: str) -> bool:
+    """True when the user likely wants indexed repo documentation."""
+    return bool(_REPO_DOC_QA_RE.search(f"{text or ''}".strip()))
 
 
 def plan_tools_rules(
@@ -187,7 +206,7 @@ def plan_tools_rules(
     if _REPO_DOC_QA_RE.search(text) and _ok("search_repo_docs"):
         return ToolPlan(
             goal="Answer from indexed repo documentation",
-            confidence=0.86,
+            confidence=0.9,
             tools_needed=["search_repo_docs", "read_repo_doc"],
             steps=[
                 ToolPlanStep("search_repo_docs", "search docs", {"query": task.cleaned_intent}),
@@ -328,6 +347,29 @@ def resolve_tool_plan(
     """Rules first, plan templates, optional LLM fallback."""
     if not config.routing.tool_planner_enabled:
         return None
+
+    if task.source == "ui":
+        from backend.routing.chat_persona import (
+            build_support_doc_plan,
+            normalize_persona,
+            resolve_effective_persona,
+        )
+
+        persona = str(task.metadata.get("chat_persona_effective") or "")
+        if not persona:
+            persona = resolve_effective_persona(task, None)
+        if normalize_persona(persona) == "support":
+            qa_plan = build_support_doc_plan(task)
+            if skill_allowed:
+                allowed = set(skill_allowed)
+                filtered = [t for t in qa_plan.tools_needed if t in allowed]
+                if filtered:
+                    qa_plan.tools_needed = filtered
+                    qa_plan.steps = [s for s in qa_plan.steps if s.tool in filtered]
+                else:
+                    qa_plan = None
+            if qa_plan:
+                return qa_plan
 
     entities = extract_entities(task.cleaned_intent, task.raw_text, context.thread_context or "")
     plan = plan_tools_rules(

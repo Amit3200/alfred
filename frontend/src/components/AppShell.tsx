@@ -5,6 +5,7 @@ import { AppSidebar } from "./AppSidebar";
 import { ChatPage } from "./ChatPage";
 import { HomePage } from "./HomePage";
 import { LoginPage } from "./LoginPage";
+import { KnowledgePanel } from "./panels/KnowledgePanel";
 import { BrandingPanel } from "./panels/BrandingPanel";
 import { AISettingsPanel } from "./panels/AISettingsPanel";
 import { HealthPanel } from "./panels/HealthPanel";
@@ -34,6 +35,8 @@ function SettingsContent() {
       return <SecretsPanel />;
     case "integrations":
       return <IntegrationsPanel />;
+    case "knowledge":
+      return <KnowledgePanel />;
     case "repos":
       return <RepoMirrorsPanel />;
     case "playbooks":

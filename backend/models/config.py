@@ -106,12 +106,43 @@ class GitHubAppConfig(BaseModel):
     client_secret: str = ""
 
 
+class GitRepoProfile(BaseModel):
+    """Per-repository role and knowledge-base flags (mirrors, doc index, Graphify)."""
+
+    repo: str = Field(
+        default="",
+        description="Repository slug, e.g. FlexyPe/docs or docs (expanded with default_org).",
+    )
+    role: Literal["code", "docs", "scripts"] = Field(
+        default="code",
+        description="docs = support knowledge base; scripts = scheduled metrics/automation repo.",
+    )
+    doc_index: bool | None = Field(
+        default=None,
+        description="Build BM25 doc index on sync. Default: true for role=docs, false otherwise.",
+    )
+    graphify: bool | None = Field(
+        default=None,
+        description="Build Graphify graph on sync. Default: true for role=docs when graphify_enabled.",
+    )
+    tags: list[str] = Field(
+        default_factory=list,
+        description="Optional labels for knowledge UI and routing (e.g. handbook, playbook, runbook).",
+    )
+
+
 class GitConfig(BaseModel):
     enabled: bool = False
     provider: Literal["github", "gitlab"] = "github"
     token: str = ""
     default_org: str = ""
     repos: list[str] = Field(default_factory=list)
+    repo_profiles: list[GitRepoProfile] = Field(
+        default_factory=list,
+        description=(
+            "Optional per-repo roles and knowledge flags. Repos listed here are auto-included in mirrors."
+        ),
+    )
     main_repo: str = Field(
         default="",
         description="Primary repository for default code context and investigation.",

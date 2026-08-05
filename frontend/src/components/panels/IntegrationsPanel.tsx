@@ -882,6 +882,32 @@ export function IntegrationsPanel() {
                 />
               </div>
             </Col>
+            <Col span={24}>
+              <label className="alfred-field-label">Scripts remote repo</label>
+              <Input
+                placeholder={`${config?.git.default_org || "your-org"}/dailyscripts`}
+                value={config.scripts?.remote?.repo ?? ""}
+                onChange={(e) =>
+                  updateConfig({
+                    scripts: {
+                      enabled: config.scripts?.enabled ?? true,
+                      timeout_seconds: config.scripts?.timeout_seconds ?? 120,
+                      remote: {
+                        branch: config.scripts?.remote?.branch ?? "main",
+                        path: config.scripts?.remote?.path ?? "scripts",
+                        playbooks_path: config.scripts?.remote?.playbooks_path ?? "",
+                        ...config.scripts?.remote,
+                        repo: e.target.value,
+                      },
+                    },
+                  })
+                }
+              />
+              <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", marginTop: 4 }}>
+                Pull script packages from this repo into Alfred (Scripts panel → Sync). Used for metrics
+                and scheduled automation via Schedules.
+              </Typography.Text>
+            </Col>
           </Row>
         </div>
       </Modal>

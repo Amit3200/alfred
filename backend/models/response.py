@@ -27,6 +27,9 @@ PayloadKind = Literal[
     "google_doc",
     "web_search",
     "pr_created",
+    "doc_search",
+    "doc_content",
+    "doc_answer",
 ]
 
 

@@ -57,10 +57,27 @@
 - Admin UI: Configure → **Routing**
 - Traces recorded from LangGraph runner via `TaskProcessor._record_routing_trace()`
 
-### Multi-repo doc index on sync
+### Multi-repo knowledge bases
 
-- `build_context_after_sync()` indexes docs for **all** successfully synced repos
-- Main-repo overview manifest unchanged (Graphify still main-repo scoped)
+- `git.repo_profiles[]` — per-repo role (`docs` | `code` | `scripts`) and flags (`doc_index`, `graphify`)
+- `build_context_after_sync()` respects profiles: doc BM25 + Graphify extract per repo on sync
+- API: `GET /api/repo-context/knowledge`, `POST .../sync|index|graphify` per repo
+- Admin UI: **Knowledge → Knowledge bases** (sync / index / graph actions)
+- `search_repo_docs` searches all indexed doc repos when `repo` omitted; optional `repo` arg per tool
+- `query_graph` already accepts `repo` — Graphify rebuild on sync for profiled repos
+
+### Sidebar (admin UI)
+
+- **Setup** — profile, AI, secrets, integrations
+- **Knowledge** — knowledge bases, repo mirrors, playbooks
+- **Automation** — scripts, schedules
+- **Developer** — tools, routing
+- **Operations** — usage, logs, health
+
+### Multi-repo doc index on sync (legacy default)
+
+- Without profiles, all synced repos still get doc indexes when `repo_knowledge.index_on_sync: true`
+- Main-repo overview manifest unchanged; Graphify defaults to `main_repo` unless profiled
 
 ---
 
@@ -69,6 +86,7 @@
 ### Repo doc index
 
 - `backend/context/doc_index.py` — BM25 index over mirror docs + playbooks
+- Docs-role repos (`git.repo_profiles` role=`docs`) index **all** `.md`/`.mdx` under the mirror; code repos use `repo_knowledge.doc_paths`
 - Rebuilt on mirror sync when `repo_knowledge.index_on_sync: true`
 - Tools: `search_repo_docs`, `read_repo_doc`, `list_repo_docs`
 - Skill: `skills/repo_knowledge.md`
@@ -111,7 +129,6 @@ extract_entities → plan_tools → validate_plan
 ## Optional follow-ups (not Phase 4)
 
 - LangSmith export for graph traces
-- Graphify extraction on sync for all repos (cost/latency)
 - Gemini token recording in streaming paths
 - Skill linter CI for plan templates
 

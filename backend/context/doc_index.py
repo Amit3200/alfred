@@ -17,6 +17,7 @@ from backend.paths import bundled_skills_dir, playbooks_dir, repo_context_dir
 logger = logging.getLogger(__name__)
 
 INDEX_NAME = "doc_index.json"
+_DOC_SUFFIXES = frozenset({".md", ".markdown", ".txt", ".mdx"})
 _TOKEN_RE = re.compile(r"[a-z0-9_]{2,}")
 _SKIP_DIR_NAMES = frozenset(
     {
@@ -35,6 +36,86 @@ _SKIP_DIR_NAMES = frozenset(
 )
 _CHUNK_CHARS = 1200
 _CHUNK_OVERLAP = 200
+
+_DOC_QUERY_STOPWORDS = frozenset(
+    {
+        "how",
+        "can",
+        "could",
+        "would",
+        "should",
+        "do",
+        "does",
+        "did",
+        "we",
+        "you",
+        "your",
+        "our",
+        "have",
+        "has",
+        "had",
+        "is",
+        "are",
+        "was",
+        "were",
+        "be",
+        "been",
+        "the",
+        "a",
+        "an",
+        "and",
+        "or",
+        "with",
+        "for",
+        "in",
+        "to",
+        "of",
+        "on",
+        "at",
+        "it",
+        "this",
+        "that",
+        "what",
+        "when",
+        "where",
+        "why",
+        "who",
+        "which",
+        "about",
+        "flexype",
+        "docs",
+        "doc",
+        "documentation",
+        "handbook",
+        "integration",
+        "integrations",
+        "integrate",
+        "integrated",
+        "configure",
+        "configured",
+        "configuration",
+        "setup",
+        "set",
+        "up",
+        "using",
+        "use",
+        "supported",
+        "support",
+        "available",
+        "work",
+        "works",
+        "working",
+        "please",
+        "tell",
+        "explain",
+        "show",
+        "find",
+        "get",
+        "give",
+        "me",
+        "my",
+    }
+)
 
 
 @dataclass(frozen=True)
@@ -74,6 +155,57 @@ def doc_index_path(data_dir: Path, repo_slug: str) -> Path:
 
 def _tokenize(text: str) -> list[str]:
     return _TOKEN_RE.findall((text or "").lower())
+
+
+def significant_query_tokens(query: str) -> list[str]:
+    """Product/feature tokens from a support question (stopwords removed)."""
+    return [token for token in _tokenize(query) if token not in _DOC_QUERY_STOPWORDS and len(token) >= 3]
+
+
+def _normalize_match_text(text: str) -> str:
+    return re.sub(r"[^a-z0-9]+", "", (text or "").lower())
+
+
+def _token_matches_field(token: str, field: str) -> bool:
+    normalized_field = _normalize_match_text(field)
+    normalized_token = _normalize_match_text(token)
+    if not normalized_token or not normalized_field:
+        return False
+    if normalized_token in normalized_field or normalized_field in normalized_token:
+        return True
+    if len(normalized_token) >= 4 and normalized_token[:4] in normalized_field:
+        return True
+    return False
+
+
+def doc_hit_matches_query(hit: dict[str, Any], query: str) -> bool:
+    """True when a BM25 hit actually relates to the product/feature asked about."""
+    entities = significant_query_tokens(query)
+    if not entities:
+        return True
+
+    path = str(hit.get("path") or "")
+    title = str(hit.get("title") or "")
+    excerpt = str(hit.get("excerpt") or "")
+    combined = f"{path} {title} {excerpt}"
+
+    joined = "".join(entities)
+    if _token_matches_field(joined, combined):
+        return True
+
+    matched = sum(1 for token in entities if _token_matches_field(token, combined))
+    if len(entities) == 1:
+        return matched >= 1
+    return matched >= len(entities)
+
+
+def describe_missing_doc_topic(query: str) -> str:
+    entities = significant_query_tokens(query)
+    if not entities:
+        return "that topic"
+    if len(entities) == 1:
+        return entities[0]
+    return " ".join(entities)
 
 
 def _now_iso() -> str:
@@ -150,14 +282,25 @@ def _collect_mirror_docs(
         if not spec:
             continue
         target = mirror / spec
-        if target.is_file() and target.suffix.lower() in {".md", ".markdown", ".txt"}:
+        if target.is_file() and target.suffix.lower() in _DOC_SUFFIXES:
             try:
                 add_file(spec, target.read_text(encoding="utf-8", errors="replace"))
             except OSError:
                 continue
+        elif spec in {".", "*"}:
+            for path in sorted(mirror.rglob("*")):
+                if not path.is_file() or path.suffix.lower() not in _DOC_SUFFIXES:
+                    continue
+                if any(part in _SKIP_DIR_NAMES for part in path.parts):
+                    continue
+                rel = path.relative_to(mirror).as_posix()
+                try:
+                    add_file(rel, path.read_text(encoding="utf-8", errors="replace"))
+                except OSError:
+                    continue
         elif target.is_dir():
             for path in sorted(target.rglob("*")):
-                if not path.is_file() or path.suffix.lower() not in {".md", ".markdown", ".txt"}:
+                if not path.is_file() or path.suffix.lower() not in _DOC_SUFFIXES:
                     continue
                 if any(part in _SKIP_DIR_NAMES for part in path.parts):
                     continue
@@ -192,6 +335,7 @@ def build_doc_index(
     *,
     repo: str | None = None,
     config: RepoKnowledgeConfig | None = None,
+    alfred_config: AlfredConfig | None = None,
 ) -> dict[str, Any]:
     """Index markdown docs from mirror + playbooks; write doc_index.json."""
     rk = config or RepoKnowledgeConfig()
@@ -203,8 +347,22 @@ def build_doc_index(
     if not mirror.is_dir():
         raise FileNotFoundError(f"Shared mirror for {slug!r} is missing")
 
-    chunks = _collect_mirror_docs(mirror, doc_paths=list(rk.doc_paths), repo_slug=slug)
-    chunks.extend(_collect_playbook_docs(data_dir))
+    if alfred_config is not None:
+        from backend.context.repo_profiles import doc_paths_for_repo
+
+        doc_paths = doc_paths_for_repo(alfred_config, slug)
+    else:
+        doc_paths = list(rk.doc_paths)
+
+    chunks = _collect_mirror_docs(mirror, doc_paths=doc_paths, repo_slug=slug)
+    if alfred_config is not None:
+        from backend.context.repo_profiles import profile_for_repo
+
+        profile = profile_for_repo(alfred_config.git, slug)
+        if profile and profile.role == "docs":
+            chunks.extend(_collect_playbook_docs(data_dir))
+    elif slug == resolve_main_repo(git):
+        chunks.extend(_collect_playbook_docs(data_dir))
 
     from backend.context.generator import _head_sha
 
@@ -253,17 +411,101 @@ def search_repo_docs(
     query: str,
     *,
     limit: int = 8,
+    exclude_path_prefixes: tuple[str, ...] = (),
 ) -> list[dict[str, Any]]:
     """BM25 search over indexed doc chunks."""
     index = load_doc_index(data_dir, repo_slug)
     if not index:
         return []
+    return _search_index_chunks(
+        index,
+        query,
+        limit=limit,
+        exclude_path_prefixes=exclude_path_prefixes,
+    )
 
+
+def _playbook_paths_allowed(query: str) -> bool:
+    lower = (query or "").lower()
+    return any(token in lower for token in ("playbook", "runbook", "investigate_bug", "investigation"))
+
+
+def pick_best_doc_hit(hits: list[dict[str, Any]], query: str) -> dict[str, Any] | None:
+    """Prefer handbook/product docs that match the asked-about entity."""
+    if not hits:
+        return None
+    relevant = [hit for hit in hits if doc_hit_matches_query(hit, query)]
+    if not relevant:
+        return None
+
+    allow_playbooks = _playbook_paths_allowed(query)
+    lower = (query or "").lower()
+    ranked: list[tuple[float, dict[str, Any]]] = []
+    for hit in relevant:
+        path = str(hit.get("path") or "")
+        title = str(hit.get("title") or "")
+        score = float(hit.get("score") or 0)
+        if path.startswith("playbooks/") and not allow_playbooks:
+            score -= 10.0
+        if path.startswith(("handbook/", "integrations/", "docs/", "platforms/")):
+            score += 2.0
+        for token in significant_query_tokens(query):
+            if _token_matches_field(token, path) or _token_matches_field(token, title):
+                score += 8.0
+            elif _token_matches_field(token, str(hit.get("excerpt") or "")):
+                score += 4.0
+        for token in ("upsell", "google ads", "configure", "configuration"):
+            if token in lower and token.replace(" ", "") in path.lower().replace("_", "").replace("-", ""):
+                score += 3.0
+        ranked.append((score, hit))
+    ranked.sort(key=lambda item: item[0], reverse=True)
+    return ranked[0][1]
+
+
+def search_all_repo_docs(
+    data_dir: Path,
+    repo_slugs: list[str],
+    query: str,
+    *,
+    limit: int = 8,
+    exclude_path_prefixes: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
+    """Search multiple repo indexes and merge by score."""
+    merged: list[dict[str, Any]] = []
+    per_repo = max(1, limit // max(len(repo_slugs), 1))
+    for slug in repo_slugs:
+        hits = search_repo_docs(
+            data_dir,
+            slug,
+            query,
+            limit=per_repo,
+            exclude_path_prefixes=exclude_path_prefixes,
+        )
+        for hit in hits:
+            hit = {**hit, "repo": slug}
+            merged.append(hit)
+    merged.sort(key=lambda item: float(item.get("score") or 0), reverse=True)
+    return merged[:limit]
+
+
+def _search_index_chunks(
+    index: dict[str, Any],
+    query: str,
+    *,
+    limit: int,
+    exclude_path_prefixes: tuple[str, ...] = (),
+) -> list[dict[str, Any]]:
     chunks = [
         DocChunk.from_dict(item)
         for item in index.get("chunks") or []
         if isinstance(item, dict)
     ]
+    if exclude_path_prefixes:
+        chunks = [
+            chunk
+            for chunk in chunks
+            if not any(str(chunk.path).startswith(prefix) for prefix in exclude_path_prefixes)
+        ]
     if not chunks:
         return []
 

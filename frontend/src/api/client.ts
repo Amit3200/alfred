@@ -12,6 +12,46 @@ export type AIProviderConfig = {
   model: string;
 };
 
+export type GitRepoProfile = {
+  repo: string;
+  role: "code" | "docs" | "scripts";
+  doc_index?: boolean | null;
+  graphify?: boolean | null;
+  tags?: string[];
+};
+
+export type KnowledgeDocStatus = {
+  indexed: boolean;
+  chunk_count: number;
+  generated_at?: string | null;
+  head_sha?: string | null;
+};
+
+export type KnowledgeGraphStatus = {
+  present: boolean;
+  node_count: number;
+  edge_count: number;
+};
+
+export type KnowledgeBaseEntry = {
+  repo: string;
+  role: "code" | "docs" | "scripts";
+  doc_index: boolean;
+  graphify: boolean;
+  tags?: string[];
+  mirror_present: boolean;
+  doc: KnowledgeDocStatus;
+  graph: KnowledgeGraphStatus;
+  is_main_repo: boolean;
+};
+
+export type KnowledgeBasesResponse = {
+  graphify_enabled: boolean;
+  repo_knowledge_enabled: boolean;
+  index_on_sync: boolean;
+  repos: KnowledgeBaseEntry[];
+};
+
 export type AlfredConfig = {
   initialized: boolean;
   server: { host: string; port: number; admin_token: string };
@@ -32,6 +72,7 @@ export type AlfredConfig = {
     token: string;
     default_org: string;
     repos: string[];
+    repo_profiles?: GitRepoProfile[];
     main_repo?: string;
     graphify_enabled?: boolean;
     mirror_ttl_hours?: number;
@@ -39,6 +80,16 @@ export type AlfredConfig = {
     mirror_max_workspaces?: number;
     mirror_shallow_depth?: number;
     write_enabled?: boolean;
+  };
+  scripts?: {
+    enabled?: boolean;
+    timeout_seconds?: number;
+    remote?: {
+      repo?: string;
+      branch?: string;
+      path?: string;
+      playbooks_path?: string;
+    };
   };
   github: {
     enabled: boolean;
@@ -389,10 +440,10 @@ export const api = {
   getChatSession: (id: string) => request<ChatSessionDetail>(`/api/chat/sessions/${id}`, {}, true),
   deleteChatSession: (id: string) =>
     request<{ ok: boolean }>(`/api/chat/sessions/${id}`, { method: "DELETE" }, true),
-  sendChatMessage: (id: string, content: string) =>
+  sendChatMessage: (id: string, content: string, persona: ChatPersona = "support") =>
     request<ChatMessageResponse>(
       `/api/chat/sessions/${id}/messages`,
-      { method: "POST", body: JSON.stringify({ content }) },
+      { method: "POST", body: JSON.stringify({ content, persona }) },
       true,
     ),
   getChatTaskStatus: (taskId: string) =>
@@ -402,6 +453,13 @@ export const api = {
       progress_label?: string;
       current_tool?: string | null;
       recent_tools?: string[];
+      progress_steps?: Array<{ label: string; status: "done" | "active" | "error" }>;
+      progress_plan?: {
+        intent?: string;
+        intent_label?: string;
+        goal?: string;
+        steps?: string[];
+      } | null;
     }>(`/api/chat/tasks/${taskId}/status`, {}, true),
   getChatActiveTask: (chatId: string) =>
     request<{
@@ -410,6 +468,13 @@ export const api = {
       progress_label?: string;
       current_tool?: string | null;
       recent_tools?: string[];
+      progress_steps?: Array<{ label: string; status: "done" | "active" | "error" }>;
+      progress_plan?: {
+        intent?: string;
+        intent_label?: string;
+        goal?: string;
+        steps?: string[];
+      } | null;
     }>(`/api/chat/sessions/${encodeURIComponent(chatId)}/active-task`, {}, true),
   cancelChatTask: (taskId: string) =>
     request<{ task_id: string; status: string }>(
@@ -491,9 +556,30 @@ export const api = {
     request<GraphifyReportResponse>("/api/repo-context/graphify/report", {}, true),
   getGraphifySummary: () =>
     request<GraphifySummaryResponse>("/api/repo-context/graphify/summary", {}, true),
-  rebuildGraphify: () =>
+  rebuildGraphify: (repo?: string) =>
     request<GraphifyRebuildResult>(
-      "/api/repo-context/graphify/rebuild",
+      `/api/repo-context/graphify/rebuild${repo ? `?repo=${encodeURIComponent(repo)}` : ""}`,
+      { method: "POST", body: JSON.stringify({}) },
+      true,
+    ),
+
+  getKnowledgeBases: () =>
+    request<KnowledgeBasesResponse>("/api/repo-context/knowledge", {}, true),
+  syncKnowledgeRepo: (repo: string) =>
+    request<{ ok: boolean; knowledge: KnowledgeBasesResponse }>(
+      `/api/repo-context/knowledge/${encodeURIComponent(repo)}/sync`,
+      { method: "POST", body: JSON.stringify({}) },
+      true,
+    ),
+  rebuildKnowledgeIndex: (repo: string) =>
+    request<{ ok: boolean; knowledge: KnowledgeBasesResponse }>(
+      `/api/repo-context/knowledge/${encodeURIComponent(repo)}/index`,
+      { method: "POST", body: JSON.stringify({}) },
+      true,
+    ),
+  rebuildKnowledgeGraph: (repo: string) =>
+    request<{ ok: boolean; knowledge: KnowledgeBasesResponse }>(
+      `/api/repo-context/knowledge/${encodeURIComponent(repo)}/graphify`,
       { method: "POST", body: JSON.stringify({}) },
       true,
     ),
@@ -713,6 +799,8 @@ export const api = {
       true,
     ),
 };
+
+export type ChatPersona = "support" | "tech" | "all" | "general";
 
 export type ChatSessionSummary = {
   id: string;

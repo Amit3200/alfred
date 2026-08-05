@@ -1,26 +1,30 @@
 import {
+  CheckCircleOutlined,
   DeleteOutlined,
   DownloadOutlined,
+  LoadingOutlined,
   PlusOutlined,
-  SendOutlined,
   StopOutlined,
 } from "@ant-design/icons";
-import { Button, Empty, Input, Spin, Typography } from "antd";
+import { Button, Empty, Segmented, Spin, Typography } from "antd";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { AlfredMark } from "./AlfredMark";
-import { ChatMessageContent } from "./ChatMessageContent";
+import { ChatComposer } from "./ChatComposer";
+import { ChatMessageBubble } from "./ChatMessageBubble";
 import {
   api,
   ChatSessionDetail,
   ChatSessionSummary,
+  ChatPersona,
   getAdminToken,
 } from "../api/client";
 import { useApp } from "../context/AppContext";
 
 const { Text } = Typography;
-const { TextArea } = Input;
+
+const CHAT_PERSONA_STORAGE_KEY = "alfred_chat_persona";
 const ACTIVE_CHAT_STORAGE_KEY = "alfred_active_chat_id";
-const REPLY_POLL_MS = 2000;
+const REPLY_POLL_MS = 1500;
 const REPLY_POLL_MAX_MS = 15 * 60 * 1000;
 
 function sleepInterruptible(ms: number, shouldStop: () => boolean) {
@@ -44,6 +48,28 @@ function sleepInterruptible(ms: number, shouldStop: () => boolean) {
 function lastMessageIsUser(chat: ChatSessionDetail | null): boolean {
   const last = chat?.messages[chat.messages.length - 1];
   return last?.role === "user";
+}
+
+function readStoredPersona(): ChatPersona {
+  try {
+    const value = sessionStorage.getItem(CHAT_PERSONA_STORAGE_KEY);
+    if (value === "support" || value === "tech" || value === "all" || value === "general") {
+      return value;
+    }
+    if (value === "qa") return "support";
+    if (value === "debug") return "tech";
+  } catch {
+    // ignore
+  }
+  return "support";
+}
+
+function storePersona(persona: ChatPersona) {
+  try {
+    sessionStorage.setItem(CHAT_PERSONA_STORAGE_KEY, persona);
+  } catch {
+    // ignore
+  }
 }
 
 function readStoredActiveId(): string | null {
@@ -82,12 +108,20 @@ export function ChatPage() {
   const [sessions, setSessions] = useState<ChatSessionSummary[]>([]);
   const [activeId, setActiveIdState] = useState<string | null>(() => readStoredActiveId());
   const [chat, setChat] = useState<ChatSessionDetail | null>(null);
-  const [draft, setDraft] = useState("");
   const [loadingSessions, setLoadingSessions] = useState(true);
   const [loadingChat, setLoadingChat] = useState(false);
   const [sending, setSending] = useState(false);
   const [progressLabel, setProgressLabel] = useState<string | null>(null);
-  const [recentTools, setRecentTools] = useState<string[]>([]);
+  const [progressSteps, setProgressSteps] = useState<
+    Array<{ label: string; status: "done" | "active" | "error" }>
+  >([]);
+  const [progressPlan, setProgressPlan] = useState<{
+    intent?: string;
+    intent_label?: string;
+    goal?: string;
+    steps?: string[];
+  } | null>(null);
+  const [persona, setPersonaState] = useState<ChatPersona>(() => readStoredPersona());
   const threadRef = useRef<HTMLDivElement>(null);
   const activeIdRef = useRef<string | null>(activeId);
   const pollChatIdRef = useRef<string | null>(null);
@@ -123,7 +157,8 @@ export function ChatPage() {
       pollAbortRef.current = false;
       setSending(true);
       setProgressLabel("Thinking…");
-      setRecentTools([]);
+      setProgressSteps([{ label: "Understanding your question", status: "active" }]);
+      setProgressPlan(null);
       let resolvedTaskId = taskId ?? activeTaskIdRef.current ?? undefined;
       if (!resolvedTaskId) {
         try {
@@ -154,8 +189,11 @@ export function ChatPage() {
               if (status.progress_label) {
                 setProgressLabel(status.progress_label);
               }
-              if (status.recent_tools) {
-                setRecentTools(status.recent_tools);
+              if (status.progress_steps?.length) {
+                setProgressSteps(status.progress_steps);
+              }
+              if (status.progress_plan) {
+                setProgressPlan(status.progress_plan);
               }
               if (status.status === "failed" || status.status === "cancelled") {
                 break;
@@ -191,7 +229,8 @@ export function ChatPage() {
         }
         setSending(false);
         setProgressLabel(null);
-        setRecentTools([]);
+        setProgressSteps([]);
+        setProgressPlan(null);
       }
     },
     [applyChatDetail, notify],
@@ -206,7 +245,8 @@ export function ChatPage() {
     }
     setSending(false);
     setProgressLabel(null);
-    setRecentTools([]);
+    setProgressSteps([]);
+    setProgressPlan(null);
     if (chatId && !taskId) {
       try {
         const active = await api.getChatActiveTask(chatId);
@@ -245,6 +285,11 @@ export function ChatPage() {
       }
     }
   }, [applyChatDetail, notify]);
+
+  const setPersona = useCallback((value: ChatPersona) => {
+    storePersona(value);
+    setPersonaState(value);
+  }, []);
 
   const setActiveId = useCallback((id: string | null) => {
     activeIdRef.current = id;
@@ -361,8 +406,7 @@ export function ChatPage() {
     }
   };
 
-  const onSend = async () => {
-    const text = draft.trim();
+  const onSend = async (text: string) => {
     if (!text || !activeId || sending) return;
     if (!hasToken) {
       notify("error", "Admin token required.");
@@ -371,9 +415,8 @@ export function ChatPage() {
     const chatId = activeId;
     userStoppedPollRef.current.delete(chatId);
     setSending(true);
-    setDraft("");
     try {
-      const result = await api.sendChatMessage(chatId, text);
+      const result = await api.sendChatMessage(chatId, text, persona);
       if (activeIdRef.current !== chatId) return;
       applyChatDetail(result.chat);
       scrollToBottom();
@@ -392,7 +435,6 @@ export function ChatPage() {
       }
     } catch (err) {
       notify("error", err instanceof Error ? err.message : "Send failed");
-      setDraft(text);
       if (activeIdRef.current === chatId) {
         try {
           const detail = await api.getChatSession(chatId);
@@ -507,6 +549,22 @@ export function ChatPage() {
                 <Text type="secondary" style={{ fontSize: 12 }}>
                   Separate memory · say &quot;export to markdown&quot; or use Export MD to save
                 </Text>
+                <div className="alfred-chat-persona-row">
+                  <Text type="secondary" style={{ fontSize: 12, marginRight: 8 }}>
+                    Mode
+                  </Text>
+                  <Segmented
+                    size="small"
+                    value={persona}
+                    onChange={(value) => setPersona(value as ChatPersona)}
+                    options={[
+                      { label: "Support Q&A", value: "support", title: "FlexyPe/docs handbook only" },
+                      { label: "Tech Q&A", value: "tech", title: "Cipher repo, playbooks, runbooks" },
+                      { label: "All", value: "all", title: "Full tool access" },
+                      { label: "General", value: "general", title: "PR review and general skills" },
+                    ]}
+                  />
+                </div>
               </div>
               <Button
                 icon={<DownloadOutlined />}
@@ -520,25 +578,14 @@ export function ChatPage() {
             <div className="alfred-chat-thread" ref={threadRef}>
               {loadingChat ? (
                 <div className="alfred-chat-center">
-                  <Spin tip="Loading messages…" />
+                  <Spin />
+                  <Text type="secondary" style={{ marginTop: 12 }}>
+                    Loading messages…
+                  </Text>
                 </div>
               ) : visibleChat?.messages.length ? (
                 visibleChat.messages.map((msg, index) => (
-                  <div
-                    key={`${index}-${msg.role}-${msg.content.slice(0, 24)}`}
-                    className={`alfred-chat-bubble alfred-chat-bubble-${msg.role}`}
-                  >
-                    <div className="alfred-chat-bubble-label">
-                      {msg.role === "user" ? "You" : "Alfred"}
-                    </div>
-                    <div className="alfred-chat-bubble-body">
-                      {msg.role === "assistant" ? (
-                        <ChatMessageContent content={msg.content} payload={msg.payload} />
-                      ) : (
-                        msg.content
-                      )}
-                    </div>
-                  </div>
+                  <ChatMessageBubble key={`${visibleChat.id}-${index}-${msg.role}`} message={msg} index={index} />
                 ))
               ) : (
                 <div className="alfred-chat-welcome-inline">
@@ -549,52 +596,49 @@ export function ChatPage() {
                 <div className="alfred-chat-bubble alfred-chat-bubble-assistant">
                   <div className="alfred-chat-bubble-label">Alfred</div>
                   <div className="alfred-chat-bubble-body">
-                    <div className="alfred-chat-progress">
-                      <Spin size="small" /> {progressLabel || "Thinking…"}
-                    </div>
-                    {recentTools.length > 0 && (
-                      <div className="alfred-chat-progress-steps">
-                        {recentTools.map((tool) => (
-                          <span key={tool} className="alfred-chat-progress-step">
-                            {tool.replace(/_/g, " ")}
-                          </span>
-                        ))}
+                    {progressPlan?.intent_label ? (
+                      <div className="alfred-chat-progress-plan">
+                        <div className="alfred-chat-progress-plan-title">
+                          Plan · {progressPlan.intent_label}
+                        </div>
+                        {progressPlan.goal ? (
+                          <div className="alfred-chat-progress-plan-goal">{progressPlan.goal}</div>
+                        ) : null}
+                        {progressPlan.steps?.length ? (
+                          <div className="alfred-chat-progress-plan-steps">
+                            {progressPlan.steps.join(" → ")}
+                          </div>
+                        ) : null}
                       </div>
-                    )}
+                    ) : null}
+                    <ul className="alfred-chat-progress-timeline">
+                      {(progressSteps.length > 0
+                        ? progressSteps
+                        : [{ label: (progressLabel || "Starting").replace(/…$/, ""), status: "active" as const }]
+                      ).map((step, index) => (
+                        <li
+                          key={`${index}-${step.label}`}
+                          className={`alfred-chat-progress-item alfred-chat-progress-item-${step.status}`}
+                        >
+                          <span className="alfred-chat-progress-icon" aria-hidden>
+                            {step.status === "done" ? (
+                              <CheckCircleOutlined />
+                            ) : step.status === "error" ? (
+                              <StopOutlined />
+                            ) : (
+                              <LoadingOutlined spin />
+                            )}
+                          </span>
+                          <span>{step.label}</span>
+                        </li>
+                      ))}
+                    </ul>
                   </div>
                 </div>
               )}
             </div>
 
-            <footer className="alfred-chat-composer">
-              <TextArea
-                value={draft}
-                onChange={(e) => setDraft(e.target.value)}
-                placeholder="Message Alfred… (Shift+Enter for newline)"
-                autoSize={{ minRows: 1, maxRows: 6 }}
-                onPressEnter={(e) => {
-                  if (!e.shiftKey) {
-                    e.preventDefault();
-                    onSend();
-                  }
-                }}
-                disabled={sending}
-              />
-              {sending ? (
-                <Button danger icon={<StopOutlined />} onClick={() => void onStop()}>
-                  Stop
-                </Button>
-              ) : (
-                <Button
-                  type="primary"
-                  icon={<SendOutlined />}
-                  onClick={onSend}
-                  disabled={!draft.trim()}
-                >
-                  Send
-                </Button>
-              )}
-            </footer>
+            <ChatComposer sending={sending} onSend={onSend} onStop={onStop} />
           </>
         )}
       </section>

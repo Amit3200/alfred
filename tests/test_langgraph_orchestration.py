@@ -9,7 +9,7 @@ from backend.orchestrator.graph.build import build_alfred_graph, get_compiled_gr
 from backend.orchestrator.graph.serialize import tool_plan_from_dict, tool_plan_to_dict
 from backend.orchestrator.graph.skill_policy import resolve_policy_skill
 from backend.routing.playbooks import Playbook, PlaybookStore
-from backend.routing.tool_plan_types import ToolPlan
+from backend.routing.tool_plan_types import ToolPlan, ToolPlanStep
 from backend.routing.types import RouteContext, RouteMode
 
 
@@ -85,6 +85,7 @@ def test_langgraph_investigation_routes_direct():
             goal="List my PRs",
             confidence=0.95,
             tools_needed=["list_my_prs"],
+            steps=[ToolPlanStep("list_my_prs", "list", {})],
             intent_class="git.read",
         ),
     ):

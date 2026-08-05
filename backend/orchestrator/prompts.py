@@ -32,11 +32,22 @@ UPDATE_PLAN_PROMPT = (_prompts.get("update_plan_prompt") or "").strip()
 STANDALONE_PLAN_PROMPT = (_prompts.get("standalone_plan_prompt") or "").strip()
 
 
-def build_alfred_system_prompt(config: AlfredConfig | None = None, model_name: str | None = None) -> str:
+UI_FORMAT_RULES = (_prompts.get("ui_format_rules") or "").strip()
+
+
+def build_alfred_system_prompt(
+    config: AlfredConfig | None = None,
+    model_name: str | None = None,
+    *,
+    include_slack_rules: bool = True,
+) -> str:
     cfg = config or ConfigModel()
     identity = branding_identity_line(cfg.branding)
     
-    prompt = f"{identity}\n\n{ALFRED_IDENTITY}\n\n{SLACK_FORMAT_RULES}"
+    format_rules = SLACK_FORMAT_RULES if include_slack_rules else UI_FORMAT_RULES
+    prompt = f"{identity}\n\n{ALFRED_IDENTITY}"
+    if format_rules:
+        prompt += f"\n\n{format_rules}"
     
     if model_name:
         model_lower = model_name.lower()

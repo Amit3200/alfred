@@ -1,4 +1,12 @@
+import type { ReactNode } from "react";
 import { ChatMarkdown } from "./ChatMarkdown";
+
+export type ReplyMeta = {
+  confidence: number;
+  relevancy: "high" | "medium" | "low" | "not_found" | "unverified";
+  classification?: string;
+  strategy?: string;
+};
 
 export type ResponsePayload = {
   kind:
@@ -19,7 +27,9 @@ export type ResponsePayload = {
     | "cloudwatch_query"
     | "cloudwatch_log_groups"
     | "google_sheet"
-    | "google_doc";
+    | "google_doc"
+    | "doc_answer"
+    | "doc_search";
   data: Record<string, unknown>;
 };
 
@@ -38,28 +48,93 @@ type Props = {
   payload?: ResponsePayload | null;
 };
 
+function readReplyMeta(payload?: ResponsePayload | null): ReplyMeta | null {
+  const raw = payload?.data?.reply_meta;
+  if (!raw || typeof raw !== "object") return null;
+  const confidence = Number((raw as ReplyMeta).confidence);
+  const relevancy = String((raw as ReplyMeta).relevancy || "");
+  if (!Number.isFinite(confidence) || !relevancy) return null;
+  return raw as ReplyMeta;
+}
+
+function relevancyLabel(value: ReplyMeta["relevancy"]): string {
+  switch (value) {
+    case "high":
+      return "High";
+    case "medium":
+      return "Medium";
+    case "low":
+      return "Low";
+    case "not_found":
+      return "Not found";
+    default:
+      return "Unverified";
+  }
+}
+
+function ReplyMetaFooter({ meta }: { meta: ReplyMeta }) {
+  const confidencePct = Math.round(Math.max(0, Math.min(1, meta.confidence)) * 100);
+  const parts = [
+    `Confidence: ${confidencePct}%`,
+    `Relevancy: ${relevancyLabel(meta.relevancy)}`,
+  ];
+  if (meta.classification) {
+    parts.push(meta.classification);
+  }
+  return (
+    <div className="alfred-reply-meta" aria-label="Answer confidence and relevancy">
+      {parts.join(" · ")}
+    </div>
+  );
+}
+
 export function ChatMessageContent({ content, payload }: Props) {
+  const replyMeta = readReplyMeta(payload);
+  let body: ReactNode;
+
   if (!payload) {
-    return <ChatMarkdown content={content} />;
+    body = <ChatMarkdown content={content} />;
+  } else {
+    switch (payload.kind) {
+      case "pr_list":
+        body = <PrListView data={payload.data} />;
+        break;
+      case "pr_detail":
+        body = <PrDetailView data={payload.data} />;
+        break;
+      case "repo_list":
+        body = <RepoListView data={payload.data} />;
+        break;
+      case "error":
+        body = <div className="alfred-chat-error">{String(payload.data.message || content)}</div>;
+        break;
+      case "doc_answer":
+      case "doc_search":
+        body = (
+          <DocAnswerView
+            content={String(payload.data.text || content)}
+            payload={payload.data}
+          />
+        );
+        break;
+      case "athena_query":
+      case "cloudwatch_query":
+      case "cloudwatch_log_groups":
+        body = <AwsQueryView kind={payload.kind} data={payload.data} content={content} />;
+        break;
+      case "text":
+      default:
+        body = <ChatMarkdown content={String(payload.data.text || content)} />;
+        break;
+    }
   }
 
-  switch (payload.kind) {
-    case "pr_list":
-      return <PrListView data={payload.data} />;
-    case "pr_detail":
-      return <PrDetailView data={payload.data} />;
-    case "repo_list":
-      return <RepoListView data={payload.data} />;
-    case "error":
-      return <div className="alfred-chat-error">{String(payload.data.message || content)}</div>;
-    case "athena_query":
-    case "cloudwatch_query":
-    case "cloudwatch_log_groups":
-      return <AwsQueryView kind={payload.kind} data={payload.data} content={content} />;
-    case "text":
-    default:
-      return <ChatMarkdown content={String(payload.data.text || content)} />;
-  }
+  return (
+    <>
+      {body}
+      {replyMeta ? <ReplyMetaFooter meta={replyMeta} /> : null}
+    </>
+  );
 }
 
 function PrListView({ data }: { data: Record<string, unknown> }) {
@@ -152,6 +227,28 @@ function RepoListView({ data }: { data: Record<string, unknown> }) {
         </li>
       ))}
     </ul>
+  );
+}
+
+function DocAnswerView({
+  content,
+  payload,
+}: {
+  content: string;
+  payload: Record<string, unknown>;
+}) {
+  const docPath = String(payload.doc_path || "");
+  const repo = String(payload.repo || "");
+  return (
+    <div className="alfred-doc-answer">
+      {docPath ? (
+        <div className="alfred-doc-answer-source">
+          Source: <code>{docPath}</code>
+          {repo ? <> ({repo})</> : null}
+        </div>
+      ) : null}
+      <ChatMarkdown content={content} />
+    </div>
   );
 }
 

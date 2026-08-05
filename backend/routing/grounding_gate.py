@@ -85,6 +85,79 @@ def _write_tools_called(trace: list[ToolTraceEntry]) -> list[str]:
     return out
 
 
+_DOC_PATH_RE = re.compile(r"`([^`]+\.(?:mdx?|markdown|txt|md))`", re.I)
+_YES_LEAD_RE = re.compile(r"^\s*\*{0,2}yes\*{0,2}\b", re.I)
+_TEMPLATE_URL_RE = re.compile(r"[{}]")
+
+
+def _doc_read_succeeded(trace: list[ToolTraceEntry]) -> bool:
+    return any(entry.tool == "read_repo_doc" and entry.success for entry in trace)
+
+
+def _template_or_example_urls(urls: set[str]) -> set[str]:
+    """Doc handbooks often include placeholder checkout links — not fabrication."""
+    return {url for url in urls if _TEMPLATE_URL_RE.search(url)}
+
+
+def _url_grounding_issues(
+    prose: str,
+    trace: list[ToolTraceEntry],
+    goal: GoalSpec | None,
+) -> list[str]:
+    urls_in_text = extract_urls(prose)
+    if not urls_in_text or not trace:
+        return []
+
+    if goal and goal.intent_class == "repo.docs.qa" and _doc_read_succeeded(trace):
+        return []
+
+    urls_from_tools: set[str] = set()
+    for entry in trace:
+        if entry.success:
+            urls_from_tools.update(_urls_from_observation(entry.observation))
+
+    fabricated_urls = urls_in_text - urls_from_tools - _template_or_example_urls(urls_in_text)
+    if not fabricated_urls:
+        return []
+    return [f"URLs in reply not found in tool results: {', '.join(sorted(fabricated_urls)[:3])}"]
+
+
+def _doc_qa_issues(prose: str, trace: list[ToolTraceEntry]) -> list[str]:
+    issues: list[str] = []
+    doc_tools = frozenset({"search_repo_docs", "read_repo_doc", "list_repo_docs"})
+    successful = [entry for entry in trace if entry.success and entry.tool in doc_tools]
+    if not successful:
+        issues.append("Documentation answer requires search_repo_docs or read_repo_doc in tool trace")
+        return issues
+
+    if not any(entry.tool == "search_repo_docs" and entry.success for entry in trace):
+        issues.append("Must call search_repo_docs before answering documentation questions")
+
+    search_found_false = False
+    observations: list[str] = []
+    for entry in trace:
+        if not entry.success:
+            continue
+        observations.append(entry.observation or "")
+        if entry.tool == "search_repo_docs" and entry.success:
+            obs = (entry.observation or "").lower().replace(" ", "")
+            if '"found":false' in obs:
+                search_found_false = True
+            elif '"found":true' in obs:
+                search_found_false = False
+
+    blob = "\n".join(observations)
+    if search_found_false and not any(entry.tool == "read_repo_doc" and entry.success for entry in trace):
+        if _YES_LEAD_RE.match(prose or ""):
+            issues.append("Reply claims support but doc search found no matching documentation")
+
+    for cited in _DOC_PATH_RE.findall(prose or ""):
+        if cited not in blob:
+            issues.append(f"Cited doc path not present in tool results: {cited}")
+
+    return issues
+
+
 def validate_agent_result(
     text: str,
     trace: list[ToolTraceEntry],
@@ -98,15 +171,7 @@ def validate_agent_result(
         if not writes:
             issues.append("Write goal but no successful write tool in trace")
 
-    urls_in_text = extract_urls(prose)
-    urls_from_tools: set[str] = set()
-    for entry in trace:
-        if entry.success:
-            urls_from_tools.update(_urls_from_observation(entry.observation))
-
-    fabricated_urls = urls_in_text - urls_from_tools
-    if fabricated_urls and trace:
-        issues.append(f"URLs in reply not found in tool results: {', '.join(sorted(fabricated_urls)[:3])}")
+    issues.extend(_url_grounding_issues(prose, trace, goal))
 
     keys_in_text = {m.group(1).upper() for m in _ISSUE_KEY_RE.finditer(prose)}
     keys_from_tools = _issue_keys_from_trace(trace)
@@ -119,12 +184,18 @@ def validate_agent_result(
     if claims and not successful_tools and prose:
         issues.append("Action claims in reply but no successful tools were called")
 
+    if goal and goal.intent_class == "repo.docs.qa":
+        issues.extend(_doc_qa_issues(prose, trace))
+
     if issues:
-        partial = _format_partial_results(trace)
         fallback_parts = [goal.failure_response if goal else "I couldn't verify that response against tool results."]
-        if partial:
-            fallback_parts.append(partial)
-        fallback_parts.append("Issues: " + "; ".join(issues))
+        if goal and goal.intent_class == "repo.docs.qa":
+            fallback_parts.append("Issues: " + "; ".join(issues))
+        else:
+            partial = _format_partial_results(trace)
+            if partial:
+                fallback_parts.append(partial)
+            fallback_parts.append("Issues: " + "; ".join(issues))
         return ValidationResult(passed=False, issues=issues, fallback="\n\n".join(fallback_parts))
 
     return ValidationResult(passed=True)

@@ -98,8 +98,53 @@ def test_kimi_chat_disables_thinking_and_falls_back_to_reasoning(monkeypatch) ->
     provider = OpenAICompatProvider("kimi", cfg)
     monkeypatch.setattr(provider, "_get_client", lambda: FakeClient())
 
-    pass
-
     response = provider.chat([Message(role="user", content="hello")])
     assert captured.get("extra_body") == {"thinking": {"type": "disabled"}}
     assert response.content == "Summarized tickets by severity."
+
+
+def test_kimi_chat_disables_thinking_with_tools(monkeypatch) -> None:
+    captured: dict = {}
+
+    class FakeMessage:
+        content = "Done"
+        tool_calls = None
+
+    class FakeChoice:
+        message = FakeMessage()
+
+    class FakeCompletion:
+        choices = [FakeChoice()]
+
+        @staticmethod
+        def model_dump() -> dict:
+            return {}
+
+    class FakeCompletions:
+        @staticmethod
+        def create(**kwargs):
+            captured.update(kwargs)
+            return FakeCompletion()
+
+    class FakeChat:
+        completions = FakeCompletions()
+
+    class FakeClient:
+        chat = FakeChat()
+
+    cfg = AIProviderConfig(
+        enabled=True,
+        api_key="sk-test",
+        base_url="https://api.moonshot.ai/v1",
+        model="kimi-k2.6",
+    )
+    provider = OpenAICompatProvider("kimi", cfg)
+    monkeypatch.setattr(provider, "_get_client", lambda: FakeClient())
+
+    from backend.ai.base import ToolSchema
+
+    provider.chat(
+        [Message(role="user", content="hello")],
+        tools=[ToolSchema(name="search_repo_docs", description="search", parameters={"type": "object"})],
+    )
+    assert captured.get("extra_body") == {"thinking": {"type": "disabled"}}

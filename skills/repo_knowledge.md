@@ -8,15 +8,32 @@ trigger_keywords:
   - docs say
   - what does our
   - how do we
+  - how can
+  - how to
+  - configure
+  - integration
+  - integrate
+  - setup
   - playbook
   - readme
   - architecture doc
+  - google ads
+  - analytics
+  - what is
+  - what's
+  - all about
+  - tell me about
+  - explain
+  - describe
+  - upselling
+  - feature
 allowed_channels:
   - "*"
 allowed_tools:
   - search_repo_docs
   - read_repo_doc
   - list_repo_docs
+  - web_search
   - grep_repo
   - read_file
   - query_graph
@@ -25,18 +42,21 @@ requires_thread_context: false
 
 # Objective
 
-Answer questions about repository documentation, runbooks, and internal playbooks using **only** indexed doc search results.
+Answer support and documentation questions using **only** indexed doc search and read results. Prioritize accuracy over speed.
 
 # Rules
 
-1. Always call `search_repo_docs` before answering documentation questions.
-2. Cite the doc path for every claim (e.g. `docs/runbooks/redirect.md`).
-3. If search returns no results, say explicitly that nothing was found — do not guess from training data.
-4. Use `read_repo_doc` for full context when a search hit is relevant but excerpt is incomplete.
-5. Never invent URLs, file paths, or procedures not present in tool results.
+1. Always call `search_repo_docs` **first** — never answer from memory or say you will look later.
+2. If a search hit matches the asked product/integration, call `read_repo_doc` before summarizing.
+3. Start integration/support answers with **Yes** or **No**, then concise steps or a clear "not documented".
+4. If search returns no relevant hit for the asked entity, answer **No** — do not substitute another platform's doc.
+5. Cite the doc path for every claim (e.g. `integrations/analytics/google-ads.mdx`).
+6. Only use `web_search` when doc search and `list_repo_docs` show nothing relevant.
+7. Never invent URLs, file paths, or procedures not present in tool results.
 
 # Workflow
 
-1. `search_repo_docs` with the user's question as query.
-2. If hits found → synthesize answer with citations; optionally `read_repo_doc` for detail.
-3. If no hits → `list_repo_docs` to suggest available docs, or state "not found in indexed documentation."
+1. `search_repo_docs` with the user's question.
+2. If a matching hit → `read_repo_doc` → summarize with citations.
+3. If no matching hit → optionally `list_repo_docs` → answer **No**, not documented.
+4. Deliver a short summary; do not paste raw MDX/frontmatter.

@@ -28,6 +28,7 @@ from backend.routing.grounding_gate import ToolTraceEntry, validate_agent_result
 from backend.routing.tool_plan_validator import validate_tool_plan
 from backend.routing.tool_planner import resolve_tool_plan
 from backend.models.response import AssistantResponse
+from backend.observability.checkpoint import log_checkpoint
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,18 @@ def plan_tools_node(state: AlfredGraphState, config: RunnableConfig) -> dict[str
         logger.info("LangGraph skill policy: %s → %s", skill.name, policy_skill.name)
         runtime.set_skill(policy_skill)
 
+    if plan and plan.intent_class == "repo.docs.qa":
+        log_checkpoint("route_plan", "repo_knowledge", "completed")
+
+    if plan:
+        log_checkpoint("tool_plan", plan.intent_class or "unknown", "completed")
+        goal_text = (plan.goal or "").strip()
+        if goal_text:
+            log_checkpoint("tool_plan_goal", goal_text[:160], "completed")
+        step_names = [step.tool for step in (plan.steps or [])] or list(plan.tools_needed or [])
+        if step_names:
+            log_checkpoint("tool_plan_steps", " → ".join(step_names[:8]), "completed")
+
     return {"tool_plan": tool_plan_to_dict(plan)}
 
 
@@ -114,11 +127,11 @@ def validate_plan_node(state: AlfredGraphState, config: RunnableConfig) -> dict[
     runtime.scoped_tools = binding.allowed_tools
     runtime.manifest_text = binding.manifest_text
 
-    route = "worker"
-    if plan and plan.missing_capabilities and not binding.allowed_tools:
-        route = "missing"
-    elif plan and len(plan.tools_needed) == 1:
-        route = "direct"
+    from backend.orchestrator.graph.plan_routing import resolve_graph_route
+
+    route = resolve_graph_route(plan, allowed_tools=binding.allowed_tools or [])
+
+    log_checkpoint("graph_route", route, "completed")
 
     return {
         "scoped_tools": binding.allowed_tools,
@@ -131,6 +144,30 @@ def validate_plan_node(state: AlfredGraphState, config: RunnableConfig) -> dict[
 
 def try_direct_node(state: AlfredGraphState, config: RunnableConfig) -> dict[str, Any]:
     runtime = get_runtime(config)
+    plan = tool_plan_from_dict(state.get("tool_plan"))
+
+    if plan and state.get("route") == "direct":
+        response, patch = runtime.processor._execute_planned_direct(
+            runtime.active_skill,
+            runtime.task,
+            runtime.session,
+            plan,
+        )
+        if response is not None:
+            kind = response.payload.kind
+            data = dict(response.payload.data or {})
+            return {
+                "direct_handled": True,
+                "route": "done",
+                "response_kind": kind,
+                "response_data": data,
+                "raw_reply": str(data.get("text") or ""),
+                "metadata_patch": patch,
+                "tool_trace": [],
+                "grounding_passed": True,
+                "grounding_issues": [],
+            }
+
     response, patch = runtime.processor._try_unified_direct(
         runtime.active_skill,
         runtime.task,
@@ -199,6 +236,32 @@ def run_worker_node(state: AlfredGraphState, config: RunnableConfig) -> dict[str
         allowed = list(registry._tools.keys())
 
     runner = processor.config.orchestrator.agent_runner
+
+    if plan and plan.intent_class == "repo.docs.qa" and messages and messages[0].role == "system":
+        from backend.routing.doc_qa_prompt import doc_qa_system_addendum
+
+        messages[0] = Message(
+            role="system",
+            content=f"{messages[0].content.rstrip()}{doc_qa_system_addendum()}",
+        )
+
+    if plan and plan.intent_class == "repo.docs.qa":
+        from backend.routing.doc_qa_bootstrap import inject_doc_qa_bootstrap_message
+        from backend.models.session import task_session_key
+
+        log_checkpoint("doc_bootstrap", "search_and_read", "started")
+        messages = inject_doc_qa_bootstrap_message(
+            messages,
+            registry,
+            query=runtime.task.cleaned_intent,
+            allowed=allowed,
+            session=runtime.session,
+            git=processor.config.git,
+            task_id=runtime.task.id,
+            session_key=task_session_key(runtime.task),
+        )
+        log_checkpoint("doc_bootstrap", "search_and_read", "completed")
+
     log_checkpoint("agent_loop_start", runner, "started")
 
     try:
@@ -326,9 +389,12 @@ def validate_goal_node(state: AlfredGraphState, config: RunnableConfig) -> dict[
         return {"grounding_passed": True, "grounding_issues": []}
 
     validation = validate_agent_result(raw, trace, goal_spec)
+    log_checkpoint("grounding", "validate", "started")
     if validation.passed:
+        log_checkpoint("grounding", "validate", "completed")
         return {"grounding_passed": True, "grounding_issues": []}
 
+    log_checkpoint("grounding", "validate", "error")
     return {
         "grounding_passed": False,
         "grounding_issues": validation.issues,

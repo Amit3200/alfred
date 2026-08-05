@@ -79,7 +79,7 @@ function formatSyncedAt(value?: string): string {
 }
 
 export function ScriptsPanel() {
-  const { notify, dataDir } = useApp();
+  const { notify, dataDir, config } = useApp();
   const [packages, setPackages] = useState<ScriptPackageSummary[]>([]);
   const [directory, setDirectory] = useState("");
   const [exampleAvailable, setExampleAvailable] = useState(false);
@@ -392,7 +392,10 @@ export function ScriptsPanel() {
           description={
             <>
               Add <Typography.Text code>scripts.remote.repo</Typography.Text> (e.g.{" "}
-              <Typography.Text code>FlexyPe/alfred_scripts</Typography.Text>) to{" "}
+              <Typography.Text code>
+                {config?.git.default_org ? `${config.git.default_org}/scripts` : "your-org/scripts"}
+              </Typography.Text>
+              ) to{" "}
               <Typography.Text code>.alfred/config.yaml</Typography.Text>, then click Sync here or run{" "}
               <Typography.Text code>alfred scripts sync</Typography.Text>.
             </>

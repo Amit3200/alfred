@@ -22,6 +22,7 @@ class CreateChatRequest(BaseModel):
 
 class SendMessageRequest(BaseModel):
     content: str = Field(min_length=1)
+    persona: str = Field(default="support", pattern="^(support|tech|all|general|auto|qa|debug)$")
 
 
 class ExportChatRequest(BaseModel):
@@ -118,7 +119,7 @@ def send_message(
     service: UIChatService = Depends(_service),
 ):
     try:
-        return service.send_message(chat_id, body.content)
+        return service.send_message(chat_id, body.content, persona=body.persona)
     except KeyError:
         raise HTTPException(status_code=404, detail="Chat not found") from None
     except ValueError as exc:

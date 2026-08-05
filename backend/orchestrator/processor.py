@@ -50,6 +50,9 @@ STRUCTURED_TOOL_KINDS = frozenset(
         "google_doc",
         "web_search",
         "slack_messages",
+        "doc_search",
+        "doc_content",
+        "doc_answer",
     }
 )
 
@@ -152,7 +155,7 @@ class TaskProcessor:
                     assistant_payload=response.payload,
                     metadata_patch=gov_patch,
                 )
-            return response
+            return self._finish_response(response, metadata_patch=gov_patch)
 
         slack_context: str | None = None
         history_window_label = ""
@@ -185,7 +188,29 @@ class TaskProcessor:
             slack_context=slack_context if include_context else None,
             repo=repo_hint,
         )
-        investigation = self._resolve_investigation_skill(route_context, task)
+        chat_persona = None
+        if task.source == "ui":
+            from backend.routing.chat_persona import persona_skill_name, resolve_effective_persona
+
+            chat_persona = resolve_effective_persona(task, session)
+            task.metadata["chat_persona_effective"] = chat_persona
+
+        investigation = self._resolve_investigation_skill(route_context, task, session=session)
+        if investigation is None and chat_persona:
+            forced = persona_skill_name(chat_persona)
+            if forced:
+                investigation = self._playbooks.get_by_name(forced)
+                if investigation:
+                    logger.info("Persona %s → skill %s", chat_persona, forced)
+        if investigation is None and self.config.repo_knowledge.enabled:
+            from backend.routing.tool_planner import looks_like_repo_doc_question
+
+            if looks_like_repo_doc_question(task.cleaned_intent):
+                investigation = self._playbooks.get_by_name("repo_knowledge")
+                if investigation:
+                    logger.info(
+                        "Forced repo_knowledge for documentation-style question (routing miss)"
+                    )
         if investigation is None and self.config.jira.enabled:
             from backend.routing.jira_intent import (
                 looks_like_jira_create_followup,
@@ -221,7 +246,7 @@ class TaskProcessor:
                     context_snapshot=slack_context if include_context else None,
                     metadata_patch=workflow_meta,
                 )
-            return workflow_response
+            return self._finish_response(workflow_response, metadata_patch=workflow_meta)
 
         review_skill = self._resolve_pr_review_skill(investigation, task, session)
         omit_assistant = omit_assistant_session_history(
@@ -239,6 +264,8 @@ class TaskProcessor:
                 task,
                 route_context,
                 active_skill,
+                session=session,
+                persona=chat_persona,
             )
             if scoped_binding and scoped_binding.plan:
                 tool_plan = scoped_binding.plan
@@ -537,6 +564,13 @@ class TaskProcessor:
                     else:
                         response = AssistantResponse.from_text(content)
 
+        response = self._finish_response(
+            response,
+            tool_plan=tool_plan,
+            skill=active_skill,
+            metadata_patch=metadata_patch,
+        )
+
         if session_key and self.session_store:
             raise_if_cancelled(self._data_dir_path(), task.id)
             if response.payload.kind in STRUCTURED_TOOL_KINDS and response.text:
@@ -557,6 +591,28 @@ class TaskProcessor:
             logger.info("Session updated: %s", session_key)
 
         return response
+
+    def _finish_response(
+        self,
+        response: AssistantResponse,
+        *,
+        tool_plan: Any | None = None,
+        skill: Any | None = None,
+        metadata_patch: dict[str, Any] | None = None,
+    ) -> AssistantResponse:
+        from backend.routing.reply_meta import finalize_reply_meta
+
+        explicit = None
+        if metadata_patch:
+            raw = metadata_patch.get("reply_meta")
+            if isinstance(raw, dict):
+                explicit = raw
+        return finalize_reply_meta(
+            response,
+            tool_plan=tool_plan,
+            skill_name=str(skill.name) if skill else "",
+            explicit=explicit,
+        )
 
     def _resolve_llm(self, task_kind: str) -> tuple[str, Any, str]:
         from backend.ai.routing import resolve_llm_route
@@ -673,10 +729,17 @@ class TaskProcessor:
 
         return None, None
 
-    def _resolve_investigation_skill(self, route_context: Any, task: Task):
+    def _resolve_investigation_skill(self, route_context: Any, task: Task, *, session=None):
         """Plan-first skill resolution; fall back to SkillRouter when needed."""
         from backend.orchestrator.graph.skill_policy import resolve_policy_skill
+        from backend.routing.chat_persona import normalize_persona, resolve_effective_persona
         from backend.routing.tool_planner import resolve_tool_plan
+
+        persona = resolve_effective_persona(task, session) if task.source == "ui" else "all"
+        if normalize_persona(persona) == "support":
+            skill = self._playbooks.get_by_name("repo_knowledge")
+            if skill is not None:
+                return skill
 
         routing = self.config.routing
         if routing.plan_first_routing and routing.tool_planner_enabled:
@@ -890,6 +953,277 @@ class TaskProcessor:
             return structured, patch
         return None, patch
 
+    def _execute_planned_direct(
+        self,
+        skill: Playbook,
+        task: Task,
+        session: ConversationSession | None,
+        plan: Any,
+    ) -> tuple[AssistantResponse | None, dict[str, Any] | None]:
+        """Run a single-step tool plan without the ReAct loop (fast path)."""
+        from backend.routing.tool_plan_types import ToolPlan
+
+        if not isinstance(plan, ToolPlan) or len(plan.steps) != 1:
+            return None, None
+
+        step = plan.steps[0]
+        tool_name = step.tool
+        tool_args = dict(step.args_hint or {})
+
+        if plan.intent_class == "repo.docs.qa" and tool_name == "search_repo_docs":
+            # Doc Q&A uses LangGraph worker (search → read → grounded answer), not the BM25 fast path.
+            return None, None
+
+        if not skill.allowed_tools or tool_name not in skill.allowed_tools:
+            return None, None
+
+        from backend.tools.git_api import build_git_tool_registry
+
+        registry = build_git_tool_registry(
+            self.config,
+            workspace_id=mirror_workspace_key(task),
+            data_dir=self._data_dir_path(),
+            allowed_tools=skill.allowed_tools or None,
+        )
+        self._attach_governance(registry, task, session=session, skill_name=skill.name)
+        result = registry.run_normalized(
+            tool_name,
+            tool_args,
+            allowed=skill.allowed_tools,
+            git=self.config.git,
+            session=session,
+        )
+        if result.kind == "error":
+            return AssistantResponse.error(result.data.get("message", f"Tool {tool_name} failed.")), None
+        patch = _unified_metadata_patch(tool_name, tool_args, result)
+        structured = _tool_result_to_response(result)
+        if structured is not None:
+            return structured, patch
+        text = str(result.data.get("text") or "").strip()
+        if text:
+            return AssistantResponse.from_text(text), patch
+        return None, patch
+
+    def _execute_repo_doc_qa_direct(
+        self,
+        skill: Playbook,
+        task: Task,
+        session: ConversationSession | None,
+        query: str,
+    ) -> tuple[AssistantResponse | None, dict[str, Any] | None]:
+        """Search indexed docs, read the top hit, and synthesize a grounded answer."""
+        from backend.formatting.intent_formatters import format_doc_search
+        from backend.observability.checkpoint import log_checkpoint
+        from backend.routing.reply_meta import attach_reply_meta, doc_reply_meta
+        from backend.tools.git_api import build_git_tool_registry
+
+        allowed = list(skill.allowed_tools or [])
+        if "search_repo_docs" not in allowed:
+            repo_skill = self._playbooks.get_by_name("repo_knowledge")
+            if repo_skill and repo_skill.allowed_tools:
+                allowed = list(repo_skill.allowed_tools)
+                skill = repo_skill
+
+        registry = build_git_tool_registry(
+            self.config,
+            workspace_id=mirror_workspace_key(task),
+            data_dir=self._data_dir_path(),
+            allowed_tools=allowed or None,
+        )
+        self._attach_governance(registry, task, session=session, skill_name=skill.name)
+
+        log_checkpoint("doc_tool_call", "search_repo_docs", "started")
+        search_result = registry.run_normalized(
+            "search_repo_docs",
+            {"query": query},
+            allowed=allowed,
+            git=self.config.git,
+            session=session,
+        )
+        if search_result.kind == "error":
+            log_checkpoint("doc_tool_call", "search_repo_docs", "error", error=RuntimeError(str(search_result.data.get("message") or "Doc search failed.")))
+            return AssistantResponse.error(str(search_result.data.get("message") or "Doc search failed.")), None
+
+        if not search_result.data.get("found"):
+            log_checkpoint("doc_tool_call", "search_repo_docs", "completed")
+            from backend.context.doc_index import describe_missing_doc_topic, significant_query_tokens
+            from backend.routing.chat_persona import normalize_persona
+
+            if significant_query_tokens(query):
+                topic = describe_missing_doc_topic(query)
+                body = (
+                    f"**No** — **{topic}** is not documented in indexed FlexyPe support docs. "
+                    "It does not appear to be a supported integration in our handbook."
+                )
+                meta = doc_reply_meta(query, None, not_found=True)
+                return (
+                    attach_reply_meta(AssistantResponse.from_text(body), meta),
+                    {"last_intent_class": "repo.docs.qa", "reply_meta": meta},
+                )
+
+            persona = str(task.metadata.get("chat_persona_effective") or task.metadata.get("chat_persona") or "")
+            if normalize_persona(persona) == "support" and self.config.web_search.enabled and "web_search" in allowed:
+                log_checkpoint("doc_tool_call", "web_search", "started")
+                web_result = registry.run_normalized(
+                    "web_search",
+                    {"query": query},
+                    allowed=allowed,
+                    git=self.config.git,
+                    session=session,
+                )
+                if web_result.kind != "error" and web_result.data.get("results"):
+                    log_checkpoint("doc_tool_call", "web_search", "completed")
+                    from backend.formatting.strategies import WebSearchFormatter
+
+                    body = WebSearchFormatter().render(web_result.data, slack=False)
+                    prefix = (
+                        "I couldn't find this in indexed FlexyPe documentation. "
+                        "Here's what I found on the web instead:\n\n"
+                    )
+                    meta = doc_reply_meta(query, None, web_fallback=True)
+                    return (
+                        attach_reply_meta(AssistantResponse.from_text(prefix + body), meta),
+                        {"reply_meta": meta},
+                    )
+                log_checkpoint("doc_tool_call", "web_search", "completed")
+            return (
+                AssistantResponse.structured(
+                    "doc_search",
+                    {"query": query, "results": [], "found": False},
+                ),
+                None,
+            )
+
+        log_checkpoint("doc_tool_call", "search_repo_docs", "completed")
+        hits = list(search_result.data.get("results") or [])
+        from backend.context.doc_index import describe_missing_doc_topic, pick_best_doc_hit, significant_query_tokens
+
+        top = pick_best_doc_hit(hits, query)
+        if top is None:
+            if hits and significant_query_tokens(query):
+                topic = describe_missing_doc_topic(query)
+                body = (
+                    f"**No** — **{topic}** is not documented in indexed FlexyPe support docs. "
+                    "It does not appear to be a supported integration in our handbook."
+                )
+                meta = doc_reply_meta(query, None, not_found=True)
+                return (
+                    attach_reply_meta(AssistantResponse.from_text(body), meta),
+                    {"last_intent_class": "repo.docs.qa", "reply_meta": meta},
+                )
+            return (
+                AssistantResponse.structured(
+                    "doc_search",
+                    {"query": query, "results": [], "found": False},
+                ),
+                None,
+            )
+        doc_path = str(top.get("path") or "")
+        doc_repo = str(top.get("repo") or "").strip()
+        if doc_path:
+            log_checkpoint("doc_found", doc_path, "completed")
+        if doc_repo:
+            log_checkpoint("repo_context", doc_repo, "completed")
+        read_args: dict[str, Any] = {"path": doc_path}
+        if doc_repo:
+            read_args["repo"] = doc_repo
+
+        doc_content = str(top.get("excerpt") or "")
+        if "read_repo_doc" in allowed and doc_path:
+            log_checkpoint("doc_tool_call", "read_repo_doc", "started")
+            read_result = registry.run_normalized(
+                "read_repo_doc",
+                read_args,
+                allowed=allowed,
+                git=self.config.git,
+                session=session,
+            )
+            if read_result.kind != "error":
+                doc_content = str(read_result.data.get("content") or doc_content)
+                log_checkpoint("doc_tool_call", "read_repo_doc", "completed")
+            else:
+                log_checkpoint(
+                    "doc_tool_call",
+                    "read_repo_doc",
+                    "error",
+                    error=RuntimeError(str(read_result.data.get("message") or "Read failed.")),
+                )
+
+        log_checkpoint("doc_synthesis", "summarize", "started")
+        answer = self._synthesize_doc_answer(
+            task.cleaned_intent,
+            doc_path=doc_path,
+            doc_content=doc_content,
+            repo=doc_repo,
+        )
+        log_checkpoint("doc_synthesis", "summarize", "completed")
+        from backend.context.doc_assets import build_doc_answer_payload
+
+        meta = doc_reply_meta(query, top)
+        payload = build_doc_answer_payload(
+            text=answer,
+            doc_path=doc_path,
+            repo=doc_repo,
+            doc_content=doc_content,
+        )
+        response = AssistantResponse.structured("doc_answer", payload, text=str(payload.get("text") or answer))
+        return (
+            attach_reply_meta(response, meta),
+            {
+                "last_intent_class": "repo.docs.qa",
+                "doc_path": doc_path,
+                "doc_repo": doc_repo,
+                "reply_meta": meta,
+            },
+        )
+
+    def _synthesize_doc_answer(
+        self,
+        question: str,
+        *,
+        doc_path: str,
+        doc_content: str,
+        repo: str = "",
+    ) -> str:
+        """Summarize a doc excerpt for the user question with citations."""
+        excerpt = doc_content.strip()
+        if not excerpt:
+            return format_doc_search({"query": question, "results": [], "found": False})
+
+        header = f"**Source:** `{doc_path}`"
+        if repo:
+            header = f"**Source:** `{doc_path}` ({repo})"
+
+        provider_name, provider, model_name = self._resolve_llm("investigation")
+        system = (
+            "You answer FlexyPe support documentation questions using ONLY the excerpt provided. "
+            "Start with **Yes** or **No** on whether the asked integration/feature is supported or documented. "
+            "If Yes, give concise setup steps (numbered). If No, say clearly it is not documented/supported — "
+            "do NOT describe a different product or integration. "
+            "Never paste raw MDX/JSX tags or frontmatter. Cite the doc path at the end."
+        )
+        user = (
+            f"{header}\n\nQuestion: {question.strip()}\n\nDocumentation excerpt:\n{excerpt[:12000]}"
+        )
+        try:
+            response = provider.chat(
+                [
+                    Message(role="system", content=system),
+                    Message(role="user", content=user),
+                ],
+                model=model_name or None,
+            )
+            text = (response.content or "").strip()
+            if text:
+                return text
+        except Exception as exc:
+            logger.warning("Doc answer synthesis failed: %s", exc)
+
+        return (
+            f"I found `{doc_path}` but couldn't summarize it. "
+            "Open that doc in the knowledge base for full steps."
+        )
+
     def _investigation_failure_response(
         self,
         skill: Playbook,
@@ -932,11 +1266,22 @@ class TaskProcessor:
         task: Task,
         route_context: Any,
         skill: Playbook,
+        *,
+        session: ConversationSession | None = None,
+        persona: str | None = None,
     ):
         from backend.observability.context import set_call_kind
+        from backend.routing.chat_persona import filter_tools_for_persona, resolve_effective_persona
         from backend.routing.tool_plan_validator import validate_tool_plan
         from backend.routing.tool_planner import resolve_tool_plan
         from backend.tools.git_api import build_git_tool_registry
+
+        effective_persona = persona or (
+            resolve_effective_persona(task, session) if task.source == "ui" else "all"
+        )
+        skill_allowed = list(skill.allowed_tools or [])
+        if effective_persona in ("support", "tech"):
+            skill_allowed = filter_tools_for_persona(effective_persona, skill_allowed)
 
         set_call_kind("skill_matching")
         _, provider, model = self._resolve_llm("skill_matching")
@@ -947,7 +1292,7 @@ class TaskProcessor:
             route_context,
             provider=provider if self.config.routing.tool_planner_llm_fallback else None,
             model=model or None,
-            skill_allowed=list(skill.allowed_tools or []),
+            skill_allowed=skill_allowed or None,
             data_dir=self._data_dir_path(),
             playbook_store=self._playbooks,
         )
@@ -956,14 +1301,21 @@ class TaskProcessor:
             self.config,
             workspace_id=mirror_workspace_key(task),
             data_dir=self._data_dir_path(),
-            allowed_tools=skill.allowed_tools or None,
+            allowed_tools=skill_allowed or None,
         )
-        return validate_tool_plan(
+        binding = validate_tool_plan(
             plan,
             registry,
-            skill_allowed=list(skill.allowed_tools or []),
+            skill_allowed=skill_allowed or None,
             skill_name=skill.name,
         )
+        if effective_persona in ("support", "tech") and binding.allowed_tools:
+            binding.allowed_tools = filter_tools_for_persona(
+                effective_persona,
+                binding.allowed_tools,
+                registered=set(registry._tools.keys()),
+            )
+        return binding
 
     def _record_routing_trace(
         self,
@@ -1075,6 +1427,30 @@ class TaskProcessor:
         allowed_tools = scoped_tools or skill.allowed_tools
         if not allowed_tools:
             allowed_tools = list(registry._tools.keys())
+
+        if goal_spec and goal_spec.intent_class == "repo.docs.qa" and messages and messages[0].role == "system":
+            from backend.ai.base import Message
+            from backend.routing.doc_qa_prompt import doc_qa_system_addendum
+
+            messages[0] = Message(
+                role="system",
+                content=f"{messages[0].content.rstrip()}{doc_qa_system_addendum()}",
+            )
+
+        if goal_spec and goal_spec.intent_class == "repo.docs.qa":
+            from backend.models.session import task_session_key
+            from backend.routing.doc_qa_bootstrap import inject_doc_qa_bootstrap_message
+
+            messages = inject_doc_qa_bootstrap_message(
+                messages,
+                registry,
+                query=task.cleaned_intent,
+                allowed=allowed_tools,
+                session=session,
+                git=self.config.git,
+                task_id=task.id,
+                session_key=task_session_key(task),
+            )
 
         if skill.mode in ("investigation", "workflow") and skill.name != "plan_task":
             from backend.orchestrator.planning import generate_initial_plan, plan_exists_for_task
@@ -1214,7 +1590,13 @@ class TaskProcessor:
         extra_system: str = "",
         model_name: str | None = None,
     ) -> list[Message]:
-        system_parts = [build_alfred_system_prompt(self.config, model_name=model_name)]
+        system_parts = [
+            build_alfred_system_prompt(
+                self.config,
+                model_name=model_name,
+                include_slack_rules=task.source == "slack",
+            )
+        ]
         if task.source == "git":
             system_parts.append(GITHUB_COMMENT_RULES)
         if playbook_prompt:
@@ -1243,7 +1625,14 @@ class TaskProcessor:
         else:
             user_content = task.cleaned_intent
 
-        messages.append(Message(role="user", content=user_content))
+        already_has_current_user = (
+            session
+            and session.turns
+            and session.turns[-1].role == "user"
+            and (session.turns[-1].content or "").strip() == user_content.strip()
+        )
+        if not already_has_current_user:
+            messages.append(Message(role="user", content=user_content))
         return messages
 
 

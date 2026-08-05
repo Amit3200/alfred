@@ -14,9 +14,9 @@ from backend.tools.result import ToolResult
 QUERY_GRAPH = ToolSchema(
     name="query_graph",
     description=(
-        "Query the Graphify knowledge graph for the main repository — "
-        "imports, callers, communities, and structural relationships. "
-        "Prefer this before grep when tracing stack traces or blast radius."
+        "Query a Graphify knowledge graph — imports, callers, communities, and structural relationships. "
+        "Prefer this before grep when tracing stack traces or blast radius. "
+        "Use repo for doc/code graphs beyond main_repo when configured."
     ),
     parameters={
         "type": "object",
