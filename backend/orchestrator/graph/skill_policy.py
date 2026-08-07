@@ -27,6 +27,7 @@ _INTENT_SKILL_MAP: dict[str, str] = {
     "slack.board.create": "slack_board_management",
     "slack.board.update": "slack_board_management",
     "slack.board.search": "slack_board_management",
+    "slack.board.config": "slack_board_management",
     "script.run": "investigate_bug",
 }
 

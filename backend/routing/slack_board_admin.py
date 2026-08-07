@@ -30,6 +30,59 @@ _SET_TICKET_SYSTEM_RE = re.compile(
     r"\bset\b.{0,20}\bticket\s+system\b.{0,10}\b(slack(?:\s+list)?|jira|ask)\b",
     re.I,
 )
+_CONFIG_STATUS_RE = re.compile(
+    r"\b(?:configured|setup|set up|ready|linked|bound)\b.{0,40}\b(?:track|assign|task|ticket|board|list)\b"
+    r"|\bcan you see if\b.{0,60}\b(?:configured|setup|track|assign|task|ticket|board|list)\b"
+    r"|\b(?:is|are)\s+(?:this|we|it|alfred|the channel)\b.{0,40}\b(?:configured|setup|ready|linked)\b"
+    r"|\b(?:does|do)\s+(?:this|alfred|we)\b.{0,30}\b(?:track|assign)\b.{0,20}\b(?:task|ticket)\b",
+    re.I,
+)
+
+
+def format_channel_board_status(data_dir, channel_id: str) -> str:
+    from backend.db.slack_workflows_db import db_get_channel_workflow
+
+    binding = db_get_board_binding_for_channel(data_dir, channel_id)
+    workflow = db_get_channel_workflow(data_dir, channel_id)
+    if not binding and not workflow:
+        return (
+            "**Not configured** for this channel yet.\n\n"
+            "To enable Slack List task tracking:\n"
+            "1. `@alfred link board to F0123…` (List id from your Task List tab), or\n"
+            "2. **Settings → Automation → Slack boards** → Add board binding\n\n"
+            "Then ask `@alfred create task for … for above` in a thread."
+        )
+    lines = ["**Channel workflow**"]
+    if workflow:
+        lines.append(f"- Ticket system: `{workflow.get('ticket_system', 'ask')}`")
+        if workflow.get("jira_project_key"):
+            lines.append(f"- JIRA project: `{workflow['jira_project_key']}`")
+    else:
+        lines.append("- Ticket system: `ask` (default)")
+    if binding:
+        lines.extend(
+            [
+                "",
+                "**Board binding**",
+                f"- Board key: `{binding['board_key']}`",
+                f"- List id: `{binding['list_id']}`",
+                f"- Display prefix: `{binding['display_id_prefix']}`",
+                f"- Next number: `{binding['next_display_num']}` → "
+                f"`{binding['display_id_prefix']}-{binding['next_display_num']}`",
+                f"- Default status: `{binding['default_status']}`",
+                f"- Auto-approve writes: `{binding['auto_approve_writes']}`",
+                "",
+                "This channel **can** track and assign tasks via `@alfred` when the List is linked.",
+            ]
+        )
+    else:
+        lines.extend(
+            [
+                "",
+                "**Board binding:** not linked — add a List binding to create/track tasks.",
+            ]
+        )
+    return "\n".join(lines)
 
 
 def try_slack_board_admin_command(
@@ -115,36 +168,9 @@ def try_slack_board_admin_command(
             f"next id will be `{row['display_id_prefix']}-{row['next_display_num']}`."
         )
 
-    if _SHOW_CONFIG_RE.search(text):
-        binding = db_get_board_binding_for_channel(data_dir, channel_id)
-        from backend.db.slack_workflows_db import db_get_channel_workflow
-
-        workflow = db_get_channel_workflow(data_dir, channel_id)
-        if not binding and not workflow:
-            return AssistantResponse.from_text(
-                "No board or channel workflow configured for this channel. "
-                "Link a list with `@alfred link board to F0123…` or use **Settings → Slack boards**."
-            )
-        lines = ["**Channel workflow**"]
-        if workflow:
-            lines.append(f"- Ticket system: `{workflow.get('ticket_system', 'ask')}`")
-            if workflow.get("jira_project_key"):
-                lines.append(f"- JIRA project: `{workflow['jira_project_key']}`")
-        else:
-            lines.append("- Ticket system: `ask` (default)")
-        if binding:
-            lines.extend(
-                [
-                    "",
-                    "**Board binding**",
-                    f"- Board key: `{binding['board_key']}`",
-                    f"- List id: `{binding['list_id']}`",
-                    f"- Display prefix: `{binding['display_id_prefix']}`",
-                    f"- Next number: `{binding['next_display_num']}` → `{binding['display_id_prefix']}-{binding['next_display_num']}`",
-                    f"- Default status: `{binding['default_status']}`",
-                    f"- Auto-approve writes: `{binding['auto_approve_writes']}`",
-                ]
-            )
-        return AssistantResponse.from_text("\n".join(lines))
+    if _SHOW_CONFIG_RE.search(text) or _CONFIG_STATUS_RE.search(text):
+        return AssistantResponse.from_text(
+            format_channel_board_status(data_dir, channel_id)
+        )
 
     return None

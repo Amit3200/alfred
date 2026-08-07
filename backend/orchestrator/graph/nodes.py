@@ -26,7 +26,7 @@ from backend.routing.git_direct import looks_like_tool_json, strip_text_tool_mar
 from backend.routing.goal_spec import goal_spec_from_plan
 from backend.routing.grounding_gate import ToolTraceEntry, validate_agent_result
 from backend.routing.tool_plan_validator import validate_tool_plan
-from backend.routing.tool_planner import resolve_tool_plan
+from backend.routing.tool_planner import planner_llm_enabled, resolve_tool_plan
 from backend.models.response import AssistantResponse
 from backend.observability.checkpoint import log_checkpoint
 
@@ -69,7 +69,7 @@ def plan_tools_node(state: AlfredGraphState, config: RunnableConfig) -> dict[str
         processor.config,
         runtime.task,
         runtime.route_context,
-        provider=planner_provider if processor.config.routing.tool_planner_llm_fallback else None,
+        provider=planner_provider if planner_llm_enabled(processor.config) else None,
         model=planner_model or None,
         skill_allowed=list(skill.allowed_tools or []),
         data_dir=processor._data_dir_path(),

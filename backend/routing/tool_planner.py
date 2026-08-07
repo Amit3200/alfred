@@ -63,9 +63,28 @@ _REPO_DOC_QA_RE = re.compile(
 _SCRIPT_RUN_RE = re.compile(r"\b(run|execute|trigger)\b.{0,30}\b(script|report|metrics|job)\b", re.I)
 
 
-def looks_like_repo_doc_question(text: str) -> bool:
+def looks_like_repo_doc_question(text: str, *, source: str = "") -> bool:
     """True when the user likely wants indexed repo documentation."""
-    return bool(_REPO_DOC_QA_RE.search(f"{text or ''}".strip()))
+    stripped = f"{text or ''}".strip()
+    if source == "slack":
+        from backend.routing.slack_board_intent import (
+            looks_like_slack_board_config_question,
+            looks_like_slack_board_request,
+        )
+
+        if looks_like_slack_board_config_question(stripped):
+            return False
+        if looks_like_slack_board_request(stripped):
+            return False
+    return bool(_REPO_DOC_QA_RE.search(stripped))
+
+
+def planner_llm_enabled(config: AlfredConfig) -> bool:
+    """True when resolve_tool_plan should invoke the LLM tool planner."""
+    routing = config.routing
+    if routing.planner_strategy == "llm_first":
+        return True
+    return bool(routing.tool_planner_llm_fallback)
 
 
 def plan_tools_rules(
@@ -75,6 +94,7 @@ def plan_tools_rules(
     skill_allowed: list[str] | None = None,
     config: AlfredConfig | None = None,
     data_dir: Any = None,
+    entity_direct_only: bool = False,
 ) -> ToolPlan | None:
     """Deterministic tool plan from intent + entities."""
     text = f"{task.cleaned_intent}\n{task.raw_text}".strip()
@@ -183,6 +203,29 @@ def plan_tools_rules(
             strategy="rules",
         )
 
+    if config is not None and _ok("run_company_script"):
+        from backend.integrations.company_scripts.triggers import match_script_by_trigger
+
+        script_name = match_script_by_trigger(text, data_dir=data_dir, config=config)
+        if script_name:
+            return ToolPlan(
+                goal=f"Run company script {script_name}".strip(),
+                confidence=0.9,
+                tools_needed=["run_company_script"],
+                steps=[
+                    ToolPlanStep(
+                        "run_company_script",
+                        "run script",
+                        {"script": script_name},
+                    )
+                ],
+                intent_class="script.run",
+                strategy="rules",
+            )
+
+    if entity_direct_only:
+        return None
+
     if _SUMMARIZE_THREAD_RE.search(text) and _ok("slack_fetch_thread"):
         return ToolPlan(
             goal="Summarize Slack thread",
@@ -203,26 +246,18 @@ def plan_tools_rules(
             strategy="rules",
         )
 
-    if _REPO_DOC_QA_RE.search(text) and _ok("search_repo_docs"):
-        return ToolPlan(
-            goal="Answer from indexed repo documentation",
-            confidence=0.9,
-            tools_needed=["search_repo_docs", "read_repo_doc"],
-            steps=[
-                ToolPlanStep("search_repo_docs", "search docs", {"query": task.cleaned_intent}),
-            ],
-            intent_class="repo.docs.qa",
-            strategy="rules",
-        )
-
-    if config is not None:
+    if config is not None and task.source == "slack":
         from backend.integrations.slack.board_service import board_enabled, resolve_board_for_task
         from backend.routing.slack_board_intent import (
+            looks_like_slack_board_config_question,
             looks_like_slack_board_create,
             looks_like_slack_board_request,
             looks_like_slack_board_update,
             references_thread_context,
         )
+
+        if looks_like_slack_board_config_question(text):
+            return None
 
         if board_enabled(config, data_dir) and resolve_board_for_task(config, task, data_dir=data_dir):
             if looks_like_slack_board_create(text) and _ok("slack_board_create_task"):
@@ -264,22 +299,30 @@ def plan_tools_rules(
                         strategy="rules",
                     )
 
+    if looks_like_repo_doc_question(task.cleaned_intent or text, source=task.source) and _ok(
+        "search_repo_docs"
+    ):
+        return ToolPlan(
+            goal="Answer from indexed repo documentation",
+            confidence=0.9,
+            tools_needed=["search_repo_docs", "read_repo_doc"],
+            steps=[
+                ToolPlanStep("search_repo_docs", "search docs", {"query": task.cleaned_intent}),
+            ],
+            intent_class="repo.docs.qa",
+            strategy="rules",
+        )
+
     if config is not None and _ok("run_company_script"):
         from backend.integrations.company_scripts.triggers import match_script_by_trigger
 
         script_name = match_script_by_trigger(text, data_dir=data_dir, config=config)
-        if script_name or _SCRIPT_RUN_RE.search(text):
+        if not script_name and _SCRIPT_RUN_RE.search(text):
             return ToolPlan(
-                goal=f"Run company script{f' {script_name}' if script_name else ''}".strip(),
-                confidence=0.84 if script_name else 0.7,
+                goal="Run company script",
+                confidence=0.7,
                 tools_needed=["run_company_script"],
-                steps=[
-                    ToolPlanStep(
-                        "run_company_script",
-                        "run script",
-                        {"script": script_name} if script_name else {},
-                    )
-                ],
+                steps=[ToolPlanStep("run_company_script", "run script")],
                 intent_class="script.run",
                 strategy="rules",
             )
@@ -298,6 +341,34 @@ def plan_tools_rules(
     return None
 
 
+def _build_planner_channel_context(
+    config: AlfredConfig | None,
+    task: Task,
+    data_dir: Any,
+) -> str:
+    if config is None or task.source != "slack" or not task.channel_id:
+        return ""
+    from backend.db.slack_workflows_db import db_get_board_binding_for_channel, db_get_channel_workflow
+
+    lines = [f"Slack channel id: {task.channel_id}"]
+    workflow = db_get_channel_workflow(data_dir, task.channel_id)
+    if workflow:
+        lines.append(f"Channel ticket system: {workflow.get('ticket_system', 'ask')}")
+        if workflow.get("jira_project_key"):
+            lines.append(f"Channel JIRA project: {workflow['jira_project_key']}")
+    binding = db_get_board_binding_for_channel(data_dir, task.channel_id)
+    if binding:
+        lines.extend(
+            [
+                f"Slack List board linked: {binding.get('board_key')} ({binding.get('list_id')})",
+                f"Display id prefix: {binding.get('display_id_prefix')}",
+            ]
+        )
+    else:
+        lines.append("Slack List board: not linked for this channel")
+    return "\n".join(lines)
+
+
 def plan_tools_llm(
     provider: LLMProvider,
     context: RouteContext,
@@ -306,8 +377,11 @@ def plan_tools_llm(
     model: str | None = None,
     skill_allowed: list[str] | None = None,
     min_confidence: float = _MIN_LLM_CONFIDENCE,
+    config: AlfredConfig | None = None,
+    task: Task | None = None,
+    data_dir: Any = None,
 ) -> ToolPlan | None:
-    """LLM fallback planner — structured JSON only."""
+    """LLM tool planner — structured JSON only."""
     catalog_tools = list(skill_allowed) if skill_allowed else all_plannable_tool_names()
     catalog = format_tool_catalog_for_planner(catalog_tools)
 
@@ -326,6 +400,9 @@ def plan_tools_llm(
     if context.session_turns:
         user_parts.extend(["", "Recent session turns:"])
         user_parts.extend(f"- {t}" for t in context.session_turns[-2:])
+    channel_context = _build_planner_channel_context(config, task, data_dir) if task else ""
+    if channel_context:
+        user_parts.extend(["", "Channel configuration:", channel_context])
 
     system = """You are Alfred's Tool Planner. Given the user message, entities, and tool catalog,
 produce a JSON plan. Do NOT execute tools. Do NOT invent tool names.
@@ -344,8 +421,11 @@ Rules:
 2. For "create sheet from CSV/data", use google_create_sheet then google_write_sheet.
 3. For assign requests on existing tickets, use jira_assign_issue not jira_create_issue.
 4. For summarize thread/alerts, include slack_fetch_thread or slack_fetch_channel_history.
-5. If impossible with catalog, set tools_needed=[] and list missing_capabilities.
-6. Max 6 tools in tools_needed."""
+5. Questions about whether THIS Slack channel is configured for task tracking/boards are NOT repo documentation — prefer slack_board_* tools or set tools_needed=[] with intent_class slack.board.config.
+6. Product/runbook/documentation questions use search_repo_docs + read_repo_doc with intent_class repo.docs.qa.
+7. Slack List task create/update/search uses slack_board_* tools with intent_class slack.board.*.
+8. If impossible with catalog, set tools_needed=[] and list missing_capabilities.
+9. Max 6 tools in tools_needed."""
 
     try:
         response = provider.chat(
@@ -393,9 +473,13 @@ def resolve_tool_plan(
     data_dir: Any = None,
     playbook_store: Any = None,
 ) -> ToolPlan | None:
-    """Rules first, plan templates, optional LLM fallback."""
+    """Resolve tool plan: LLM-first (default) or rules-first (legacy)."""
     if not config.routing.tool_planner_enabled:
         return None
+
+    min_conf = config.routing.tool_planner_min_confidence
+    llm_first = config.routing.planner_strategy == "llm_first"
+    entity_direct_only = llm_first
 
     if task.source == "ui":
         from backend.routing.chat_persona import (
@@ -421,14 +505,37 @@ def resolve_tool_plan(
                 return qa_plan
 
     entities = extract_entities(task.cleaned_intent, task.raw_text, context.thread_context or "")
+
+    if llm_first and provider is not None:
+        llm_plan = plan_tools_llm(
+            provider,
+            context,
+            entities,
+            model=model,
+            skill_allowed=skill_allowed,
+            min_confidence=min_conf,
+            config=config,
+            task=task,
+            data_dir=data_dir,
+        )
+        if llm_plan and llm_plan.confidence >= min_conf:
+            logger.info(
+                "LLM-first plan: intent=%s confidence=%.2f tools=%s",
+                llm_plan.intent_class,
+                llm_plan.confidence,
+                llm_plan.tools_needed,
+            )
+            return llm_plan
+
     plan = plan_tools_rules(
         task,
         entities,
         skill_allowed=skill_allowed,
         config=config,
         data_dir=data_dir,
+        entity_direct_only=entity_direct_only,
     )
-    if plan and plan.confidence >= config.routing.tool_planner_min_confidence:
+    if plan and plan.confidence >= min_conf:
         return plan
 
     if playbook_store is not None:
@@ -450,20 +557,20 @@ def resolve_tool_plan(
                     template_plan.steps = [s for s in template_plan.steps if s.tool in allowed]
                 else:
                     template_plan = None
-            if template_plan and template_plan.confidence >= config.routing.tool_planner_min_confidence:
+            if template_plan and template_plan.confidence >= min_conf:
                 return template_plan
 
-    if (
-        config.routing.tool_planner_llm_fallback
-        and provider is not None
-    ):
+    if not llm_first and planner_llm_enabled(config) and provider is not None:
         llm_plan = plan_tools_llm(
             provider,
             context,
             entities,
             model=model,
             skill_allowed=skill_allowed,
-            min_confidence=config.routing.tool_planner_min_confidence,
+            min_confidence=min_conf,
+            config=config,
+            task=task,
+            data_dir=data_dir,
         )
         if llm_plan:
             return llm_plan

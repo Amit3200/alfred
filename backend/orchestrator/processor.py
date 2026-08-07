@@ -282,10 +282,34 @@ class TaskProcessor:
                 investigation = self._playbooks.get_by_name(forced)
                 if investigation:
                     logger.info("Persona %s → skill %s", chat_persona, forced)
-        if investigation is None and self.config.repo_knowledge.enabled:
+
+        legacy_routing = self.config.routing.planner_strategy == "rules_first"
+        if investigation is None and legacy_routing and ticket_target != "jira":
+            from backend.integrations.slack.board_service import board_enabled, resolve_board_for_task
+            from backend.routing.slack_board_intent import (
+                looks_like_slack_board_config_question,
+                looks_like_slack_board_request,
+            )
+
+            board_ready = resolve_board_for_task(
+                self.config, task, data_dir=self._data_dir_path()
+            )
+            config_question = looks_like_slack_board_config_question(task.cleaned_intent)
+            if looks_like_slack_board_request(task.cleaned_intent) and (
+                config_question
+                or (
+                    board_enabled(self.config, self._data_dir_path())
+                    and board_ready
+                )
+            ):
+                investigation = self._playbooks.get_by_name("slack_board_management")
+                if investigation:
+                    logger.info("Forced slack_board_management for Slack List board intent")
+
+        if investigation is None and legacy_routing and self.config.repo_knowledge.enabled:
             from backend.routing.tool_planner import looks_like_repo_doc_question
 
-            if looks_like_repo_doc_question(task.cleaned_intent):
+            if looks_like_repo_doc_question(task.cleaned_intent, source=task.source):
                 investigation = self._playbooks.get_by_name("repo_knowledge")
                 if investigation:
                     logger.info(
@@ -299,20 +323,13 @@ class TaskProcessor:
             investigation = self._playbooks.get_by_name("jira_management")
             if investigation:
                 logger.info("Using jira_management from ticket_create_target")
-        if investigation is None and ticket_target != "jira":
-            from backend.integrations.slack.board_service import board_enabled, resolve_board_for_task
-            from backend.routing.slack_board_intent import looks_like_slack_board_request
 
-            if (
-                board_enabled(self.config, self._data_dir_path())
-                and resolve_board_for_task(self.config, task, data_dir=self._data_dir_path())
-                and looks_like_slack_board_request(task.cleaned_intent)
-            ):
-                investigation = self._playbooks.get_by_name("slack_board_management")
-                if investigation:
-                    logger.info("Forced slack_board_management for Slack List board intent")
-
-        if investigation is None and ticket_target != "slack_list" and self.config.jira.enabled:
+        if (
+            investigation is None
+            and legacy_routing
+            and ticket_target != "slack_list"
+            and self.config.jira.enabled
+        ):
             from backend.routing.jira_intent import (
                 looks_like_jira_create_followup,
                 looks_like_jira_create_request,
@@ -832,9 +849,10 @@ class TaskProcessor:
 
     def _resolve_investigation_skill(self, route_context: Any, task: Task, *, session=None):
         """Plan-first skill resolution; fall back to SkillRouter when needed."""
+        from backend.observability.context import set_call_kind
         from backend.orchestrator.graph.skill_policy import resolve_policy_skill
         from backend.routing.chat_persona import normalize_persona, resolve_effective_persona
-        from backend.routing.tool_planner import resolve_tool_plan
+        from backend.routing.tool_planner import planner_llm_enabled, resolve_tool_plan
 
         persona = resolve_effective_persona(task, session) if task.source == "ui" else "all"
         if normalize_persona(persona) == "support":
@@ -845,12 +863,17 @@ class TaskProcessor:
         routing = self.config.routing
         if routing.plan_first_routing and routing.tool_planner_enabled:
             data_dir = self._data_dir_path()
+            planner_provider = None
+            planner_model = None
+            if planner_llm_enabled(self.config):
+                set_call_kind("skill_matching")
+                _, planner_provider, planner_model = self._resolve_llm("skill_matching")
             plan = resolve_tool_plan(
                 self.config,
                 task,
                 route_context,
-                provider=None,
-                model=None,
+                provider=planner_provider,
+                model=planner_model or None,
                 skill_allowed=None,
                 data_dir=data_dir,
                 playbook_store=self._playbooks,
@@ -1374,7 +1397,7 @@ class TaskProcessor:
         from backend.observability.context import set_call_kind
         from backend.routing.chat_persona import filter_tools_for_persona, resolve_effective_persona
         from backend.routing.tool_plan_validator import validate_tool_plan
-        from backend.routing.tool_planner import resolve_tool_plan
+        from backend.routing.tool_planner import planner_llm_enabled, resolve_tool_plan
         from backend.tools.git_api import build_git_tool_registry
 
         effective_persona = persona or (
@@ -1391,7 +1414,7 @@ class TaskProcessor:
             self.config,
             task,
             route_context,
-            provider=provider if self.config.routing.tool_planner_llm_fallback else None,
+            provider=provider if planner_llm_enabled(self.config) else None,
             model=model or None,
             skill_allowed=skill_allowed or None,
             data_dir=self._data_dir_path(),

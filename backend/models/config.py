@@ -451,6 +451,13 @@ class RepoKnowledgeConfig(BaseModel):
 
 
 class RoutingConfig(BaseModel):
+    planner_strategy: Literal["llm_first", "rules_first"] = Field(
+        default="llm_first",
+        description=(
+            "llm_first: LLM tool planner decides intent/tools; rules only for entity-direct fast paths. "
+            "rules_first: legacy phrase rules before LLM fallback."
+        ),
+    )
     tool_planner_enabled: bool = Field(
         default=True,
         description="Enable rule/LLM tool planning before agent execution.",

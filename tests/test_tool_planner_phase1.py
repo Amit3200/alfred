@@ -89,7 +89,12 @@ def test_format_tool_manifest_lists_allowed_only():
 
 
 def test_resolve_tool_plan_rules_without_llm():
-    config = AlfredConfig(routing=RoutingConfig(tool_planner_llm_fallback=False))
+    config = AlfredConfig(
+        routing=RoutingConfig(
+            tool_planner_llm_fallback=False,
+            planner_strategy="rules_first",
+        )
+    )
     task = _task("create a google sheet titled Redirect Report")
     ctx = RouteContext(intent=task.cleaned_intent, channel_id="C1")
     plan = resolve_tool_plan(

@@ -7,12 +7,14 @@ Planning and reference materials for Alfred.
 | [`architecture/`](architecture/) | Routing revamp diagrams, phase status, capabilities example |
 | [`playbooks/`](playbooks/) | **Example** playbooks — copy into `.alfred/playbooks/` locally (**never commit** company playbooks) |
 | [`build-reference/`](build-reference/) | Blueprints, v0 plan, and implementation tracker |
+| [`guides/`](guides/) | Operator how-tos (Slack boards, etc.) |
 
 ## Start here
 
 | Audience | Read |
 |----------|------|
 | **Operators / new installs** | [`README.md`](../README.md) — setup, CLI, AWS, Slack |
+| **Slack List boards** | [`guides/slack-board-setup.md`](guides/slack-board-setup.md) — channel binding, tasks, JIRA vs List |
 | **Architecture (current)** | [`architecture/overview.md`](architecture/overview.md) — context diagram + LangGraph flow |
 | **Implementation progress** | [`architecture/implementation-status.md`](architecture/implementation-status.md) |
 | **Routing/tools revamp spec** | [`architecture/routing-and-tools-plan.md`](architecture/routing-and-tools-plan.md) |

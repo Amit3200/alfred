@@ -24,6 +24,13 @@ _SEARCH_RE = re.compile(
     r"\b(?:list|show|find|search|what(?:'s| is)|summarize)\b.{0,30}\b(?:task|ticket|bug|open|board)\b",
     re.I,
 )
+_CONFIG_STATUS_RE = re.compile(
+    r"\b(?:configured|setup|set up|ready|linked|bound)\b.{0,40}\b(?:track|assign|task|ticket|board|list)\b"
+    r"|\bcan you see if\b.{0,60}\b(?:configured|setup|track|assign|task|ticket|board|list)\b"
+    r"|\b(?:is|are)\s+(?:this|we|it|alfred|the channel)\b.{0,40}\b(?:configured|setup|ready|linked)\b"
+    r"|\b(?:does|do)\s+(?:this|alfred|we)\b.{0,30}\b(?:track|assign)\b.{0,20}\b(?:task|ticket)\b",
+    re.I,
+)
 _ABOVE_RE = re.compile(
     r"\b(?:for\s+)?(?:the\s+)?(?:above|this|below|here|same\s+thread|in\s+this\s+thread)\b",
     re.I,
@@ -39,10 +46,16 @@ _TITLE_FOR_RE = re.compile(
 )
 
 
+def looks_like_slack_board_config_question(intent: str) -> bool:
+    return bool(_CONFIG_STATUS_RE.search(intent or ""))
+
+
 def looks_like_slack_board_request(intent: str) -> bool:
     text = (intent or "").strip()
     if not text:
         return False
+    if looks_like_slack_board_config_question(text):
+        return True
     if _CREATE_TASK_RE.search(text):
         return True
     if _UPDATE_STATUS_RE.search(text) and _TICKET_REF_RE.search(text):

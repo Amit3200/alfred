@@ -98,7 +98,11 @@ body
 
     config = AlfredConfig(
         git=GitConfig(enabled=True, provider="github", token="ghp_test", main_repo="Acme/docs"),
-        routing=RoutingConfig(plan_first_routing=True, skill_router_fallback=False),
+        routing=RoutingConfig(
+            plan_first_routing=True,
+            skill_router_fallback=False,
+            planner_strategy="rules_first",
+        ),
     )
     processor = TaskProcessor(config)
     processor.router = MagicMock()
