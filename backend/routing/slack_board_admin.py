@@ -7,9 +7,11 @@ import re
 from backend.db.slack_workflows_db import (
     db_create_board_binding,
     db_get_board_binding_for_channel,
+    db_get_channel_workflow,
     db_update_board_binding,
     db_upsert_channel_workflow,
 )
+from backend.integrations.slack.board_keys import derive_board_key, fetch_slack_channel_name
 from backend.models.config import AlfredConfig
 from backend.models.response import AssistantResponse
 from backend.models.task import Task
@@ -116,17 +118,25 @@ def try_slack_board_admin_command(
     match = _LINK_BOARD_RE.search(text)
     if match:
         list_id = match.group(1)
-        board_key = "bugs-tracker"
         name_match = re.search(r"\bfor\s+([a-z0-9_-]{2,40})\b", text, re.I)
+        existing = db_get_board_binding_for_channel(data_dir, channel_id)
+        channel_name = fetch_slack_channel_name(config, channel_id)
         if name_match:
             board_key = name_match.group(1).lower()
-        existing = db_get_board_binding_for_channel(data_dir, channel_id)
+        elif existing:
+            board_key = str(existing["board_key"])
+        else:
+            board_key = derive_board_key(channel_name=channel_name, channel_id=channel_id)
         if existing:
+            update_fields: dict[str, str] = {"list_id": list_id}
+            if name_match:
+                update_fields["board_key"] = board_key
+            if channel_name:
+                update_fields["channel_name"] = channel_name
             updated = db_update_board_binding(
                 data_dir,
                 existing["id"],
-                board_key=board_key,
-                list_id=list_id,
+                **update_fields,
             )
             binding = updated or existing
         else:
@@ -135,16 +145,20 @@ def try_slack_board_admin_command(
                 board_key=board_key,
                 list_id=list_id,
                 channel_id=channel_id,
+                channel_name=channel_name,
             )
-        db_upsert_channel_workflow(
-            data_dir,
-            channel_id=channel_id,
-            ticket_system="ask",
-        )
+        workflow = db_get_channel_workflow(data_dir, channel_id)
+        if not workflow:
+            db_upsert_channel_workflow(
+                data_dir,
+                channel_id=channel_id,
+                ticket_system="slack_list",
+            )
         return AssistantResponse.from_text(
             "Linked this channel to Slack List "
             f"`{binding['list_id']}` as board **{binding['board_key']}**. "
             f"Display prefix `{binding['display_id_prefix']}`, next id `{binding['display_id_prefix']}-{binding['next_display_num']}`. "
+            "Board key is per-channel (auto from channel name unless you say `for my-key`). "
             "Edit details in **Settings → Slack boards**."
         )
 

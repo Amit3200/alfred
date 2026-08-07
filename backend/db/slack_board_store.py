@@ -32,15 +32,15 @@ class SlackBoardStore:
         self._path.parent.mkdir(parents=True, exist_ok=True)
         self._path.write_text(json.dumps(self._data, indent=2), encoding="utf-8")
 
-    def next_display_id(self, board_key: str, *, prefix: str = "TS") -> str:
+    def next_display_id(self, *, channel_id: str, prefix: str = "TS") -> str:
         from backend.db.slack_workflows_db import db_bump_display_id
 
-        db_id = db_bump_display_id(self._path.parent, board_key, prefix=prefix)
+        db_id = db_bump_display_id(self._path.parent, channel_id=channel_id, prefix=prefix)
         if db_id:
             return db_id
 
         boards = self._data.setdefault("boards", {})
-        bucket = boards.setdefault(board_key, {"next_num": 1, "prefix": prefix})
+        bucket = boards.setdefault(channel_id or "default", {"next_num": 1, "prefix": prefix})
         num = int(bucket.get("next_num") or 1)
         bucket["next_num"] = num + 1
         bucket["prefix"] = prefix

@@ -395,22 +395,22 @@ def db_delete_board_binding(data_dir: Path | None, binding_id: str) -> bool:
 
 def db_bump_display_id(
     data_dir: Path | None,
-    board_key: str,
     *,
+    channel_id: str,
     prefix: str | None = None,
 ) -> str | None:
+    """Allocate the next display id for a channel binding (one counter per channel)."""
     conn = _connect(data_dir)
-    key = board_key.strip()
+    cid = channel_id.strip()
     try:
         row = conn.execute(
             """
             SELECT id, display_id_prefix, next_display_num
             FROM slack_board_bindings
-            WHERE board_key = ? AND enabled = 1
-            ORDER BY updated_at DESC
+            WHERE channel_id = ? AND enabled = 1
             LIMIT 1
             """,
-            (key,),
+            (cid,),
         ).fetchone()
         if not row:
             return None
@@ -421,9 +421,9 @@ def db_bump_display_id(
             """
             UPDATE slack_board_bindings
             SET next_display_num = ?, display_id_prefix = ?, updated_at = ?
-            WHERE board_key = ?
+            WHERE id = ?
             """,
-            (num + 1, use_prefix, time.time(), key),
+            (num + 1, use_prefix, time.time(), row["id"]),
         )
         conn.commit()
         return display_id

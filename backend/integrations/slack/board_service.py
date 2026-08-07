@@ -75,6 +75,26 @@ def _column_by_name(schema: list[dict[str, Any]], label: str) -> dict[str, Any] 
     return None
 
 
+def _primary_column(schema: list[dict[str, Any]]) -> dict[str, Any] | None:
+    for col in schema:
+        if isinstance(col, dict) and col.get("is_primary_column"):
+            return col
+    return None
+
+
+def _resolve_title_column(
+    schema: list[dict[str, Any]],
+    configured_label: str,
+) -> dict[str, Any] | None:
+    for label in (configured_label, "Name", "Title", "name", "title"):
+        if not label:
+            continue
+        col = _column_by_name(schema, label)
+        if col:
+            return col
+    return _primary_column(schema)
+
+
 def load_schema(
     client: Any,
     list_id: str,
@@ -100,6 +120,20 @@ def _select_value_for_label(column: dict[str, Any], label: str) -> str | None:
     return None
 
 
+def _rich_text_blocks(value: str) -> list[dict[str, Any]]:
+    return [
+        {
+            "type": "rich_text",
+            "elements": [
+                {
+                    "type": "rich_text_section",
+                    "elements": [{"type": "text", "text": value}],
+                }
+            ],
+        }
+    ]
+
+
 def _field_payload(
     column: dict[str, Any],
     value: str,
@@ -107,15 +141,22 @@ def _field_payload(
     user_ids: list[str] | None = None,
 ) -> dict[str, Any]:
     col_id = str(column.get("id") or "")
+    col_key = str(column.get("key") or "")
     col_type = str(column.get("type") or "text")
     payload: dict[str, Any] = {"column_id": col_id}
-    if col_type == "user" and user_ids:
+    if col_key:
+        payload["key"] = col_key
+    if col_type in ("user", "assignee") and user_ids:
         payload["user"] = user_ids
         return payload
     if col_type == "select":
         selected = _select_value_for_label(column, value)
         if selected:
             payload["select"] = [selected]
+        return payload
+    # Slack List write APIs expect rich_text for text-like columns (plain text is response-only).
+    if col_type in ("text", "rich_text", ""):
+        payload["rich_text"] = _rich_text_blocks(value)
         return payload
     payload["text"] = value
     return payload
@@ -145,7 +186,7 @@ def create_board_task(
     cols = board.columns
     initial_fields: list[dict[str, Any]] = []
 
-    title_col = _column_by_name(schema, cols.title or "Name")
+    title_col = _resolve_title_column(schema, cols.title or "Name")
     if title_col and title.strip():
         initial_fields.append(_field_payload(title_col, title.strip()))
 
@@ -171,7 +212,13 @@ def create_board_task(
     if cols.display_id:
         display_col = _column_by_name(schema, cols.display_id)
         if display_col:
-            display_id = store.next_display_id(board.name, prefix=board.display_id_prefix or "TS")
+            bump_channel = (channel_id or (board.channel_ids[0] if board.channel_ids else "")).strip()
+            if not bump_channel:
+                raise RuntimeError("Cannot allocate display id without a channel binding.")
+            display_id = store.next_display_id(
+                channel_id=bump_channel,
+                prefix=board.display_id_prefix or "TS",
+            )
             initial_fields.append(_field_payload(display_col, display_id))
 
     if assignee_user_id.strip():

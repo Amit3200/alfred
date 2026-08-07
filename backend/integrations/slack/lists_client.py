@@ -16,16 +16,47 @@ def api_call(client: Any, method: str, payload: dict[str, Any]) -> dict[str, Any
     return response
 
 
+def _schema_from_list_metadata(list_obj: dict[str, Any]) -> list[dict[str, Any]]:
+    meta = list_obj.get("list_metadata") or {}
+    schema = meta.get("schema") or []
+    return list(schema) if isinstance(schema, list) else []
+
+
+def _record_id_from_item(item: dict[str, Any]) -> str:
+    return str(item.get("id") or item.get("record_id") or "")
+
+
 def list_columns(client: Any, list_id: str) -> list[dict[str, Any]]:
+    """Load List column schema.
+
+    Slack removed ``slackLists.columns.list``; schema is returned on
+    ``slackLists.items.info`` (and sometimes ``files.info`` for the List file).
+    """
+    items = list_items(client, list_id, limit=1)
+    for item in items:
+        record_id = _record_id_from_item(item)
+        if not record_id:
+            continue
+        try:
+            response = api_call(
+                client,
+                "slackLists.items.info",
+                {"list_id": list_id, "id": record_id},
+            )
+        except RuntimeError as exc:
+            logger.warning("slackLists.items.info schema fetch failed: %s", exc)
+            continue
+        schema = _schema_from_list_metadata(response.get("list") or {})
+        if schema:
+            return schema
+
     try:
-        response = api_call(client, "slackLists.columns.list", {"list_id": list_id})
+        response = api_call(client, "files.info", {"file": list_id})
     except RuntimeError as exc:
-        if "unknown_method" in str(exc).lower() or "not_allowed" in str(exc).lower():
-            logger.warning("slackLists.columns.list unavailable: %s", exc)
-            return []
-        raise
-    columns = response.get("columns") or response.get("schema") or []
-    return list(columns) if isinstance(columns, list) else []
+        logger.warning("files.info schema fallback failed: %s", exc)
+        return []
+    schema = _schema_from_list_metadata(response.get("file") or {})
+    return schema
 
 
 def get_item(client: Any, list_id: str, record_id: str) -> dict[str, Any] | None:

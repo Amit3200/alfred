@@ -34,9 +34,32 @@ def test_board_binding_and_display_id_bump(tmp_path: Path):
     assert binding is not None
     assert binding["board_key"] == "bugs"
 
-    assert db_bump_display_id(tmp_path, "bugs", prefix="TS") == "TS-5"
+    assert db_bump_display_id(tmp_path, channel_id="Ctech", prefix="TS") == "TS-5"
     binding = db_get_board_binding_for_channel(tmp_path, "Ctech")
     assert binding["next_display_num"] == 6
+
+
+def test_display_id_bump_isolated_per_channel(tmp_path: Path):
+    db_create_board_binding(
+        tmp_path,
+        board_key="shared-key",
+        list_id="F001",
+        channel_id="C1",
+        display_id_prefix="TS",
+        next_display_num=1,
+    )
+    db_create_board_binding(
+        tmp_path,
+        board_key="shared-key",
+        list_id="F002",
+        channel_id="C2",
+        display_id_prefix="TS",
+        next_display_num=10,
+    )
+    assert db_bump_display_id(tmp_path, channel_id="C1", prefix="TS") == "TS-1"
+    assert db_bump_display_id(tmp_path, channel_id="C2", prefix="TS") == "TS-10"
+    assert db_get_board_binding_for_channel(tmp_path, "C1")["next_display_num"] == 2
+    assert db_get_board_binding_for_channel(tmp_path, "C2")["next_display_num"] == 11
 
 
 def test_resolve_board_from_db(tmp_path: Path):
