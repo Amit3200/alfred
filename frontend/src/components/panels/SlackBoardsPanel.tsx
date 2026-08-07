@@ -125,8 +125,9 @@ export function SlackBoardsPanel() {
     setSaving(true);
     try {
       const listId = String(values.list_id || "").trim();
+      const channelId = String(values.channel_id || "").trim();
       if (!editingBoard || listId !== editingBoard.list_id) {
-        await api.verifySlackBoardListId(listId);
+        await api.verifySlackBoardListId(listId, channelId);
       }
       const body: SlackBoardBindingInput = {
         board_key: values.board_key,
@@ -169,7 +170,7 @@ export function SlackBoardsPanel() {
     try {
       const channelId = String(values.channel_id || "").trim();
       const listId = String(values.list_id || "").trim();
-      await api.verifySlackBoardListId(listId);
+      await api.verifySlackBoardListId(listId, channelId);
       const existing = boards.filter((b) => b.channel_id === channelId);
       if (existing.length > 0) {
         await api.deleteSlackBoardBindingsForChannel(channelId);

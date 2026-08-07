@@ -93,27 +93,79 @@ def _record_id_from_item(item: dict[str, Any]) -> str:
     return str(item.get("id") or item.get("record_id") or "")
 
 
-def verify_list_id(client: Any, list_id: str) -> tuple[bool, str]:
-    """Check that list_id refers to a List the bot can access."""
+def grant_list_access(
+    client: Any,
+    list_id: str,
+    *,
+    channel_id: str = "",
+    bot_user_id: str = "",
+) -> None:
+    """Best-effort grant so the bot can read/write a channel-attached List."""
+    lid = (list_id or "").strip()
+    if not lid:
+        return
+    if not bot_user_id:
+        try:
+            auth = client.auth_test()
+            bot_user_id = str(auth.get("user_id") or "")
+        except Exception as exc:
+            logger.warning("auth_test failed while granting list access: %s", exc)
+    if bot_user_id:
+        try:
+            api_call(
+                client,
+                "slackLists.access.set",
+                {
+                    "list_id": lid,
+                    "access_level": "write",
+                    "user_ids": [bot_user_id],
+                },
+            )
+        except RuntimeError as exc:
+            logger.warning("slackLists.access.set for bot user failed: %s", exc)
+    cid = (channel_id or "").strip()
+    if cid:
+        try:
+            api_call(
+                client,
+                "slackLists.access.set",
+                {
+                    "list_id": lid,
+                    "access_level": "write",
+                    "channel_ids": [cid],
+                },
+            )
+        except RuntimeError as exc:
+            logger.warning("slackLists.access.set for channel failed: %s", exc)
+
+
+def verify_list_id(
+    client: Any,
+    list_id: str,
+    *,
+    channel_id: str = "",
+) -> tuple[bool, str]:
+    """Check that list_id refers to a List the bot can read and write."""
     lid = (list_id or "").strip()
     if not lid.startswith("F"):
         return False, f"List id must start with F (got `{lid}`)."
+    grant_list_access(client, lid, channel_id=channel_id)
     try:
-        response = _files_info(client, lid)
-    except RuntimeError as exc:
-        code = _slack_error_code(exc) or str(exc)
-        if _list_api_reachable(client, lid):
-            return True, ""
-        if "not_found" in code.lower():
-            return False, list_access_error_message(lid, error_code=code)
-        return False, f"Could not verify List `{lid}`: {exc}"
-    file_obj = response.get("file") or {}
-    ftype = str(file_obj.get("filetype") or file_obj.get("mode") or "")
-    if ftype == "list":
-        return True, ""
-    if _list_api_reachable(client, lid):
-        return True, ""
-    return False, f"`{lid}` is not a Slack List (type `{ftype or 'unknown'}`)."
+        schema = list_columns(client, lid)
+    except SlackListAccessError as exc:
+        return False, str(exc)
+    if not schema:
+        return False, list_access_error_message(lid, error_code="schema_empty")
+    title_col = next(
+        (col for col in schema if isinstance(col, dict) and col.get("is_primary_column")),
+        schema[0] if schema else None,
+    )
+    if not title_col or not str(title_col.get("id") or ""):
+        return False, (
+            f"Slack List `{lid}` has no writable title column. "
+            "Check the List schema in Slack."
+        )
+    return True, ""
 
 
 def list_columns(client: Any, list_id: str) -> list[dict[str, Any]]:

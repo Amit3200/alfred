@@ -109,7 +109,7 @@ def _resolve_board_for_create(
             )
         from backend.integrations.slack.lists_client import verify_list_id
 
-        ok, verify_msg = verify_list_id(client, list_override)
+        ok, verify_msg = verify_list_id(client, list_override, channel_id=channel_id)
         if not ok:
             return None, AssistantResponse.from_text(verify_msg)
 

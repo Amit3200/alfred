@@ -33,7 +33,7 @@ Reinstall the Slack app after adding scopes:
 | `channels:history`, `groups:history` | Thread / channel context |
 | `chat:write` | Replies and comments |
 | `lists:read` | Read List schema and items |
-| `lists:write` | Create / update List items |
+| `lists:write` | Create / update List items **and** set List access (`slackLists.access.set`) |
 | `users:read` (optional) | Assignee resolution |
 
 **Interactivity** must be enabled on the Slack app (for JIRA vs List choice buttons).

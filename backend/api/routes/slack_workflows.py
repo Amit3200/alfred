@@ -29,7 +29,12 @@ router = APIRouter(prefix="/slack/workflows", tags=["slack-workflows"])
 TicketSystem = Literal["ask", "slack_list", "jira"]
 
 
-def _verify_list_id_or_http(manager: ConfigManager, list_id: str) -> None:
+def _verify_list_id_or_http(
+    manager: ConfigManager,
+    list_id: str,
+    *,
+    channel_id: str = "",
+) -> None:
     """Reject bindings the bot cannot read/write before they hit SQLite."""
     config, _ = manager.load_merged()
     token = (config.slack.bot_token or "").strip()
@@ -39,13 +44,18 @@ def _verify_list_id_or_http(manager: ConfigManager, list_id: str) -> None:
 
     from backend.integrations.slack.lists_client import verify_list_id
 
-    ok, message = verify_list_id(WebClient(token=token), list_id.strip())
+    ok, message = verify_list_id(
+        WebClient(token=token),
+        list_id.strip(),
+        channel_id=channel_id,
+    )
     if not ok:
         raise HTTPException(status_code=400, detail=message)
 
 
 class VerifyListPayload(BaseModel):
     list_id: str = Field(min_length=1)
+    channel_id: str = ""
 
 
 class ChannelWorkflowPayload(BaseModel):
@@ -151,7 +161,7 @@ def verify_board_list(
             status_code=400,
             detail="List id looks like a placeholder — copy the real F… id from the Task List tab URL.",
         )
-    _verify_list_id_or_http(manager, payload.list_id)
+    _verify_list_id_or_http(manager, payload.list_id, channel_id=payload.channel_id)
     return {"ok": True, "list_id": payload.list_id.strip()}
 
 
@@ -165,7 +175,7 @@ def create_board(
             status_code=400,
             detail="List id looks like a placeholder from docs/UI — use the real F… id from Slack.",
         )
-    _verify_list_id_or_http(manager, payload.list_id)
+    _verify_list_id_or_http(manager, payload.list_id, channel_id=payload.channel_id)
     other = db_get_board_binding_for_list_id(
         manager.data_dir,
         payload.list_id,
@@ -226,7 +236,11 @@ def update_board(
             detail="List id looks like a placeholder from docs/UI — use the real F… id from Slack.",
         )
     if payload.list_id:
-        _verify_list_id_or_http(manager, payload.list_id)
+        _verify_list_id_or_http(
+            manager,
+            payload.list_id,
+            channel_id=existing["channel_id"],
+        )
     other = db_get_board_binding_for_list_id(
         manager.data_dir,
         next_list_id,

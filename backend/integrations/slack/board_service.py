@@ -11,6 +11,7 @@ from backend.formatting.slack_lists import format_list_record, list_record_to_fi
 from backend.integrations.slack.lists_client import (
     create_item,
     get_item,
+    grant_list_access,
     list_columns,
     list_items,
     update_cells,
@@ -192,6 +193,11 @@ def create_board_task(
     thread_ts: str = "",
 ) -> dict[str, Any]:
     list_id = board.list_id
+    grant_list_access(
+        client,
+        list_id,
+        channel_id=channel_id or (board.channel_ids[0] if board.channel_ids else ""),
+    )
     schema = load_schema(client, list_id, store)
     if not schema:
         raise RuntimeError(

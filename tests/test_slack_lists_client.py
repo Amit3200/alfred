@@ -74,20 +74,37 @@ def test_list_columns_raises_when_list_missing():
         list_columns(client, "F0MISSING")
 
 
-def test_verify_list_id_accepts_list_api_when_files_info_fails():
+def test_verify_list_id_accepts_when_schema_loads():
     client = MagicMock()
-    client.files_info.return_value = {"ok": False, "error": "file_not_found"}
-    client.api_call.return_value = {"ok": True, "items": []}
-    ok, msg = verify_list_id(client, "F0GOOD")
+    client.auth_test.return_value = {"user_id": "UBOT"}
+    client.api_call.side_effect = [
+        {"ok": True},  # access.set bot
+        {"ok": True},  # access.set channel
+    ]
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "backend.integrations.slack.lists_client.list_columns",
+            lambda _client, _lid: [
+                {"id": "Col1", "name": "Name", "type": "text", "is_primary_column": True},
+            ],
+        )
+        ok, msg = verify_list_id(client, "F0GOOD", channel_id="C1")
     assert ok is True
     assert msg == ""
 
 
 def test_verify_list_id_rejects_missing_list():
     client = MagicMock()
-    client.files_info.return_value = {"ok": False, "error": "file_not_found"}
-    client.api_call.return_value = {"ok": False, "error": "list_not_found"}
-    ok, msg = verify_list_id(client, "F0BAD")
+    client.auth_test.return_value = {"user_id": "UBOT"}
+    client.api_call.return_value = {"ok": True}
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "backend.integrations.slack.lists_client.list_columns",
+            lambda _client, _lid: (_ for _ in ()).throw(  # noqa: E731
+                SlackListAccessError("Slack List `F0BAD` is not accessible (list not found).")
+            ),
+        )
+        ok, msg = verify_list_id(client, "F0BAD", channel_id="C1")
     assert ok is False
     assert "F0BAD" in msg
 

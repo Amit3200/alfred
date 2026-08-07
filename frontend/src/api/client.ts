@@ -684,10 +684,10 @@ export const api = {
       { method: "POST" },
       true,
     ),
-  verifySlackBoardListId: (listId: string) =>
+  verifySlackBoardListId: (listId: string, channelId?: string) =>
     request<{ ok: boolean; list_id: string }>(
       "/api/slack/workflows/boards/verify-list",
-      { method: "POST", body: JSON.stringify({ list_id: listId }) },
+      { method: "POST", body: JSON.stringify({ list_id: listId, channel_id: channelId || "" }) },
       true,
     ),
 
