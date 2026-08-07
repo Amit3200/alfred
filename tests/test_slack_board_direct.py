@@ -12,7 +12,12 @@ from backend.routing.slack_board_direct import (
     try_slack_board_create_direct,
     try_slack_board_status_followup,
 )
-from backend.routing.slack_board_intent import extract_task_title, looks_like_slack_board_followup
+from backend.routing.slack_board_intent import (
+    extract_list_id_override,
+    extract_task_title,
+    is_placeholder_list_id,
+    looks_like_slack_board_followup,
+)
 from backend.routing.tool_plan_types import ToolPlan
 from backend.routing.tool_plan_validator import validate_tool_plan
 from backend.tools.registry import ToolRegistry
@@ -23,6 +28,87 @@ def test_extract_task_title_create_on_phrase():
     title = extract_task_title(intent)
     assert "revamping" in title.lower()
     assert "p0" not in title.lower()
+
+
+def test_extract_task_title_strips_on_list_suffix():
+    intent = "create task for net-new board smoke test on list F0BNP40SLV9"
+    title = extract_task_title(intent)
+    assert "net-new board smoke test" in title.lower()
+    assert "f0bnp40slv9" not in title.lower()
+    assert extract_list_id_override(intent) == "F0BNP40SLV9"
+
+
+def test_placeholder_list_id_detection():
+    assert is_placeholder_list_id("F0123ABCDEF")
+    assert is_placeholder_list_id("F01234567")
+    assert not is_placeholder_list_id("F0BNP40SLV9")
+
+
+def test_direct_create_rejects_placeholder_binding_without_override(tmp_path: Path):
+    from backend.db.slack_workflows_db import db_create_board_binding
+
+    db_create_board_binding(
+        tmp_path,
+        board_key="bugs-tracker",
+        list_id="F0123ABCDEF",
+        channel_id="Ctech",
+    )
+    config = AlfredConfig(slack=SlackConfig(enabled=True, bot_token="xoxb-test"))
+    task = Task(
+        source="slack",
+        user_id="U1",
+        channel_id="Ctech",
+        raw_text="create task for smoke test",
+        cleaned_intent="create task for smoke test",
+    )
+    response, _meta = try_slack_board_create_direct(task, config, tmp_path)
+    assert response is not None
+    text = response.payload.data.get("text") or ""
+    assert "placeholder" in text.lower()
+    assert "F0123ABCDEF" in text
+
+
+def test_direct_create_uses_list_override_and_updates_binding(tmp_path: Path):
+    from backend.db.slack_workflows_db import db_create_board_binding, db_get_board_binding_for_channel
+
+    db_create_board_binding(
+        tmp_path,
+        board_key="bugs-tracker",
+        list_id="F0123ABCDEF",
+        channel_id="Ctech",
+    )
+    config = AlfredConfig(slack=SlackConfig(enabled=True, bot_token="xoxb-test"))
+    task = Task(
+        source="slack",
+        user_id="U1",
+        channel_id="Ctech",
+        thread_ts="1.1",
+        raw_text="create task for smoke test on list F0REAL01",
+        cleaned_intent="create task for smoke test on list F0REAL01",
+    )
+    fake = {
+        "record_id": "Rec1",
+        "display_id": "TS-9",
+        "title": "smoke test",
+        "status": "Not picked",
+        "board": "bugs-tracker",
+    }
+    with patch(
+        "backend.integrations.slack.lists_client.verify_list_id",
+        return_value=(True, ""),
+    ), patch(
+        "backend.routing.slack_board_direct.create_board_task",
+        return_value=fake,
+    ) as create_mock:
+        response, meta = try_slack_board_create_direct(task, config, tmp_path)
+    assert response is not None
+    binding = db_get_board_binding_for_channel(tmp_path, "Ctech")
+    assert binding is not None
+    assert binding["list_id"] == "F0REAL01"
+    create_mock.assert_called_once()
+    board_arg = create_mock.call_args.args[3]
+    assert board_arg.list_id == "F0REAL01"
+    assert meta["last_board_task"]["display_id"] == "TS-9"
 
 
 def test_extract_board_create_fields_severity_and_title():

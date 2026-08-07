@@ -6,6 +6,7 @@ import re
 
 from backend.db.slack_workflows_db import (
     db_create_board_binding,
+    db_delete_board_binding,
     db_get_board_binding_for_channel,
     db_get_channel_workflow,
     db_update_board_binding,
@@ -13,12 +14,17 @@ from backend.db.slack_workflows_db import (
 )
 from backend.db.slack_board_store import SlackBoardStore
 from backend.integrations.slack.board_keys import derive_board_key, fetch_slack_channel_name
+from backend.routing.slack_board_intent import is_placeholder_list_id
 from backend.models.config import AlfredConfig
 from backend.models.response import AssistantResponse
 from backend.models.task import Task
 
 _LINK_BOARD_RE = re.compile(
     r"\b(?:link|bind|connect)\b.{0,20}\b(?:board|list|channel)\b.{0,40}\b(?:to\s+)?(F[A-Za-z0-9]+)\b",
+    re.I,
+)
+_UNLINK_BOARD_RE = re.compile(
+    r"\b(?:unlink|unbind|delink|disconnect|remove)\b.{0,20}\b(?:board|list)\b",
     re.I,
 )
 _SET_PREFIX_RE = re.compile(
@@ -116,9 +122,39 @@ def try_slack_board_admin_command(
             f"Channel ticket system set to **{row['ticket_system']}** (saved — no restart needed)."
         )
 
+    if _UNLINK_BOARD_RE.search(text):
+        binding = db_get_board_binding_for_channel(data_dir, channel_id)
+        if not binding:
+            return AssistantResponse.from_text(
+                "This channel has no board binding to remove. "
+                "Use `@alfred show board config` to confirm."
+            )
+        list_id = str(binding.get("list_id") or "")
+        board_key = str(binding.get("board_key") or "board")
+        deleted = db_delete_board_binding(data_dir, str(binding["id"]))
+        fresh = db_get_board_binding_for_channel(data_dir, channel_id)
+        if not deleted or fresh is not None:
+            return AssistantResponse.from_text(
+                "Could not remove the board binding from the database. "
+                "Try **Settings → Automation → Slack boards**, or try again."
+            )
+        store = SlackBoardStore(data_dir)
+        if list_id:
+            store.clear_schema_cache(list_id)
+        return AssistantResponse.from_text(
+            f"Removed the board binding for this channel (`{board_key}` → List `{list_id}`). "
+            "Task create/update for this channel is disabled until you link again. "
+            "Confirm with `@alfred show board config`."
+        )
+
     match = _LINK_BOARD_RE.search(text)
     if match:
         list_id = match.group(1)
+        if is_placeholder_list_id(list_id):
+            return AssistantResponse.from_text(
+                f"`{list_id}` looks like a placeholder List id from docs or the admin UI, not your real List. "
+                "Open the channel **Task List** tab and copy the **F…** id from the browser URL."
+            )
         token = (config.slack.bot_token or "").strip()
         if token:
             from slack_sdk import WebClient

@@ -39,11 +39,50 @@ _TICKET_REF_RE = re.compile(
     r"\b((?:TS|BUG|TK|T)-\d+|Rec[A-Za-z0-9]+)\b",
     re.I,
 )
+_LIST_ID_OVERRIDE_RE = re.compile(
+    r"\b(?:on|using|with|from)\s+(?:the\s+)?list(?:\s+id)?\s+(F[A-Za-z0-9]+)\b"
+    r"|\blist(?:\s+id)?\s*[:=]\s*(F[A-Za-z0-9]+)\b",
+    re.I,
+)
+_KNOWN_PLACEHOLDER_LIST_IDS = frozenset(
+    {
+        "F0123ABCDEF",
+        "F01234567",
+        "F012345678",
+    }
+)
 _TITLE_FOR_RE = re.compile(
     r"\b(?:create|add|open|file)\b.{0,20}\b(?:task|ticket)\b.{0,20}\b(?:for|about)\s+"
     r"(.+?)(?:\s+for\s+(?:the\s+)?above|\s+in\s+this|\s*$)",
     re.I,
 )
+
+
+def is_placeholder_list_id(list_id: str) -> bool:
+    """Detect doc/example List ids that should never be used in production."""
+    lid = (list_id or "").strip().upper()
+    if not lid.startswith("F"):
+        return False
+    if lid in _KNOWN_PLACEHOLDER_LIST_IDS:
+        return True
+    # Common docs/UI examples: F0123… with only hex-ish filler after the prefix.
+    if lid.startswith("F0123") and len(lid) <= 12:
+        return True
+    return False
+
+
+def extract_list_id_override(intent: str) -> str:
+    """Parse an explicit Slack List id from a create/link message."""
+    match = _LIST_ID_OVERRIDE_RE.search(intent or "")
+    return match.group(1).strip() if match else ""
+
+
+def strip_list_id_override(intent: str) -> str:
+    """Remove explicit list id phrases so they are not treated as task titles."""
+    text = (intent or "").strip()
+    if not text:
+        return text
+    return _LIST_ID_OVERRIDE_RE.sub("", text).strip(" .,:;-")
 
 
 def looks_like_slack_board_config_question(intent: str) -> bool:
@@ -139,11 +178,12 @@ def extract_ticket_ref(intent: str) -> str:
 
 
 def extract_task_title(intent: str) -> str:
-    text = (intent or "").strip()
+    text = strip_list_id_override((intent or "").strip())
 
     def _clean_title(raw: str) -> str:
         title = raw.strip(" .,:;\"'")
         title = re.sub(r"\s+for\s+(the\s+)?above\s*$", "", title, flags=re.I).strip()
+        title = strip_list_id_override(title)
         return title[:200]
 
     match = _TITLE_FOR_RE.search(text)

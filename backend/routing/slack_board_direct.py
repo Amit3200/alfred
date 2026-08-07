@@ -6,6 +6,7 @@ import logging
 import re
 from typing import Any
 
+from backend.db.slack_workflows_db import db_update_board_binding
 from backend.integrations.slack.board_service import board_enabled, create_board_task
 from backend.integrations.slack.workflow_registry import (
     binding_to_profile,
@@ -17,7 +18,9 @@ from backend.models.response import AssistantResponse
 from backend.models.task import Task
 from backend.routing.slack_board_intent import (
     build_thread_description,
+    extract_list_id_override,
     extract_task_title,
+    is_placeholder_list_id,
     looks_like_slack_board_create,
     looks_like_slack_board_followup,
     references_thread_context,
@@ -74,6 +77,89 @@ def format_board_task_created(result: dict[str, Any], *, severity: str = "", ass
     return "\n".join(lines)
 
 
+def _placeholder_binding_message(list_id: str) -> str:
+    return (
+        f"This channel is linked to placeholder List id `{list_id}`, not a real Slack List. "
+        "Run `@alfred link board to F…` with the id from your Task List tab URL, "
+        "or say `@alfred create task for … on list F…` with the real id."
+    )
+
+
+def _resolve_board_for_create(
+    *,
+    config: AlfredConfig,
+    data_dir: Any,
+    channel_id: str,
+    intent: str,
+    client: Any,
+    store: Any,
+) -> tuple[Any | None, AssistantResponse | None]:
+    """Resolve board profile for create, honoring explicit list id overrides."""
+    from backend.models.config import SlackBoardProfile
+
+    binding = fresh_board_binding_for_channel(data_dir, channel_id)
+    board = binding_to_profile(binding) if binding else None
+    list_override = extract_list_id_override(intent)
+
+    if list_override:
+        if is_placeholder_list_id(list_override):
+            return None, AssistantResponse.from_text(
+                f"`{list_override}` looks like a placeholder List id from docs or the admin UI. "
+                "Use the **F…** id from your Task List tab URL."
+            )
+        from backend.integrations.slack.lists_client import verify_list_id
+
+        ok, verify_msg = verify_list_id(client, list_override)
+        if not ok:
+            return None, AssistantResponse.from_text(verify_msg)
+
+        if binding and str(binding.get("list_id") or "") != list_override:
+            old_list_id = str(binding.get("list_id") or "")
+            updated = db_update_board_binding(
+                data_dir,
+                str(binding["id"]),
+                list_id=list_override,
+            )
+            binding = updated or fresh_board_binding_for_channel(data_dir, channel_id)
+            if old_list_id:
+                store.clear_schema_cache(old_list_id)
+            store.clear_schema_cache(list_override)
+
+        if binding:
+            board = binding_to_profile(binding)
+        else:
+            from backend.integrations.slack.board_keys import derive_board_key, fetch_slack_channel_name
+
+            board = SlackBoardProfile(
+                name=derive_board_key(
+                    channel_name=fetch_slack_channel_name(config, channel_id),
+                    channel_id=channel_id,
+                ),
+                list_id=list_override,
+                channel_ids=[channel_id],
+            )
+
+        if board.list_id != list_override:
+            board = board.model_copy(update={"list_id": list_override})
+        return board, None
+
+    if board is None:
+        return None, AssistantResponse.from_text(
+            "This channel is not linked to a Slack List yet. "
+            "Say `@alfred link board to F…` (List id from the Task List tab), "
+            "or `@alfred create task for … on list F…` with the List id from the tab URL."
+        )
+    bound_list_id = (board.list_id or "").strip()
+    if not bound_list_id:
+        return None, AssistantResponse.from_text(
+            "This channel's board binding has no List id. "
+            "Run `@alfred link board to F…` with the id from your Task List tab URL."
+        )
+    if is_placeholder_list_id(bound_list_id):
+        return None, AssistantResponse.from_text(_placeholder_binding_message(bound_list_id))
+    return board, None
+
+
 def try_slack_board_create_direct(
     task: Task,
     config: AlfredConfig,
@@ -94,24 +180,31 @@ def try_slack_board_create_direct(
             {},
         )
 
-    binding = fresh_board_binding_for_channel(data_dir, task.channel_id or "")
-    board = binding_to_profile(binding) if binding else None
-    if board is None:
-        return (
-            AssistantResponse.from_text(
-                "This channel is not linked to a Slack List yet. "
-                "Say `@alfred link board to F0123…` (List id from the Task List tab)."
-            ),
-            {},
-        )
-    if not (board.list_id or "").strip():
-        return (
-            AssistantResponse.from_text(
-                "This channel's board binding has no List id. "
-                "Run `@alfred link board to F…` with the id from your Task List tab URL."
-            ),
-            {},
-        )
+    token = (config.slack.bot_token or "").strip()
+    if not token:
+        return AssistantResponse.error("Slack bot token is not configured."), {}
+
+    from slack_sdk import WebClient
+
+    from backend.db.slack_board_store import SlackBoardStore
+    from backend.integrations.slack.context import fetch_thread_messages, messages_to_text
+    from backend.routing.slack_board_bootstrap import _bot_user_id
+
+    client = WebClient(token=token)
+    store = SlackBoardStore(data_dir) if data_dir else SlackBoardStore(None)
+    channel_id = task.channel_id or ""
+    intent = task.cleaned_intent or task.raw_text or ""
+
+    board, resolve_error = _resolve_board_for_create(
+        config=config,
+        data_dir=data_dir,
+        channel_id=channel_id,
+        intent=intent,
+        client=client,
+        store=store,
+    )
+    if resolve_error is not None:
+        return resolve_error, {}
 
     fields = extract_board_create_fields(task)
     title = fields["title"]
@@ -125,19 +218,6 @@ def try_slack_board_create_direct(
             ),
             {},
         )
-
-    token = (config.slack.bot_token or "").strip()
-    if not token:
-        return AssistantResponse.error("Slack bot token is not configured."), {}
-
-    from slack_sdk import WebClient
-
-    from backend.db.slack_board_store import SlackBoardStore
-    from backend.integrations.slack.context import fetch_thread_messages, messages_to_text
-    from backend.routing.slack_board_bootstrap import _bot_user_id
-
-    client = WebClient(token=token)
-    store = SlackBoardStore(data_dir) if data_dir else SlackBoardStore(None)
 
     description = "Created from Slack conversation."
     if task.channel_id and task.thread_ts:
