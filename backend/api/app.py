@@ -31,6 +31,7 @@ from backend.api.routes import playbooks as playbooks_routes
 from backend.api.routes import scripts as scripts_routes
 from backend.api.routes import repo_context as repo_context_routes
 from backend.api.routes import routing as routing_routes
+from backend.api.routes import slack_workflows as slack_workflows_routes
 from backend.api.routes import storage as storage_routes
 from backend.api.routes import tools as tools_routes
 from backend.config_manager import ConfigManager
@@ -146,6 +147,7 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     app.include_router(scripts_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
     app.include_router(tools_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
     app.include_router(routing_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
+    app.include_router(slack_workflows_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
     app.include_router(integrations_sync_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
 
     static_dir = bundled_web_dist()

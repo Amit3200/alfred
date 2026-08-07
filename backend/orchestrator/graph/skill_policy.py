@@ -24,6 +24,9 @@ _INTENT_SKILL_MAP: dict[str, str] = {
     "slack.summarize.thread": "summarize_bugs",
     "slack.summarize.alerts": "summarize_bugs",
     "repo.docs.qa": "repo_knowledge",
+    "slack.board.create": "slack_board_management",
+    "slack.board.update": "slack_board_management",
+    "slack.board.search": "slack_board_management",
     "script.run": "investigate_bug",
 }
 
@@ -32,6 +35,7 @@ _DOMAIN_SKILL_MAP: dict[str, str] = {
     "google_sheet": "google_workspace",
     "google_doc": "google_workspace",
     "slack": "summarize_bugs",
+    "slack_write": "slack_board_management",
     "repo_docs": "repo_knowledge",
     "script": "investigate_bug",
     "git": "git_status",

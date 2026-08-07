@@ -39,6 +39,9 @@ TOOL_PROGRESS_LABELS: dict[str, str] = {
 
 INTENT_PROGRESS_LABELS: dict[str, str] = {
     "repo.docs.qa": "Documentation Q&A",
+    "slack.board.create": "Slack board task",
+    "slack.board.update": "Update board task",
+    "slack.board.search": "Search board tasks",
     "repo.code.search": "Code search",
     "repo.code.read": "Read source file",
     "git.pr.list": "List pull requests",
@@ -53,6 +56,7 @@ CHECKPOINT_PROGRESS_LABELS: dict[str, str] = {
     "route_plan": "Routing to documentation",
     "doc_synthesis": "Analyzing and summarizing",
     "doc_bootstrap": "Loading documentation",
+    "board_bootstrap": "Creating board task",
     "graph_route": "Choosing execution path",
     "grounding": "Verifying answer",
 }

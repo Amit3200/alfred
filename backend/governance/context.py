@@ -77,6 +77,12 @@ class GovernanceContext:
             from backend.integrations.slack.list_jira_sync import sync_channel_allowed
 
             return sync_channel_allowed(self.task.channel_id or "", self.config)
+        if tool_name.startswith("slack_board_") and self.config.slack.board_workflows.enabled:
+            from backend.integrations.slack.board_service import resolve_board_for_task
+
+            board = resolve_board_for_task(self.config, self.task, data_dir=self.data_dir)
+            if board and board.auto_approve_writes:
+                return True
         return False
 
     def _confirmation_required_for_source(self) -> bool:

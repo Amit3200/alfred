@@ -60,10 +60,16 @@ def _project_from_intent(combined: str, config: JiraConfig) -> str | None:
     return resolve_project_alias(combined, config)
 
 
-def _project_from_channel(channel_id: str, config: AlfredConfig) -> str | None:
+def _project_from_channel(channel_id: str, config: AlfredConfig, data_dir: Path | None = None) -> str | None:
     channel_id = (channel_id or "").strip()
     if channel_id and config.jira.channel_projects.get(channel_id):
         return config.jira.channel_projects[channel_id].strip().upper()
+
+    from backend.integrations.slack.workflow_registry import channel_jira_project_key, resolve_data_dir
+
+    db_key = channel_jira_project_key(channel_id, data_dir=resolve_data_dir(data_dir))
+    if db_key:
+        return db_key
 
     sync = config.slack.list_jira_sync
     if sync.enabled and sync.jira_project.strip():

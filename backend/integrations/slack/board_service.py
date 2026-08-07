@@ -1,0 +1,386 @@
+"""Resolve Slack boards and perform list CRUD."""
+
+from __future__ import annotations
+
+import logging
+from pathlib import Path
+from typing import Any
+
+from backend.db.slack_board_store import SlackBoardStore
+from backend.formatting.slack_lists import format_list_record, list_record_to_field_map
+from backend.integrations.slack.lists_client import (
+    create_item,
+    get_item,
+    list_columns,
+    list_items,
+    update_cells,
+)
+from backend.models.config import AlfredConfig, SlackBoardProfile
+from backend.models.task import Task
+
+logger = logging.getLogger(__name__)
+
+
+def board_enabled(config: AlfredConfig, data_dir: Path | None = None) -> bool:
+    from backend.integrations.slack.workflow_registry import board_feature_enabled
+
+    return board_feature_enabled(config, data_dir)
+
+
+def resolve_board_for_task(
+    config: AlfredConfig,
+    task: Task,
+    *,
+    data_dir: Path | None = None,
+) -> SlackBoardProfile | None:
+    from backend.integrations.slack.workflow_registry import resolve_board_for_task as _resolve
+
+    return _resolve(config, task, data_dir=data_dir)
+
+
+def resolve_board_any_channel(
+    config: AlfredConfig,
+    *,
+    channel_id: str = "",
+    board_name: str = "",
+    data_dir: Path | None = None,
+) -> SlackBoardProfile | None:
+    from backend.integrations.slack.workflow_registry import resolve_board_by_key
+
+    if board_name:
+        return resolve_board_by_key(
+            config,
+            board_name,
+            channel_id=channel_id,
+            data_dir=data_dir,
+        )
+    if channel_id:
+        from backend.integrations.slack.workflow_registry import resolve_board_for_channel
+
+        return resolve_board_for_channel(config, channel_id, data_dir=data_dir)
+    return None
+
+
+def _column_by_name(schema: list[dict[str, Any]], label: str) -> dict[str, Any] | None:
+    target = (label or "").strip().lower()
+    if not target:
+        return None
+    for col in schema:
+        if not isinstance(col, dict):
+            continue
+        name = str(col.get("name") or "").strip().lower()
+        key = str(col.get("key") or "").strip().lower()
+        if name == target or key == target:
+            return col
+    return None
+
+
+def load_schema(
+    client: Any,
+    list_id: str,
+    store: SlackBoardStore,
+) -> list[dict[str, Any]]:
+    cached = store.get_schema_cache(list_id)
+    if cached:
+        return cached
+    schema = list_columns(client, list_id)
+    if schema:
+        store.set_schema_cache(list_id, schema)
+    return schema
+
+
+def _select_value_for_label(column: dict[str, Any], label: str) -> str | None:
+    choices = ((column.get("options") or {}).get("choices") or [])
+    target = (label or "").strip().lower()
+    for choice in choices:
+        if not isinstance(choice, dict):
+            continue
+        if str(choice.get("label") or "").strip().lower() == target:
+            return str(choice.get("value") or "")
+    return None
+
+
+def _field_payload(
+    column: dict[str, Any],
+    value: str,
+    *,
+    user_ids: list[str] | None = None,
+) -> dict[str, Any]:
+    col_id = str(column.get("id") or "")
+    col_type = str(column.get("type") or "text")
+    payload: dict[str, Any] = {"column_id": col_id}
+    if col_type == "user" and user_ids:
+        payload["user"] = user_ids
+        return payload
+    if col_type == "select":
+        selected = _select_value_for_label(column, value)
+        if selected:
+            payload["select"] = [selected]
+        return payload
+    payload["text"] = value
+    return payload
+
+
+def create_board_task(
+    client: Any,
+    config: AlfredConfig,
+    store: SlackBoardStore,
+    board: SlackBoardProfile,
+    *,
+    title: str,
+    description: str = "",
+    severity: str = "",
+    merchant: str = "",
+    assignee_user_id: str = "",
+    channel_id: str = "",
+    thread_ts: str = "",
+) -> dict[str, Any]:
+    list_id = board.list_id
+    schema = load_schema(client, list_id, store)
+    if not schema:
+        raise RuntimeError(
+            "Could not load Slack List columns. Add lists:read scope and reinstall the Slack app."
+        )
+
+    cols = board.columns
+    initial_fields: list[dict[str, Any]] = []
+
+    title_col = _column_by_name(schema, cols.title or "Name")
+    if title_col and title.strip():
+        initial_fields.append(_field_payload(title_col, title.strip()))
+
+    details_col = _column_by_name(schema, cols.details or "Ticket Details")
+    if details_col and description.strip():
+        initial_fields.append(_field_payload(details_col, description.strip()))
+
+    if severity.strip():
+        sev_col = _column_by_name(schema, cols.severity or "Severity")
+        if sev_col:
+            initial_fields.append(_field_payload(sev_col, severity.strip()))
+
+    if merchant.strip():
+        merch_col = _column_by_name(schema, cols.merchant or "Merchant Name")
+        if merch_col:
+            initial_fields.append(_field_payload(merch_col, merchant.strip()))
+
+    status_col = _column_by_name(schema, cols.status or "Status")
+    if status_col:
+        initial_fields.append(_field_payload(status_col, board.default_status or "Not picked"))
+
+    display_id = ""
+    if cols.display_id:
+        display_col = _column_by_name(schema, cols.display_id)
+        if display_col:
+            display_id = store.next_display_id(board.name, prefix=board.display_id_prefix or "TS")
+            initial_fields.append(_field_payload(display_col, display_id))
+
+    if assignee_user_id.strip():
+        assign_col = _column_by_name(schema, cols.assignee or "Assignee")
+        if assign_col:
+            initial_fields.append(
+                _field_payload(assign_col, "", user_ids=[assignee_user_id.strip()])
+            )
+
+    if not initial_fields:
+        raise RuntimeError("No list columns matched — check board column mapping in config.")
+
+    record = create_item(client, list_id, initial_fields)
+    record_id = str(record.get("id") or record.get("record_id") or "")
+    if not record_id:
+        raise RuntimeError("Slack List create succeeded but returned no record id.")
+
+    store.register_record(
+        record_id,
+        board_key=board.name,
+        list_id=list_id,
+        channel_id=channel_id,
+        display_id=display_id,
+        thread_ts=thread_ts,
+        title=title.strip(),
+    )
+
+    return {
+        "record_id": record_id,
+        "display_id": display_id,
+        "list_id": list_id,
+        "board": board.name,
+        "title": title.strip(),
+        "status": board.default_status,
+        "url_hint": f"lists/{list_id}?record_id={record_id}",
+    }
+
+
+def update_board_task(
+    client: Any,
+    config: AlfredConfig,
+    store: SlackBoardStore,
+    *,
+    ticket_ref: str,
+    status: str = "",
+    assignee_user_id: str = "",
+    severity: str = "",
+    channel_id: str = "",
+) -> dict[str, Any]:
+    resolved = store.resolve_record(ticket_ref)
+    if resolved:
+        record_id, meta = resolved
+        list_id = str(meta.get("list_id") or "")
+        board = resolve_board_any_channel(
+            config,
+            channel_id=str(meta.get("channel_id") or channel_id),
+            board_name=str(meta.get("board_key") or ""),
+        )
+    else:
+        board = resolve_board_for_task(
+            config,
+            Task(source="slack", user_id="", channel_id=channel_id, raw_text="", cleaned_intent=""),
+        )
+        list_id = board.list_id if board else ""
+        record_id = ticket_ref if ticket_ref.startswith("Rec") else ticket_ref
+
+    if not board or not list_id or not record_id:
+        raise RuntimeError(f"Unknown ticket `{ticket_ref}` — register the board or use a valid ticket id.")
+
+    schema = load_schema(client, list_id, store)
+    cells_list: list[dict[str, Any]] = []
+
+    if status.strip():
+        col = _column_by_name(schema, board.columns.status or "Status")
+        if col:
+            cells_list.append(
+                {
+                    "row_id": record_id,
+                    **_field_payload(col, status.strip()),
+                }
+            )
+
+    if assignee_user_id.strip():
+        col = _column_by_name(schema, board.columns.assignee or "Assignee")
+        if col:
+            cells_list.append(
+                {
+                    "row_id": record_id,
+                    **_field_payload(col, "", user_ids=[assignee_user_id.strip()]),
+                }
+            )
+
+    if severity.strip():
+        col = _column_by_name(schema, board.columns.severity or "Severity")
+        if col:
+            cells_list.append(
+                {
+                    "row_id": record_id,
+                    **_field_payload(col, severity.strip()),
+                }
+            )
+
+    if not cells_list:
+        raise RuntimeError("Nothing to update — provide status, assignee, or severity.")
+
+    update_cells(client, list_id, cells_list)
+    return {
+        "record_id": record_id,
+        "list_id": list_id,
+        "updated": {
+            k: v
+            for k, v in {
+                "status": status,
+                "assignee_user_id": assignee_user_id,
+                "severity": severity,
+            }.items()
+            if v
+        },
+    }
+
+
+def get_board_task(
+    client: Any,
+    config: AlfredConfig,
+    store: SlackBoardStore,
+    ticket_ref: str,
+) -> dict[str, Any]:
+    resolved = store.resolve_record(ticket_ref)
+    if resolved:
+        record_id, meta = resolved
+        list_id = str(meta.get("list_id") or "")
+    else:
+        record_id = ticket_ref if ticket_ref.startswith("Rec") else ""
+        list_id = ""
+        meta = {}
+        if board_enabled(config):
+            for board in config.slack.board_workflows.boards:
+                if board.list_id:
+                    list_id = board.list_id
+                    break
+    if not list_id or not record_id:
+        raise RuntimeError(f"Ticket `{ticket_ref}` not found in board registry.")
+    record = get_item(client, list_id, record_id)
+    if not record:
+        raise RuntimeError(f"Ticket `{ticket_ref}` not found in list.")
+    schema = load_schema(client, list_id, store)
+    return {
+        "record_id": record_id,
+        "display_id": str(meta.get("display_id") or ""),
+        "formatted": format_list_record(record, schema=schema),
+        "fields": list_record_to_field_map(record, schema=schema),
+    }
+
+
+def search_board_tasks(
+    client: Any,
+    config: AlfredConfig,
+    store: SlackBoardStore,
+    board: SlackBoardProfile,
+    *,
+    query: str = "",
+    status: str = "",
+    limit: int = 20,
+) -> list[dict[str, Any]]:
+    list_id = board.list_id
+    schema = load_schema(client, list_id, store)
+    items = list_items(client, list_id, limit=limit)
+    results: list[dict[str, Any]] = []
+    q = (query or "").strip().lower()
+    status_filter = (status or "").strip().lower()
+
+    for item in items:
+        record_id = str(item.get("id") or item.get("record_id") or "")
+        fields = list_record_to_field_map(item, schema=schema)
+        title = fields.get("Name") or fields.get("Title") or fields.get("name") or ""
+        item_status = fields.get("Status") or fields.get("status") or ""
+        if status_filter and status_filter not in item_status.lower():
+            continue
+        blob = " ".join(fields.values()).lower()
+        if q and q not in blob and q not in title.lower():
+            meta = store.find_record(record_id)
+            if not meta or q not in str(meta.get("display_id") or "").lower():
+                continue
+        meta = store.find_record(record_id)
+        results.append(
+            {
+                "record_id": record_id,
+                "display_id": (meta or {}).get("display_id") or "",
+                "title": title,
+                "status": item_status,
+                "fields": fields,
+            }
+        )
+    return results[:limit]
+
+
+def post_ticket_comment(
+    client: Any,
+    store: SlackBoardStore,
+    *,
+    ticket_ref: str,
+    text: str,
+    fallback_channel: str = "",
+    fallback_thread: str = "",
+) -> dict[str, Any]:
+    meta = store.find_record(ticket_ref) or {}
+    channel = str(meta.get("channel_id") or fallback_channel or "")
+    thread = str(meta.get("thread_ts") or fallback_thread or "")
+    if not channel or not thread:
+        raise RuntimeError("No Slack thread linked to this ticket — comment in the ticket thread.")
+    response = client.chat_postMessage(channel=channel, thread_ts=thread, text=text.strip())
+    return {"ok": bool(response.get("ok")), "ts": str(response.get("ts") or "")}

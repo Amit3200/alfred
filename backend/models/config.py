@@ -52,6 +52,44 @@ class SlackListJiraSyncConfig(BaseModel):
     )
 
 
+class SlackBoardColumnMap(BaseModel):
+    title: str = Field(default="Name", description="List column for issue title.")
+    status: str = Field(default="Status", description="Kanban status column label.")
+    severity: str = Field(default="Severity", description="Priority/severity select column.")
+    assignee: str = Field(default="Assignee", description="User assignee column.")
+    merchant: str = Field(default="Merchant Name", description="Merchant name column.")
+    merchant_domain: str = Field(default="Merchant Domain", description="Merchant domain column.")
+    details: str = Field(default="Ticket Details", description="Long text / details column.")
+    display_id: str = Field(
+        default="",
+        description="Optional column for Alfred display ids (TS-123). Leave empty to skip.",
+    )
+
+
+class SlackBoardProfile(BaseModel):
+    name: str = Field(default="bugs-tracker", description="Registry key for this board.")
+    list_id: str = Field(default="", description="Slack List id (F… from list URL).")
+    channel_ids: list[str] = Field(
+        default_factory=list,
+        description="Slack channel ids bound to this board. Empty = any allowed channel.",
+    )
+    display_id_prefix: str = Field(default="TS", description="Prefix for generated ticket ids.")
+    default_status: str = Field(default="Not picked", description="Status for new tasks.")
+    auto_approve_writes: bool = Field(
+        default=False,
+        description="Skip yes/proceed for board write tools in bound channels.",
+    )
+    columns: SlackBoardColumnMap = Field(default_factory=SlackBoardColumnMap)
+
+
+class SlackBoardWorkflowsConfig(BaseModel):
+    enabled: bool = Field(
+        default=False,
+        description="Enable Slack List board management via @alfred.",
+    )
+    boards: list[SlackBoardProfile] = Field(default_factory=list)
+
+
 class SlackConfig(BaseModel):
     enabled: bool = False
     bot_token: str = ""
@@ -59,6 +97,14 @@ class SlackConfig(BaseModel):
     app_token: str = ""
     allowed_channels: list[str] = Field(default_factory=lambda: ["*"])
     list_jira_sync: SlackListJiraSyncConfig = Field(default_factory=SlackListJiraSyncConfig)
+    board_workflows: SlackBoardWorkflowsConfig = Field(default_factory=SlackBoardWorkflowsConfig)
+    ticket_create_disambiguation: bool = Field(
+        default=True,
+        description=(
+            "When JIRA and a Slack List board are both available in a channel, "
+            "ask the user to choose (Slack buttons) before creating a generic ticket/task."
+        ),
+    )
     loading_messages: list[str] = Field(
         default_factory=list,
         description=(

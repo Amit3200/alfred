@@ -37,6 +37,7 @@ class SlackFileAttachment:
 class SlackDelivery:
     text: str
     files: list[SlackFileAttachment] = field(default_factory=list)
+    blocks: list[dict] | None = None
 
 
 @dataclass

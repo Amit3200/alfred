@@ -97,12 +97,24 @@ GOOGLE_DOC_TOOLS = frozenset(
 
 GOOGLE_TOOLS = GOOGLE_SHEET_TOOLS | GOOGLE_DOC_TOOLS
 
-SLACK_TOOLS = frozenset(
+SLACK_READ_TOOLS = frozenset(
     {
         "slack_fetch_thread",
         "slack_fetch_channel_history",
     }
 )
+
+SLACK_BOARD_TOOLS = frozenset(
+    {
+        "slack_board_create_task",
+        "slack_board_update_task",
+        "slack_board_search_tasks",
+        "slack_board_get_task",
+        "slack_board_comment",
+    }
+)
+
+SLACK_TOOLS = SLACK_READ_TOOLS | SLACK_BOARD_TOOLS
 
 WEB_TOOLS = frozenset({"web_search"})
 
@@ -147,7 +159,8 @@ TOOL_DOMAINS: dict[str, str] = {
     **{name: "aws" for name in AWS_TOOLS},
     **{name: "google_sheet" for name in GOOGLE_SHEET_TOOLS},
     **{name: "google_doc" for name in GOOGLE_DOC_TOOLS},
-    **{name: "slack" for name in SLACK_TOOLS},
+    **{name: "slack" for name in SLACK_READ_TOOLS},
+    **{name: "slack_write" for name in SLACK_BOARD_TOOLS},
     **{name: "web" for name in WEB_TOOLS},
     **{name: "script" for name in COMPANY_SCRIPT_TOOLS},
     **{name: "schedule" for name in SCHEDULE_TOOLS},

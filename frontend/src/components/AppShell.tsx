@@ -16,6 +16,7 @@ import { ScriptsPanel } from "./panels/ScriptsPanel";
 import { SecretsPanel } from "./panels/SecretsPanel";
 import { UsagePanel } from "./panels/UsagePanel";
 import { SchedulesPanel } from "./panels/SchedulesPanel";
+import { SlackBoardsPanel } from "./panels/SlackBoardsPanel";
 import { LogsPanel } from "./panels/LogsPanel";
 import { ToolsPanel } from "./panels/ToolsPanel";
 import { RoutingPanel } from "./panels/RoutingPanel";
@@ -53,6 +54,8 @@ function SettingsContent() {
       return <UsagePanel />;
     case "schedules":
       return <SchedulesPanel />;
+    case "slack-boards":
+      return <SlackBoardsPanel />;
     case "logs":
       return <LogsPanel />;
     default:

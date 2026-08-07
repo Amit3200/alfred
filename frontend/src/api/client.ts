@@ -637,6 +637,42 @@ export const api = {
 
   listSchedules: () =>
     request<{ schedules: ScheduledJob[] }>("/api/observability/schedules", {}, true),
+
+  listSlackChannelWorkflows: () =>
+    request<SlackChannelWorkflowsResponse>("/api/slack/workflows/channels", {}, true),
+  upsertSlackChannelWorkflow: (channelId: string, body: SlackChannelWorkflowInput) =>
+    request<{ channel: SlackChannelWorkflow }>(
+      `/api/slack/workflows/channels/${encodeURIComponent(channelId)}`,
+      { method: "PUT", body: JSON.stringify({ ...body, channel_id: channelId }) },
+      true,
+    ),
+  deleteSlackChannelWorkflow: (channelId: string) =>
+    request<{ ok: boolean }>(
+      `/api/slack/workflows/channels/${encodeURIComponent(channelId)}`,
+      { method: "DELETE" },
+      true,
+    ),
+  listSlackBoardBindings: () =>
+    request<SlackBoardBindingsResponse>("/api/slack/workflows/boards", {}, true),
+  createSlackBoardBinding: (body: SlackBoardBindingInput) =>
+    request<{ board: SlackBoardBinding }>(
+      "/api/slack/workflows/boards",
+      { method: "POST", body: JSON.stringify(body) },
+      true,
+    ),
+  updateSlackBoardBinding: (bindingId: string, body: Partial<SlackBoardBindingInput>) =>
+    request<{ board: SlackBoardBinding }>(
+      `/api/slack/workflows/boards/${encodeURIComponent(bindingId)}`,
+      { method: "PUT", body: JSON.stringify(body) },
+      true,
+    ),
+  deleteSlackBoardBinding: (bindingId: string) =>
+    request<{ ok: boolean }>(
+      `/api/slack/workflows/boards/${encodeURIComponent(bindingId)}`,
+      { method: "DELETE" },
+      true,
+    ),
+
   toggleSchedule: (jobId: string, active: boolean) =>
     request<{ status: string }>(
       `/api/observability/schedules/${encodeURIComponent(jobId)}/toggle`,
@@ -1314,6 +1350,75 @@ export type PendingPlaybook = {
 
 export type PendingPlaybooksResponse = {
   pending: PendingPlaybook[];
+  total: number;
+};
+
+export type SlackChannelWorkflow = {
+  channel_id: string;
+  channel_name: string;
+  ticket_system: "ask" | "slack_list" | "jira";
+  jira_project_key: string;
+  enabled: boolean;
+  updated_at: number;
+};
+
+export type SlackChannelWorkflowInput = {
+  channel_id?: string;
+  channel_name?: string;
+  ticket_system?: "ask" | "slack_list" | "jira";
+  jira_project_key?: string;
+  enabled?: boolean;
+};
+
+export type SlackChannelWorkflowsResponse = {
+  channels: SlackChannelWorkflow[];
+  total: number;
+};
+
+export type SlackBoardColumnMap = {
+  title: string;
+  status: string;
+  severity: string;
+  assignee: string;
+  merchant: string;
+  merchant_domain: string;
+  details: string;
+  display_id: string;
+};
+
+export type SlackBoardBinding = {
+  id: string;
+  board_key: string;
+  list_id: string;
+  list_name: string;
+  channel_id: string;
+  channel_name: string;
+  display_id_prefix: string;
+  next_display_num: number;
+  default_status: string;
+  auto_approve_writes: boolean;
+  columns: SlackBoardColumnMap;
+  enabled: boolean;
+  created_at: number;
+  updated_at: number;
+};
+
+export type SlackBoardBindingInput = {
+  board_key: string;
+  list_id: string;
+  channel_id: string;
+  channel_name?: string;
+  list_name?: string;
+  display_id_prefix?: string;
+  next_display_num?: number;
+  default_status?: string;
+  auto_approve_writes?: boolean;
+  columns?: Partial<SlackBoardColumnMap>;
+  enabled?: boolean;
+};
+
+export type SlackBoardBindingsResponse = {
+  boards: SlackBoardBinding[];
   total: number;
 };
 

@@ -89,6 +89,9 @@ def plan_tools_node(state: AlfredGraphState, config: RunnableConfig) -> dict[str
     if plan and plan.intent_class == "repo.docs.qa":
         log_checkpoint("route_plan", "repo_knowledge", "completed")
 
+    if plan and plan.intent_class == "slack.board.create":
+        log_checkpoint("route_plan", "slack_board_management", "completed")
+
     if plan:
         log_checkpoint("tool_plan", plan.intent_class or "unknown", "completed")
         goal_text = (plan.goal or "").strip()
@@ -261,6 +264,29 @@ def run_worker_node(state: AlfredGraphState, config: RunnableConfig) -> dict[str
             session_key=task_session_key(runtime.task),
         )
         log_checkpoint("doc_bootstrap", "search_and_read", "completed")
+
+    if plan and plan.intent_class == "slack.board.create":
+        from backend.routing.slack_board_bootstrap import inject_slack_board_bootstrap_message
+        from backend.routing.slack_board_prompt import slack_board_create_addendum
+        from slack_sdk import WebClient
+
+        if messages and messages[0].role == "system":
+            messages[0] = Message(
+                role="system",
+                content=f"{messages[0].content.rstrip()}{slack_board_create_addendum()}",
+            )
+        token = (processor.config.slack.bot_token or "").strip()
+        slack_client = WebClient(token=token) if token else None
+        if slack_client:
+            log_checkpoint("board_bootstrap", "thread_and_create", "started")
+            messages = inject_slack_board_bootstrap_message(
+                messages,
+                slack_client,
+                processor.config,
+                task=runtime.task,
+                data_dir=processor._data_dir_path(),
+            )
+            log_checkpoint("board_bootstrap", "thread_and_create", "completed")
 
     log_checkpoint("agent_loop_start", runner, "started")
 

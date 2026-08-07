@@ -13,6 +13,7 @@ export type SettingsPage =
   | "health"
   | "usage"
   | "schedules"
+  | "slack-boards"
   | "logs";
 
 export type GitRepoProfile = {

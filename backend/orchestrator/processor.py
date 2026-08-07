@@ -133,6 +133,28 @@ class TaskProcessor:
         elif gov_patch and session:
             session.metadata.update(gov_patch)
 
+        if task.source == "slack":
+            from backend.routing.slack_board_admin import try_slack_board_admin_command
+
+            admin_response = try_slack_board_admin_command(
+                task,
+                self.config,
+                self._data_dir_path(),
+            )
+            if admin_response is not None:
+                if session_key and self.session_store:
+                    rendered = render_for_channel(admin_response, channel)
+                    self.session_store.append_exchange(
+                        session_key,
+                        source=task.source,
+                        scope_id=task.channel_id,
+                        thread_id=task.thread_ts or "",
+                        user_content=task.cleaned_intent,
+                        assistant_content=rendered,
+                        assistant_payload=admin_response.payload,
+                    )
+                return self._finish_response(admin_response)
+
         if (
             self.config.governance.enabled
             and gov_patch
@@ -188,6 +210,64 @@ class TaskProcessor:
             slack_context=slack_context if include_context else None,
             repo=repo_hint,
         )
+
+        from backend.routing.ticket_create_disambiguation import (
+            apply_ticket_create_target,
+            build_disambiguation_response,
+            needs_ticket_create_disambiguation,
+            resolve_target_from_pending_reply,
+            store_pending_ticket_create,
+            ticket_create_target_from_task,
+        )
+
+        ticket_target = ticket_create_target_from_task(task)
+        if ticket_target is None and session:
+            reply_target = resolve_target_from_pending_reply(task, session)
+            if reply_target:
+                apply_ticket_create_target(session, reply_target)
+                task.metadata["ticket_create_target"] = reply_target
+                ticket_target = reply_target
+                if session_key and self.session_store:
+                    self.session_store.save(session)
+
+        if ticket_target is None:
+            from backend.routing.ticket_create_disambiguation import default_ticket_create_target
+
+            policy_target = default_ticket_create_target(
+                task,
+                self.config,
+                data_dir=self._data_dir_path(),
+            )
+            if policy_target:
+                task.metadata["ticket_create_target"] = policy_target
+                ticket_target = policy_target
+
+        if (
+            ticket_target is None
+            and needs_ticket_create_disambiguation(
+                task,
+                self.config,
+                session=session,
+                data_dir=self._data_dir_path(),
+            )
+        ):
+            if session and session_key and self.session_store:
+                store_pending_ticket_create(session, task)
+                self.session_store.save(session)
+            response = build_disambiguation_response(session_key=session_key or "")
+            if session_key and self.session_store:
+                rendered = render_for_channel(response, channel)
+                self.session_store.append_exchange(
+                    session_key,
+                    source=task.source,
+                    scope_id=task.channel_id,
+                    thread_id=task.thread_ts or "",
+                    user_content=task.cleaned_intent,
+                    assistant_content=rendered,
+                    assistant_payload=response.payload,
+                )
+            return self._finish_response(response)
+
         chat_persona = None
         if task.source == "ui":
             from backend.routing.chat_persona import persona_skill_name, resolve_effective_persona
@@ -211,7 +291,28 @@ class TaskProcessor:
                     logger.info(
                         "Forced repo_knowledge for documentation-style question (routing miss)"
                     )
-        if investigation is None and self.config.jira.enabled:
+        if investigation is None and ticket_target == "slack_list":
+            investigation = self._playbooks.get_by_name("slack_board_management")
+            if investigation:
+                logger.info("Using slack_board_management from ticket_create_target")
+        if investigation is None and ticket_target == "jira":
+            investigation = self._playbooks.get_by_name("jira_management")
+            if investigation:
+                logger.info("Using jira_management from ticket_create_target")
+        if investigation is None and ticket_target != "jira":
+            from backend.integrations.slack.board_service import board_enabled, resolve_board_for_task
+            from backend.routing.slack_board_intent import looks_like_slack_board_request
+
+            if (
+                board_enabled(self.config, self._data_dir_path())
+                and resolve_board_for_task(self.config, task, data_dir=self._data_dir_path())
+                and looks_like_slack_board_request(task.cleaned_intent)
+            ):
+                investigation = self._playbooks.get_by_name("slack_board_management")
+                if investigation:
+                    logger.info("Forced slack_board_management for Slack List board intent")
+
+        if investigation is None and ticket_target != "slack_list" and self.config.jira.enabled:
             from backend.routing.jira_intent import (
                 looks_like_jira_create_followup,
                 looks_like_jira_create_request,
@@ -1451,6 +1552,26 @@ class TaskProcessor:
                 task_id=task.id,
                 session_key=task_session_key(task),
             )
+
+        if goal_spec and goal_spec.intent_class == "slack.board.create":
+            from backend.routing.slack_board_bootstrap import inject_slack_board_bootstrap_message
+            from backend.routing.slack_board_prompt import slack_board_create_addendum
+            from slack_sdk import WebClient
+
+            if messages and messages[0].role == "system":
+                messages[0] = Message(
+                    role="system",
+                    content=f"{messages[0].content.rstrip()}{slack_board_create_addendum()}",
+                )
+            token = (self.config.slack.bot_token or "").strip()
+            if token:
+                messages = inject_slack_board_bootstrap_message(
+                    messages,
+                    WebClient(token=token),
+                    self.config,
+                    task=task,
+                    data_dir=self._data_dir_path(),
+                )
 
         if skill.mode in ("investigation", "workflow") and skill.name != "plan_task":
             from backend.orchestrator.planning import generate_initial_plan, plan_exists_for_task

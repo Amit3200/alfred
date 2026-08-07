@@ -62,6 +62,19 @@ def goal_spec_from_plan(plan: ToolPlan | None) -> GoalSpec | None:
                 "Cite doc paths only from tool results",
             ]
         )
+    if plan.intent_class == "slack.board.create":
+        criteria.extend(
+            [
+                "Confirm task creation from bootstrap or slack_board_create_task result",
+                "Include display id, record id, title, and status when present",
+                "Do not invent task ids",
+            ]
+        )
+    if plan.intent_class.startswith("slack.board."):
+        requires_write = requires_write or plan.intent_class in (
+            "slack.board.create",
+            "slack.board.update",
+        )
 
     failure = plan.goal
     if plan.intent_class == "repo.docs.qa":

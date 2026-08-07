@@ -214,6 +214,14 @@ def build_git_tool_registry(
         from backend.tools.slack import register_slack_tools
 
         register_slack_tools(registry, config)
+        if data_dir is not None:
+            from backend.tools.slack.board_register import register_slack_board_tools
+
+            register_slack_board_tools(
+                registry,
+                config,
+                data_dir=Path(data_dir),
+            )
 
     if wants_module(WEB_TOOLS, allowed):
         from backend.tools.web_search_tool import register_web_search_tools

@@ -215,6 +215,55 @@ def plan_tools_rules(
             strategy="rules",
         )
 
+    if config is not None:
+        from backend.integrations.slack.board_service import board_enabled, resolve_board_for_task
+        from backend.routing.slack_board_intent import (
+            looks_like_slack_board_create,
+            looks_like_slack_board_request,
+            looks_like_slack_board_update,
+            references_thread_context,
+        )
+
+        if board_enabled(config, data_dir) and resolve_board_for_task(config, task, data_dir=data_dir):
+            if looks_like_slack_board_create(text) and _ok("slack_board_create_task"):
+                tools = ["slack_board_create_task"]
+                steps = [ToolPlanStep("slack_board_create_task", "create list task")]
+                if references_thread_context(text) and _ok("slack_fetch_thread"):
+                    tools = ["slack_fetch_thread", "slack_board_create_task"]
+                    steps = [
+                        ToolPlanStep("slack_fetch_thread", "fetch thread for task details"),
+                        ToolPlanStep("slack_board_create_task", "create list task"),
+                    ]
+                return ToolPlan(
+                    goal="Create Slack List board task",
+                    confidence=0.9,
+                    tools_needed=tools,
+                    steps=steps,
+                    intent_class="slack.board.create",
+                    strategy="rules",
+                )
+
+            if looks_like_slack_board_update(text) and _ok("slack_board_update_task"):
+                return ToolPlan(
+                    goal="Update Slack List board task",
+                    confidence=0.85,
+                    tools_needed=["slack_board_update_task"],
+                    steps=[ToolPlanStep("slack_board_update_task", "update list task")],
+                    intent_class="slack.board.update",
+                    strategy="rules",
+                )
+
+            if looks_like_slack_board_request(text) and _ok("slack_board_search_tasks"):
+                if not looks_like_slack_board_create(text) and not looks_like_slack_board_update(text):
+                    return ToolPlan(
+                        goal="Search Slack List board tasks",
+                        confidence=0.8,
+                        tools_needed=["slack_board_search_tasks"],
+                        steps=[ToolPlanStep("slack_board_search_tasks", "search board")],
+                        intent_class="slack.board.search",
+                        strategy="rules",
+                    )
+
     if config is not None and _ok("run_company_script"):
         from backend.integrations.company_scripts.triggers import match_script_by_trigger
 

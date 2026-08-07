@@ -41,6 +41,7 @@ const ALL_SETTINGS = new Set<SettingsPage>([
   "tools",
   "routing",
   "schedules",
+  "slack-boards",
   "usage",
   "logs",
   "health",
@@ -56,6 +57,7 @@ const GROUP_FOR_PAGE: Record<SettingsPage, string> = {
   playbooks: "grp-knowledge",
   scripts: "automation",
   schedules: "automation",
+  "slack-boards": "automation",
   tools: "developer",
   routing: "developer",
   usage: "operations",
@@ -155,6 +157,7 @@ export function AppSidebar({ width }: AppSidebarProps) {
               children: [
                 { key: "scripts", icon: <CodeOutlined />, label: "Scripts" },
                 { key: "schedules", icon: <CalendarOutlined />, label: "Schedules" },
+                { key: "slack-boards", icon: <CommentOutlined />, label: "Slack boards" },
               ],
             },
             {

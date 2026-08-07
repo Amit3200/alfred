@@ -24,6 +24,10 @@ CONFIRMATION_REQUIRED_TOOLS: frozenset[str] = frozenset(
         "google_append_sheet",
         "google_create_doc",
         "google_append_doc",
+        # Slack Lists board writes
+        "slack_board_create_task",
+        "slack_board_update_task",
+        "slack_board_comment",
         # Schedules
         "create_schedule",
         "update_schedule",
@@ -89,6 +93,9 @@ def tool_action_summary(tool_name: str, arguments: dict[str, Any]) -> str:
     if tool_name.startswith("google_"):
         target = args.get("spreadsheet_id") or args.get("document_id") or "?"
         return f"Google `{tool_name}` on `{target}`"
+    if tool_name.startswith("slack_board_"):
+        ref = args.get("ticket_ref") or args.get("title") or "?"
+        return f"Slack board `{tool_name}` for `{ref}`"
     if tool_name.startswith(("create_schedule", "update_schedule", "delete_schedule", "toggle_schedule")):
         return f"Schedule `{tool_name}` job `{args.get('job_id') or args.get('name', '?')}`"
     return f"Execute write tool `{tool_name}`"
