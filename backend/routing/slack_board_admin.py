@@ -59,6 +59,10 @@ _SETUP_BOARD_RE = re.compile(
     r"|\b(?:setup|set\s*up|create|provision)\b.{0,10}\b(?:this|the)\b.{0,10}\b(?:channel\s+)?(?:board|list)\b",
     re.I,
 )
+_SHARE_BOARD_RE = re.compile(
+    r"\bshare\b.{0,40}\b(?:the\s+)?(?:board|list)\b",
+    re.I,
+)
 
 
 def _ensure_slack_list_workflow(data_dir, channel_id: str) -> None:
@@ -131,6 +135,7 @@ def format_channel_board_status(data_dir, channel_id: str) -> str:
             "1. **`@alfred setup board`** — Alfred creates the List, grants access, and links this channel (recommended), or\n"
             "2. `@alfred link board to F…` (List id from your Task List tab), or\n"
             "3. **Settings → Automation → Slack boards** → Add board binding\n\n"
+            "To share a linked List so it appears under **Shared with you**: `@alfred share board with @user`.\n"
             "To remove a binding: `@alfred unlink` or `@alfred unlink board`.\n\n"
             "Then ask `@alfred create task for …` in a thread."
         )
@@ -249,6 +254,52 @@ def try_slack_board_admin_command(
             "Confirm with `@alfred show board config`."
         )
 
+    if _SHARE_BOARD_RE.search(text):
+        token = (config.slack.bot_token or "").strip()
+        if not token:
+            return AssistantResponse.from_text(
+                "Slack bot token is not configured — cannot share the List."
+            )
+        binding = db_get_board_binding_for_channel(data_dir, channel_id)
+        if not binding:
+            return AssistantResponse.from_text(
+                "This channel has no linked List yet. Run **`@alfred setup board`** first."
+            )
+        from slack_sdk import WebClient
+
+        from backend.integrations.slack.lists_client import list_open_url, share_list_with_users
+        from backend.integrations.slack.sanitize import extract_slack_user_ids
+
+        list_id = str(binding.get("list_id") or "")
+        list_name = str(binding.get("list_name") or binding.get("board_key") or "Board")
+        client = WebClient(token=token)
+        user_ids = extract_slack_user_ids(task.raw_text or text)
+        if not user_ids and task.user_id:
+            user_ids = [task.user_id]
+        if not user_ids:
+            return AssistantResponse.from_text(
+                "Who should I share the List with? Example: "
+                "`@alfred share board with @yourself`"
+            )
+        share_notes = share_list_with_users(
+            client,
+            list_id,
+            user_ids,
+            channel_id=channel_id,
+        )
+        open_url = list_open_url(client, list_id)
+        mention_text = ", ".join(f"<@{uid}>" for uid in user_ids)
+        lines = [
+            f"Shared List **`{list_name}`** (`{list_id}`) with {mention_text} (**Can edit**).",
+            "",
+            "**Add to this channel tab:** **+** → **List** → check **Shared with you**.",
+        ]
+        if open_url:
+            lines.extend(["", f"**Open List:** {open_url}"])
+        if share_notes:
+            lines.extend(["", "Notes:", *[f"- {note}" for note in share_notes]])
+        return AssistantResponse.from_text("\n".join(lines))
+
     if _SETUP_BOARD_RE.search(text):
         token = (config.slack.bot_token or "").strip()
         if not token:
@@ -260,7 +311,9 @@ def try_slack_board_admin_command(
         from backend.integrations.slack.lists_client import (
             ALFRED_BOARD_COLUMN_MAP,
             SlackListAccessError,
+            list_open_url,
             provision_alfred_board_list,
+            try_add_list_bookmark,
         )
 
         name_match = _SETUP_BOARD_RE.search(text)
@@ -273,10 +326,11 @@ def try_slack_board_admin_command(
         board_key = derive_board_key(channel_name=channel_name, channel_id=channel_id)
         client = WebClient(token=token)
         try:
-            list_id, grant_notes = provision_alfred_board_list(
+            list_id, grant_notes, open_url = provision_alfred_board_list(
                 client,
                 channel_id=channel_id,
                 list_name=list_name,
+                requesting_user_id=task.user_id or "",
             )
         except SlackListAccessError as exc:
             return AssistantResponse.from_text(str(exc))
@@ -300,6 +354,14 @@ def try_slack_board_admin_command(
                 f"Created List `{list_id}` but could not save the channel binding. "
                 "Try again or add it in **Settings → Slack boards**."
             )
+        if not open_url:
+            open_url = list_open_url(client, list_id)
+        try_add_list_bookmark(
+            client,
+            channel_id=channel_id,
+            title=list_name,
+            url=open_url,
+        )
         lines = [
             f"Created and linked Slack List **`{list_name}`** (`{list_id}`) for this channel.",
             f"- Board key: **{binding['board_key']}**",
@@ -307,8 +369,10 @@ def try_slack_board_admin_command(
             "",
             "Try **`@alfred create task for smoke test`** now.",
             "",
-            "If the List is not on the channel tab yet, open **+** → **List** → pick "
-            f"**{list_name}** (Alfred already granted this channel edit access).",
+            "**Open the List:**",
+            f"- Direct link: {open_url}" if open_url else f"- List id: `{list_id}`",
+            f"- Slack sidebar → **Lists** → **{list_name}** (you are the List owner)",
+            f"- In this channel: **+** → **List** → **{list_name}**",
         ]
         if grant_notes:
             lines.extend(["", "Notes:", *[f"- {note}" for note in grant_notes]])

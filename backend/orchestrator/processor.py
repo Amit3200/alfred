@@ -49,7 +49,6 @@ STRUCTURED_TOOL_KINDS = frozenset(
         "google_sheet",
         "google_doc",
         "web_search",
-        "slack_messages",
         "doc_search",
         "doc_content",
         "doc_answer",
@@ -1895,6 +1894,48 @@ def _tool_result_to_response(result: ToolResult) -> AssistantResponse | None:
         from backend.integrations.identity.user_identity import format_user_identity_result
 
         return AssistantResponse.from_text(format_user_identity_result(result.data))
+    if result.kind == "slack_messages":
+        text = str(result.data.get("text") or "").strip()
+        if text:
+            return AssistantResponse.from_text(text)
+        count = int(result.data.get("message_count") or 0)
+        return AssistantResponse.from_text(f"Fetched {count} Slack message(s).")
+    if result.kind == "slack_board_task":
+        from backend.routing.slack_board_direct import (
+            format_board_task_created,
+            format_board_task_updated,
+        )
+
+        data = result.data or {}
+        if data.get("updated"):
+            return AssistantResponse.from_text(format_board_task_updated(data))
+        return AssistantResponse.from_text(
+            format_board_task_created(
+                data,
+                severity=str(data.get("severity") or ""),
+                assignee_user_id=str(data.get("assignee_user_id") or ""),
+            )
+        )
+    if result.kind == "slack_board_search":
+        rows = list((result.data or {}).get("results") or [])
+        if not rows:
+            return AssistantResponse.from_text("No matching board tasks found.")
+        lines = [f"Found **{len(rows)}** board task(s):"]
+        for row in rows[:10]:
+            if not isinstance(row, dict):
+                continue
+            display = row.get("display_id") or row.get("record_id") or "Task"
+            title = row.get("title") or row.get("formatted") or ""
+            status = row.get("status") or ""
+            line = f"- **{display}**"
+            if title:
+                line += f" — {title}"
+            if status:
+                line += f" (`{status}`)"
+            lines.append(line)
+        return AssistantResponse.from_text("\n".join(lines))
+    if result.kind == "slack_board_comment":
+        return AssistantResponse.from_text("Posted comment on the board task thread.")
     if result.kind in STRUCTURED_TOOL_KINDS:
         return AssistantResponse.structured(result.kind, result.data)
     if result.kind == "error":

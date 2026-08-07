@@ -209,6 +209,13 @@ def try_slack_board_create_direct(
     if resolve_error is not None:
         return resolve_error, {}
 
+    binding = fresh_board_binding_for_channel(data_dir, channel_id)
+    if binding:
+        bound_list_id = str(binding.get("list_id") or "").strip()
+        if bound_list_id and board.list_id != bound_list_id:
+            board = board.model_copy(update={"list_id": bound_list_id})
+            store.clear_schema_cache(bound_list_id)
+
     fields = extract_board_create_fields(task)
     title = fields["title"]
     if not title and references_thread_context(task.cleaned_intent or ""):

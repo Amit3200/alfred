@@ -16,6 +16,7 @@ Configuration is stored in **Alfred’s SQLite database** (`.alfred/alfred.db`).
 | Update status | `@alfred move TS-3 to in progress` |
 | Assign | `@alfred assign TS-3 to @user` |
 | Assign last task | `@alfred assign this task to @user` (after create in same thread) |
+| Share List for channel tab | `@alfred share board with @user` |
 | Search / list | `@alfred list open tasks` |
 | Get one task | `@alfred get TS-3` |
 | Link existing List | `@alfred link board to F01234567` |
@@ -79,7 +80,9 @@ Admin UI: **Settings → Automation → Slack boards**
 
 ## One-time: create the List in Slack
 
-**Recommended:** in the channel, run **`@alfred setup board`**. Alfred calls [`slackLists.create`](https://docs.slack.dev/reference/methods/slacklists.create), grants this channel edit access, verifies task create works, and saves the binding — no manual `F…` id.
+**Recommended:** in the channel, run **`@alfred setup board`**. Alfred calls [`slackLists.create`](https://docs.slack.dev/reference/methods/slacklists.create), makes **you the List owner**, grants channel access, verifies task create works, and replies with a **direct link** to open the List.
+
+If the List tab is empty, open the link from Alfred’s reply or go to **Slack sidebar → Lists**.
 
 Optional name: `@alfred setup board named Bugs tracker`.
 
@@ -149,6 +152,7 @@ In the target channel:
 ```text
 @alfred setup board
 @alfred setup board named "Bugs tracker"
+@alfred share board with @yourself
 @alfred link board to F01234567
 @alfred link board to F01234567 for bugs-tracker
 @alfred set ticket system ask

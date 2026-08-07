@@ -114,8 +114,9 @@ def grant_list_access(
     *,
     channel_id: str = "",
     bot_user_id: str = "",
+    requesting_user_id: str = "",
 ) -> list[str]:
-    """Best-effort grant so the bot can read/write a channel-attached List."""
+    """Best-effort grant so the bot and channel members can read/write a List."""
     notes: list[str] = []
     lid = (list_id or "").strip()
     if not lid:
@@ -159,7 +160,124 @@ def grant_list_access(
             msg = f"Could not grant this channel write access on the List ({exc})"
             logger.warning(msg)
             notes.append(msg)
+    uid = (requesting_user_id or "").strip()
+    if uid:
+        try:
+            api_call(
+                client,
+                "slackLists.access.set",
+                {
+                    "list_id": lid,
+                    "access_level": "owner",
+                    "user_ids": [uid],
+                },
+            )
+        except RuntimeError as exc:
+            msg = f"Could not make you List owner ({exc}); trying write access."
+            logger.warning(msg)
+            notes.append(msg)
+            try:
+                api_call(
+                    client,
+                    "slackLists.access.set",
+                    {
+                        "list_id": lid,
+                        "access_level": "write",
+                        "user_ids": [uid],
+                    },
+                )
+            except RuntimeError as exc2:
+                msg2 = f"Could not grant you write access on the List ({exc2})"
+                logger.warning(msg2)
+                notes.append(msg2)
     return notes
+
+
+def share_list_with_users(
+    client: Any,
+    list_id: str,
+    user_ids: list[str],
+    *,
+    access_level: str = "write",
+    channel_id: str = "",
+) -> list[str]:
+    """Grant List access to one or more users (and optionally the channel)."""
+    notes: list[str] = []
+    lid = (list_id or "").strip()
+    if not lid:
+        return ["List id is missing."]
+    uids = [uid.strip() for uid in user_ids if (uid or "").strip()]
+    if uids:
+        try:
+            api_call(
+                client,
+                "slackLists.access.set",
+                {
+                    "list_id": lid,
+                    "access_level": access_level,
+                    "user_ids": uids,
+                },
+            )
+        except RuntimeError as exc:
+            notes.append(f"Could not share the List with selected users ({exc})")
+    cid = (channel_id or "").strip()
+    if cid:
+        try:
+            api_call(
+                client,
+                "slackLists.access.set",
+                {
+                    "list_id": lid,
+                    "access_level": access_level,
+                    "channel_ids": [cid],
+                },
+            )
+        except RuntimeError as exc:
+            notes.append(f"Could not grant this channel access on the List ({exc})")
+    return notes
+
+
+def list_open_url(client: Any, list_id: str) -> str:
+    """Best-effort deep link so humans can open a List in Slack."""
+    lid = (list_id or "").strip()
+    if not lid:
+        return ""
+    team_id = ""
+    try:
+        auth = client.auth_test()
+        team_id = str(auth.get("team_id") or "")
+    except Exception as exc:
+        logger.debug("auth_test failed while building list url: %s", exc)
+    if team_id:
+        return f"https://app.slack.com/client/{team_id}/{lid}"
+    return f"https://slack.com/lists/{lid}"
+
+
+def try_add_list_bookmark(
+    client: Any,
+    *,
+    channel_id: str,
+    title: str,
+    url: str,
+) -> None:
+    """Pin a List link on the channel bookmarks bar (best-effort)."""
+    cid = (channel_id or "").strip()
+    link = (url or "").strip()
+    if not cid or not link:
+        return
+    payload = {
+        "channel_id": cid,
+        "title": (title or "Board")[:100],
+        "type": "link",
+        "link": link,
+    }
+    try:
+        if hasattr(client, "bookmarks_add"):
+            client.bookmarks_add(**payload)
+        else:
+            client.api_call("bookmarks.add", json=payload)
+    except Exception as exc:
+        logger.info("bookmarks.add skipped for list %s: %s", link, exc)
 
 
 def alfred_board_list_schema(*, include_display_id: bool = True) -> list[dict[str, Any]]:
@@ -285,8 +403,9 @@ def provision_alfred_board_list(
     channel_id: str,
     list_name: str,
     description: str = "Task board managed by Alfred.",
-) -> tuple[str, list[str]]:
-    """Create a List Alfred owns, grant access, and verify create works."""
+    requesting_user_id: str = "",
+) -> tuple[str, list[str], str]:
+    """Create a List Alfred owns, grant access, verify create works."""
     created = create_list(
         client,
         name=list_name,
@@ -294,11 +413,17 @@ def provision_alfred_board_list(
         schema=alfred_board_list_schema(include_display_id=True),
     )
     list_id = created["list_id"]
-    grant_notes = grant_list_access(client, list_id, channel_id=channel_id)
+    grant_notes = grant_list_access(
+        client,
+        list_id,
+        channel_id=channel_id,
+        requesting_user_id=requesting_user_id,
+    )
     ok, verify_msg = verify_list_id(client, list_id, channel_id=channel_id)
     if not ok:
         raise SlackListAccessError(verify_msg)
-    return list_id, grant_notes
+    open_url = list_open_url(client, list_id)
+    return list_id, grant_notes, open_url
 
 
 def _title_probe_field(column: dict[str, Any]) -> dict[str, Any]:
