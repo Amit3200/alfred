@@ -8,8 +8,41 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 
+class SlackListAccessError(RuntimeError):
+    """Raised when a List id cannot be read or written by the bot."""
+
+
+def _slack_error_code(exc: BaseException) -> str:
+    response = getattr(exc, "response", None)
+    if isinstance(response, dict):
+        return str(response.get("error") or "")
+    text = str(exc)
+    if "list_not_found" in text:
+        return "list_not_found"
+    if "file_not_found" in text:
+        return "file_not_found"
+    return ""
+
+
+def list_access_error_message(list_id: str, *, error_code: str = "") -> str:
+    code = (error_code or "not_found").replace("_", " ")
+    return (
+        f"Slack List `{list_id}` is not accessible ({code}). "
+        "Open the channel **Task List** tab, copy the **F…** id from the browser URL, then run "
+        f"`@alfred link board to F…`. Ensure Alfred has `lists:read` / `lists:write` and is in the channel."
+    )
+
+
 def api_call(client: Any, method: str, payload: dict[str, Any]) -> dict[str, Any]:
-    response = client.api_call(method, json=payload)
+    try:
+        response = client.api_call(method, json=payload)
+    except Exception as exc:
+        from slack_sdk.errors import SlackApiError
+
+        if isinstance(exc, SlackApiError):
+            error = _slack_error_code(exc) or str(exc)
+            raise RuntimeError(f"Slack {method} failed: {error}") from exc
+        raise
     if not response.get("ok"):
         error = str(response.get("error") or "unknown_error")
         raise RuntimeError(f"Slack {method} failed: {error}")
@@ -26,12 +59,42 @@ def _record_id_from_item(item: dict[str, Any]) -> str:
     return str(item.get("id") or item.get("record_id") or "")
 
 
+def verify_list_id(client: Any, list_id: str) -> tuple[bool, str]:
+    """Check that list_id refers to a List the bot can access."""
+    lid = (list_id or "").strip()
+    if not lid.startswith("F"):
+        return False, f"List id must start with F (got `{lid}`)."
+    try:
+        response = api_call(client, "files.info", {"file": lid})
+    except RuntimeError as exc:
+        code = _slack_error_code(exc) or str(exc)
+        if "not_found" in code.lower():
+            return False, list_access_error_message(lid, error_code=code)
+        return False, f"Could not verify List `{lid}`: {exc}"
+    file_obj = response.get("file") or {}
+    ftype = str(file_obj.get("filetype") or file_obj.get("mode") or "")
+    if ftype != "list":
+        return False, f"`{lid}` is not a Slack List (type `{ftype or 'unknown'}`)."
+    return True, ""
+
+
 def list_columns(client: Any, list_id: str) -> list[dict[str, Any]]:
     """Load List column schema.
 
-    Slack removed ``slackLists.columns.list``; schema is returned on
-    ``slackLists.items.info`` (and sometimes ``files.info`` for the List file).
+    Slack removed ``slackLists.columns.list``; schema is returned on ``files.info``
+    and ``slackLists.items.info``.
     """
+    try:
+        response = api_call(client, "files.info", {"file": list_id})
+        schema = _schema_from_list_metadata(response.get("file") or {})
+        if schema:
+            return schema
+    except RuntimeError as exc:
+        code = _slack_error_code(exc)
+        if code in ("list_not_found", "file_not_found"):
+            raise SlackListAccessError(list_access_error_message(list_id, error_code=code)) from exc
+        logger.warning("files.info schema fetch failed: %s", exc)
+
     items = list_items(client, list_id, limit=1)
     for item in items:
         record_id = _record_id_from_item(item)
@@ -50,13 +113,7 @@ def list_columns(client: Any, list_id: str) -> list[dict[str, Any]]:
         if schema:
             return schema
 
-    try:
-        response = api_call(client, "files.info", {"file": list_id})
-    except RuntimeError as exc:
-        logger.warning("files.info schema fallback failed: %s", exc)
-        return []
-    schema = _schema_from_list_metadata(response.get("file") or {})
-    return schema
+    raise SlackListAccessError(list_access_error_message(list_id))
 
 
 def get_item(client: Any, list_id: str, record_id: str) -> dict[str, Any] | None:
@@ -77,6 +134,9 @@ def list_items(client: Any, list_id: str, *, limit: int = 100) -> list[dict[str,
             {"list_id": list_id, "limit": min(limit, 200)},
         )
     except RuntimeError as exc:
+        code = _slack_error_code(exc)
+        if code in ("list_not_found", "file_not_found"):
+            raise SlackListAccessError(list_access_error_message(list_id, error_code=code)) from exc
         logger.warning("slackLists.items.list failed: %s", exc)
         return []
     items = response.get("items") or response.get("records") or []
@@ -88,11 +148,17 @@ def create_item(
     list_id: str,
     initial_fields: list[dict[str, Any]],
 ) -> dict[str, Any]:
-    response = api_call(
-        client,
-        "slackLists.items.create",
-        {"list_id": list_id, "initial_fields": initial_fields},
-    )
+    try:
+        response = api_call(
+            client,
+            "slackLists.items.create",
+            {"list_id": list_id, "initial_fields": initial_fields},
+        )
+    except RuntimeError as exc:
+        code = _slack_error_code(exc)
+        if code in ("list_not_found", "file_not_found"):
+            raise SlackListAccessError(list_access_error_message(list_id, error_code=code)) from exc
+        raise
     record = response.get("record") or response.get("item") or {}
     return record if isinstance(record, dict) else {}
 

@@ -139,27 +139,42 @@ def _field_payload(
     value: str,
     *,
     user_ids: list[str] | None = None,
-) -> dict[str, Any]:
+) -> dict[str, Any] | None:
     col_id = str(column.get("id") or "")
-    col_key = str(column.get("key") or "")
+    if not col_id:
+        return None
     col_type = str(column.get("type") or "text")
     payload: dict[str, Any] = {"column_id": col_id}
-    if col_key:
-        payload["key"] = col_key
-    if col_type in ("user", "assignee") and user_ids:
+    if col_type in ("user", "assignee"):
+        if not user_ids:
+            return None
         payload["user"] = user_ids
         return payload
-    if col_type == "select":
+    if col_type in ("select", "multi_select"):
         selected = _select_value_for_label(column, value)
-        if selected:
-            payload["select"] = [selected]
+        if not selected:
+            return None
+        payload["select"] = [selected]
         return payload
-    # Slack List write APIs expect rich_text for text-like columns (plain text is response-only).
-    if col_type in ("text", "rich_text", ""):
-        payload["rich_text"] = _rich_text_blocks(value)
-        return payload
-    payload["text"] = value
+    if not (value or "").strip():
+        return None
+    # Slack List writes reject plain `text` in requests; use rich_text blocks.
+    payload["rich_text"] = _rich_text_blocks(value.strip())
     return payload
+
+
+def _append_field(
+    initial_fields: list[dict[str, Any]],
+    column: dict[str, Any] | None,
+    value: str,
+    *,
+    user_ids: list[str] | None = None,
+) -> None:
+    if not column:
+        return
+    field = _field_payload(column, value, user_ids=user_ids)
+    if field:
+        initial_fields.append(field)
 
 
 def create_board_task(
@@ -187,26 +202,21 @@ def create_board_task(
     initial_fields: list[dict[str, Any]] = []
 
     title_col = _resolve_title_column(schema, cols.title or "Name")
-    if title_col and title.strip():
-        initial_fields.append(_field_payload(title_col, title.strip()))
+    _append_field(initial_fields, title_col, title.strip())
 
     details_col = _column_by_name(schema, cols.details or "Ticket Details")
-    if details_col and description.strip():
-        initial_fields.append(_field_payload(details_col, description.strip()))
+    _append_field(initial_fields, details_col, description.strip())
 
     if severity.strip():
         sev_col = _column_by_name(schema, cols.severity or "Severity")
-        if sev_col:
-            initial_fields.append(_field_payload(sev_col, severity.strip()))
+        _append_field(initial_fields, sev_col, severity.strip())
 
     if merchant.strip():
         merch_col = _column_by_name(schema, cols.merchant or "Merchant Name")
-        if merch_col:
-            initial_fields.append(_field_payload(merch_col, merchant.strip()))
+        _append_field(initial_fields, merch_col, merchant.strip())
 
     status_col = _column_by_name(schema, cols.status or "Status")
-    if status_col:
-        initial_fields.append(_field_payload(status_col, board.default_status or "Not picked"))
+    _append_field(initial_fields, status_col, board.default_status or "Not picked")
 
     display_id = ""
     if cols.display_id:
@@ -219,14 +229,16 @@ def create_board_task(
                 channel_id=bump_channel,
                 prefix=board.display_id_prefix or "TS",
             )
-            initial_fields.append(_field_payload(display_col, display_id))
+            _append_field(initial_fields, display_col, display_id)
 
     if assignee_user_id.strip():
         assign_col = _column_by_name(schema, cols.assignee or "Assignee")
-        if assign_col:
-            initial_fields.append(
-                _field_payload(assign_col, "", user_ids=[assignee_user_id.strip()])
-            )
+        _append_field(
+            initial_fields,
+            assign_col,
+            "",
+            user_ids=[assignee_user_id.strip()],
+        )
 
     if not initial_fields:
         raise RuntimeError("No list columns matched — check board column mapping in config.")
@@ -293,33 +305,23 @@ def update_board_task(
 
     if status.strip():
         col = _column_by_name(schema, board.columns.status or "Status")
-        if col:
-            cells_list.append(
-                {
-                    "row_id": record_id,
-                    **_field_payload(col, status.strip()),
-                }
-            )
+        field = _field_payload(col, status.strip()) if col else None
+        if field:
+            cells_list.append({"row_id": record_id, **field})
 
     if assignee_user_id.strip():
         col = _column_by_name(schema, board.columns.assignee or "Assignee")
-        if col:
-            cells_list.append(
-                {
-                    "row_id": record_id,
-                    **_field_payload(col, "", user_ids=[assignee_user_id.strip()]),
-                }
-            )
+        field = (
+            _field_payload(col, "", user_ids=[assignee_user_id.strip()]) if col else None
+        )
+        if field:
+            cells_list.append({"row_id": record_id, **field})
 
     if severity.strip():
         col = _column_by_name(schema, board.columns.severity or "Severity")
-        if col:
-            cells_list.append(
-                {
-                    "row_id": record_id,
-                    **_field_payload(col, severity.strip()),
-                }
-            )
+        field = _field_payload(col, severity.strip()) if col else None
+        if field:
+            cells_list.append({"row_id": record_id, **field})
 
     if not cells_list:
         raise RuntimeError("Nothing to update — provide status, assignee, or severity.")

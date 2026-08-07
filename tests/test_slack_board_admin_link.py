@@ -21,7 +21,8 @@ def test_derive_board_key_from_channel_name():
 
 
 @patch("backend.routing.slack_board_admin.fetch_slack_channel_name", return_value="tmp-board-test")
-def test_link_board_derives_key_from_channel_name(mock_fetch, tmp_path):
+@patch("backend.integrations.slack.lists_client.verify_list_id", return_value=(True, ""))
+def test_link_board_derives_key_from_channel_name(mock_verify, mock_fetch, tmp_path):
     task = Task(
         source="slack",
         user_id="U1",
@@ -30,7 +31,7 @@ def test_link_board_derives_key_from_channel_name(mock_fetch, tmp_path):
         cleaned_intent="link board to F0BNP40SLV9",
     )
     response = try_slack_board_admin_command(
-        task, AlfredConfig(slack=SlackConfig(enabled=True)), tmp_path
+        task, AlfredConfig(slack=SlackConfig(enabled=True, bot_token="xoxb-test")), tmp_path
     )
     assert response is not None
     text = response.payload.data.get("text") or ""
@@ -42,6 +43,27 @@ def test_link_board_derives_key_from_channel_name(mock_fetch, tmp_path):
     assert workflow is not None
     assert workflow["ticket_system"] == "slack_list"
     mock_fetch.assert_called_once()
+    mock_verify.assert_called_once()
+
+
+@patch("backend.integrations.slack.lists_client.verify_list_id", return_value=(False, "List `F0BAD` is not accessible."))
+def test_link_board_rejects_invalid_list_id(mock_verify, tmp_path):
+    task = Task(
+        source="slack",
+        user_id="U1",
+        channel_id="C_TMP",
+        raw_text="@alfred link board to F0BAD",
+        cleaned_intent="link board to F0BAD",
+    )
+    response = try_slack_board_admin_command(
+        task,
+        AlfredConfig(slack=SlackConfig(enabled=True, bot_token="xoxb-test")),
+        tmp_path,
+    )
+    assert response is not None
+    text = response.payload.data.get("text") or ""
+    assert "not accessible" in text
+    assert db_get_board_binding_for_channel(tmp_path, "C_TMP") is None
 
 
 def test_link_board_preserves_existing_key_on_relink(tmp_path):
@@ -58,7 +80,9 @@ def test_link_board_preserves_existing_key_on_relink(tmp_path):
         raw_text="@alfred link board to F0NEWLIST",
         cleaned_intent="link board to F0NEWLIST",
     )
-    with patch("backend.routing.slack_board_admin.fetch_slack_channel_name", return_value="other-name"):
+    with patch("backend.routing.slack_board_admin.fetch_slack_channel_name", return_value="other-name"), patch(
+        "backend.integrations.slack.lists_client.verify_list_id", return_value=(True, "")
+    ):
         response = try_slack_board_admin_command(
             task, AlfredConfig(slack=SlackConfig(enabled=True)), tmp_path
         )
@@ -88,7 +112,9 @@ def test_link_board_does_not_reset_existing_ticket_system(tmp_path):
         cleaned_intent="link board to F0BNP40SLV9 for my-board",
     )
     try_slack_board_admin_command(
-        link_task, AlfredConfig(slack=SlackConfig(enabled=True)), tmp_path
+        link_task,
+        AlfredConfig(slack=SlackConfig(enabled=True, bot_token="xoxb-test")),
+        tmp_path,
     )
     workflow = db_get_channel_workflow(tmp_path, "C_TMP")
     assert workflow is not None

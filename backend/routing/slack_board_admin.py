@@ -118,6 +118,15 @@ def try_slack_board_admin_command(
     match = _LINK_BOARD_RE.search(text)
     if match:
         list_id = match.group(1)
+        token = (config.slack.bot_token or "").strip()
+        if token:
+            from slack_sdk import WebClient
+
+            from backend.integrations.slack.lists_client import verify_list_id
+
+            ok, verify_msg = verify_list_id(WebClient(token=token), list_id)
+            if not ok:
+                return AssistantResponse.from_text(verify_msg)
         name_match = re.search(r"\bfor\s+([a-z0-9_-]{2,40})\b", text, re.I)
         existing = db_get_board_binding_for_channel(data_dir, channel_id)
         channel_name = fetch_slack_channel_name(config, channel_id)
