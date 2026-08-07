@@ -124,6 +124,10 @@ export function SlackBoardsPanel() {
     const values = await boardForm.validateFields();
     setSaving(true);
     try {
+      const listId = String(values.list_id || "").trim();
+      if (!editingBoard || listId !== editingBoard.list_id) {
+        await api.verifySlackBoardListId(listId);
+      }
       const body: SlackBoardBindingInput = {
         board_key: values.board_key,
         list_id: values.list_id,
@@ -165,6 +169,7 @@ export function SlackBoardsPanel() {
     try {
       const channelId = String(values.channel_id || "").trim();
       const listId = String(values.list_id || "").trim();
+      await api.verifySlackBoardListId(listId);
       const existing = boards.filter((b) => b.channel_id === channelId);
       if (existing.length > 0) {
         await api.deleteSlackBoardBindingsForChannel(channelId);
@@ -504,7 +509,7 @@ export function SlackBoardsPanel() {
             name="list_id"
             label="Slack List id"
             rules={[{ required: true, message: "Required" }]}
-            extra="From the Task List tab URL (starts with F…). Do not use doc placeholders."
+            extra="Open the Task List tab in Slack, copy the F… id from the browser URL, paste here. Alfred verifies it before saving."
           >
             <Input placeholder="F0BNP40SLV9" />
           </Form.Item>

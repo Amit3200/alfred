@@ -28,8 +28,11 @@ def list_access_error_message(list_id: str, *, error_code: str = "") -> str:
     code = (error_code or "not_found").replace("_", " ")
     return (
         f"Slack List `{list_id}` is not accessible ({code}). "
-        "Open the channel **Task List** tab, copy the **F…** id from the browser URL, then run "
-        f"`@alfred link board to F…`. Ensure Alfred has `lists:read` / `lists:write` and is in the channel."
+        "Copy the **F…** id from the Task List tab URL while viewing the list in Slack "
+        "(watch for similar characters like `0`/`O` and `8`/`B`). "
+        f"Then run `@alfred link board to F…` or re-save in **Settings → Slack boards**. "
+        "Ensure Alfred has `lists:read` / `lists:write`, is **invited to the channel**, "
+        "and the Slack app was reinstalled after adding those scopes."
     )
 
 
