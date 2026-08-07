@@ -50,6 +50,14 @@ def test_followup_detects_is_it_created():
 
 
 def test_direct_create_returns_task(tmp_path: Path):
+    from backend.db.slack_workflows_db import db_create_board_binding
+
+    db_create_board_binding(
+        tmp_path,
+        board_key="bugs-tracker",
+        list_id="Fbugs001",
+        channel_id="Ctech",
+    )
     config = AlfredConfig(
         slack=SlackConfig(
             enabled=True,

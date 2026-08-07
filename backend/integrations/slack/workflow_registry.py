@@ -84,6 +84,20 @@ def resolve_board_for_channel(
     return None
 
 
+def fresh_board_binding_for_channel(
+    data_dir: Path | None,
+    channel_id: str,
+) -> dict[str, Any] | None:
+    """Read the latest channel board binding from SQLite (no config fallback)."""
+    cid = (channel_id or "").strip()
+    if not cid:
+        return None
+    data_dir = resolve_data_dir(data_dir)
+    if not data_dir:
+        return None
+    return db_get_board_binding_for_channel(data_dir, cid)
+
+
 def resolve_board_for_task(
     config: AlfredConfig,
     task: Task,

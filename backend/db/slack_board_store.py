@@ -119,3 +119,13 @@ class SlackBoardStore:
         cache = self._data.setdefault("schema_cache", {})
         cache[list_id] = schema
         self.save()
+
+    def clear_schema_cache(self, list_id: str = "") -> None:
+        cache = self._data.get("schema_cache") or {}
+        if not cache:
+            return
+        if list_id:
+            cache.pop(list_id, None)
+        else:
+            cache.clear()
+        self.save()

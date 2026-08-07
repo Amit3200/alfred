@@ -11,6 +11,7 @@ from backend.db.slack_workflows_db import (
     db_update_board_binding,
     db_upsert_channel_workflow,
 )
+from backend.db.slack_board_store import SlackBoardStore
 from backend.integrations.slack.board_keys import derive_board_key, fetch_slack_channel_name
 from backend.models.config import AlfredConfig
 from backend.models.response import AssistantResponse
@@ -147,7 +148,12 @@ def try_slack_board_admin_command(
                 existing["id"],
                 **update_fields,
             )
-            binding = updated or existing
+            if not updated:
+                return AssistantResponse.from_text(
+                    "Could not update the board binding in the database. "
+                    "Try again or edit the binding in **Settings → Slack boards**."
+                )
+            binding = updated
         else:
             binding = db_create_board_binding(
                 data_dir,
@@ -156,6 +162,17 @@ def try_slack_board_admin_command(
                 channel_id=channel_id,
                 channel_name=channel_name,
             )
+        fresh = db_get_board_binding_for_channel(data_dir, channel_id)
+        if not fresh or str(fresh.get("list_id") or "") != list_id:
+            return AssistantResponse.from_text(
+                f"Board link did not persist list `{list_id}`. "
+                "Check **Settings → Slack boards** or try `@alfred show board config`."
+            )
+        binding = fresh
+        store = SlackBoardStore(data_dir)
+        if existing and str(existing.get("list_id") or "") != list_id:
+            store.clear_schema_cache(str(existing.get("list_id") or ""))
+        store.clear_schema_cache(list_id)
         workflow = db_get_channel_workflow(data_dir, channel_id)
         if not workflow:
             db_upsert_channel_workflow(
@@ -168,7 +185,7 @@ def try_slack_board_admin_command(
             f"`{binding['list_id']}` as board **{binding['board_key']}**. "
             f"Display prefix `{binding['display_id_prefix']}`, next id `{binding['display_id_prefix']}-{binding['next_display_num']}`. "
             "Board key is per-channel (auto from channel name unless you say `for my-key`). "
-            "Edit details in **Settings → Slack boards**."
+            "Confirm with `@alfred show board config`, then create your task."
         )
 
     match = _SET_PREFIX_RE.search(text)

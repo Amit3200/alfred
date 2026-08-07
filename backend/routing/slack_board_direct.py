@@ -6,7 +6,11 @@ import logging
 import re
 from typing import Any
 
-from backend.integrations.slack.board_service import board_enabled, create_board_task, resolve_board_for_task
+from backend.integrations.slack.board_service import board_enabled, create_board_task
+from backend.integrations.slack.workflow_registry import (
+    binding_to_profile,
+    fresh_board_binding_for_channel,
+)
 from backend.integrations.slack.sanitize import extract_slack_user_ids
 from backend.models.config import AlfredConfig
 from backend.models.response import AssistantResponse
@@ -90,12 +94,21 @@ def try_slack_board_create_direct(
             {},
         )
 
-    board = resolve_board_for_task(config, task, data_dir=data_dir)
+    binding = fresh_board_binding_for_channel(data_dir, task.channel_id or "")
+    board = binding_to_profile(binding) if binding else None
     if board is None:
         return (
             AssistantResponse.from_text(
                 "This channel is not linked to a Slack List yet. "
                 "Say `@alfred link board to F0123…` (List id from the Task List tab)."
+            ),
+            {},
+        )
+    if not (board.list_id or "").strip():
+        return (
+            AssistantResponse.from_text(
+                "This channel's board binding has no List id. "
+                "Run `@alfred link board to F…` with the id from your Task List tab URL."
             ),
             {},
         )
