@@ -21,6 +21,17 @@ def derive_board_key(*, channel_name: str = "", channel_id: str = "") -> str:
     return "board"
 
 
+def derive_list_name(*, channel_name: str = "", channel_id: str = "") -> str:
+    """Human-readable List title for slackLists.create."""
+    raw = (channel_name or "").strip().lstrip("#")
+    if raw:
+        return f"{raw} Tasks"[:80]
+    key = derive_board_key(channel_id=channel_id)
+    if key != "board":
+        return f"{key.replace('-', ' ').title()} Tasks"[:80]
+    return "Alfred Board Tasks"
+
+
 def fetch_slack_channel_name(config: Any, channel_id: str) -> str:
     """Best-effort Slack channel name lookup for board key derivation."""
     token = str(getattr(getattr(config, "slack", None), "bot_token", "") or "").strip()

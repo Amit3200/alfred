@@ -40,9 +40,10 @@ When the user says **create task for … for above** (or similar):
 
 # Update / assign / status
 
-- Reference tasks by display id (`TS-123`) or list record id when known.
+- Reference tasks by display id (`TS-123`) or say **this task** right after creating one in the same thread.
 - Status labels match the board: Not picked, In progress, Review, Done.
-- Use `slack_board_update_task` for status and assignee changes.
+- Direct prompts (no agent loop): `@alfred move TS-3 to in progress`, `@alfred assign TS-3 to @user`.
+- Tool path: `slack_board_update_task` when routed through the planner.
 
 # Search / list
 

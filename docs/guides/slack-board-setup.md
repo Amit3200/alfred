@@ -10,11 +10,15 @@ Configuration is stored in **Alfred’s SQLite database** (`.alfred/alfred.db`).
 
 | Action | Example |
 |--------|---------|
+| **Setup board (recommended)** | `@alfred setup board` |
 | Create task from thread | `@alfred create task for payment timeout for above` |
+| Create + assign | `@alfred create task for checkout bug and assign @user` |
 | Update status | `@alfred move TS-3 to in progress` |
+| Assign | `@alfred assign TS-3 to @user` |
+| Assign last task | `@alfred assign this task to @user` (after create in same thread) |
 | Search / list | `@alfred list open tasks` |
 | Get one task | `@alfred get TS-3` |
-| Link channel to board | `@alfred link board to F01234567` |
+| Link existing List | `@alfred link board to F01234567` |
 | Show config | `@alfred show board config` |
 
 When both **Slack Lists** and **JIRA** are available in a channel, Alfred can show **Slack List** / **JIRA** buttons before creating a generic ticket (unless the channel policy says otherwise).
@@ -33,7 +37,8 @@ Reinstall the Slack app after adding scopes:
 | `channels:history`, `groups:history` | Thread / channel context |
 | `chat:write` | Replies and comments |
 | `lists:read` | Read List schema and items |
-| `lists:write` | Create / update List items **and** set List access (`slackLists.access.set`) |
+| `lists:write` | Create Lists, create/update items, set List access (`slackLists.access.set`) |
+| `files:read` (recommended) | Load List schema via `files.info` |
 | `users:read` (optional) | Assignee resolution |
 
 **Interactivity** must be enabled on the Slack app (for JIRA vs List choice buttons).
@@ -74,10 +79,17 @@ Admin UI: **Settings → Automation → Slack boards**
 
 ## One-time: create the List in Slack
 
+**Recommended:** in the channel, run **`@alfred setup board`**. Alfred calls [`slackLists.create`](https://docs.slack.dev/reference/methods/slacklists.create), grants this channel edit access, verifies task create works, and saves the binding — no manual `F…` id.
+
+Optional name: `@alfred setup board named Bugs tracker`.
+
+**Manual alternative:**
+
 1. Create or open your support channel (e.g. `#tech-support`).
 2. Add a **Slack List** to the channel (e.g. “Bugs tracker”).
 3. Note the **List id** (`F…`) from the List URL or share link.
-4. Note the **channel id** (`C…`) from channel details (or use the UI label after binding).
+4. Run `@alfred link board to F…`
+5. Note the **channel id** (`C…`) from channel details (or use the UI label after binding).
 
 Typical columns (match names in the UI binding form):
 
@@ -135,21 +147,30 @@ Changes save to `.alfred/alfred.db` immediately.
 In the target channel:
 
 ```text
+@alfred setup board
+@alfred setup board named "Bugs tracker"
 @alfred link board to F01234567
+@alfred link board to F01234567 for bugs-tracker
 @alfred set ticket system ask
 @alfred set display prefix TS
 @alfred show board config
-```
-
-Optional board key in the link phrase:
-
-```text
-@alfred link board to F01234567 for bugs-tracker
+@alfred unlink board
 ```
 
 ---
 
 ## Day-to-day usage
+
+All three core flows run **immediately from your prompt** (no LLM confirmation loop):
+
+| Flow | Prompt |
+|------|--------|
+| **Add task** | `@alfred create task for payment timeout on checkout` |
+| **From thread** | `@alfred create task for checkout API 500 for above` |
+| **Update status** | `@alfred move TS-3 to in progress` · `@alfred set TS-3 to review` |
+| **Assign** | `@alfred assign TS-3 to @user` · `@alfred assign this task to @user` |
+
+Status labels: **Not picked**, **In progress**, **Review**, **Done**.
 
 ### Create a task from a thread
 
@@ -231,7 +252,8 @@ Audit entries are logged when governance audit is enabled.
 
 | Symptom | Check |
 |---------|--------|
-| “No Slack board configured for this channel” | Add a **board binding** for that `C…` id in UI or `@alfred link board …` |
+| “No Slack board configured for this channel” | Run **`@alfred setup board`** or add a **board binding** for that `C…` id |
+| List visible but create fails | Run **`@alfred setup board`** for a fresh Alfred-owned List, or Share existing List with @alfred (Can edit) |
 | List API errors / scope errors | Reinstall Slack app with `lists:read` + `lists:write` |
 | Buttons don’t respond | Slack app **Interactivity** enabled; Socket Mode running |
 | Wrong column values | Column names in binding must match List column **labels** exactly |

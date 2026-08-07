@@ -345,7 +345,7 @@ Configure at [api.slack.com/apps](https://api.slack.com/apps):
 
 1. Enable **Socket Mode** → App-Level Token with `connections:write`
 2. **Bot Token Scopes:**  
-   `app_mentions:read`, `channels:history`, `channels:read`, `chat:write`, `files:write`, `groups:history`, `groups:read`, `lists:read`, `users:read`, **`users:read.email`**, `assistant:write`  
+   `app_mentions:read`, `channels:history`, `channels:read`, `chat:write`, `files:read`, `files:write`, `groups:history`, `groups:read`, `lists:read`, **`lists:write`**, `users:read`, **`users:read.email`**, `assistant:write`  
    Optional: **`emoji:read`** (for `alfred slack emojis`)
 3. Enable **Agents & AI Apps** for native thinking status
 4. **Event Subscriptions** → `app_mention`

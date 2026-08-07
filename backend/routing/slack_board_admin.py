@@ -15,7 +15,11 @@ from backend.db.slack_workflows_db import (
     db_upsert_channel_workflow,
 )
 from backend.db.slack_board_store import SlackBoardStore
-from backend.integrations.slack.board_keys import derive_board_key, fetch_slack_channel_name
+from backend.integrations.slack.board_keys import (
+    derive_board_key,
+    derive_list_name,
+    fetch_slack_channel_name,
+)
 from backend.routing.slack_board_intent import is_placeholder_list_id
 from backend.models.config import AlfredConfig
 from backend.models.response import AssistantResponse
@@ -43,12 +47,75 @@ _SET_TICKET_SYSTEM_RE = re.compile(
     re.I,
 )
 _CONFIG_STATUS_RE = re.compile(
-    r"\b(?:configured|setup|set up|ready|linked|bound)\b.{0,40}\b(?:track|assign|task|ticket|board|list)\b"
+    r"\b(?:configured|ready|linked|bound)\b.{0,40}\b(?:track|assign|task|ticket|board|list)\b"
     r"|\bcan you see if\b.{0,60}\b(?:configured|setup|track|assign|task|ticket|board|list)\b"
     r"|\b(?:is|are)\s+(?:this|we|it|alfred|the channel)\b.{0,40}\b(?:configured|setup|ready|linked)\b"
     r"|\b(?:does|do)\s+(?:this|alfred|we)\b.{0,30}\b(?:track|assign)\b.{0,20}\b(?:task|ticket)\b",
     re.I,
 )
+_SETUP_BOARD_RE = re.compile(
+    r"\b(?:setup|set\s*up|create|provision|initialize|init)\b.{0,24}\b(?:board|list)\b"
+    r"(?:\s+(?:named|called)\s+[\"']?([^\"'\n]{2,60})[\"']?)?"
+    r"|\b(?:setup|set\s*up|create|provision)\b.{0,10}\b(?:this|the)\b.{0,10}\b(?:channel\s+)?(?:board|list)\b",
+    re.I,
+)
+
+
+def _ensure_slack_list_workflow(data_dir, channel_id: str) -> None:
+    workflow = db_get_channel_workflow(data_dir, channel_id)
+    if not workflow:
+        db_upsert_channel_workflow(
+            data_dir,
+            channel_id=channel_id,
+            ticket_system="slack_list",
+        )
+
+
+def _upsert_channel_board_binding(
+    data_dir,
+    *,
+    channel_id: str,
+    list_id: str,
+    board_key: str,
+    channel_name: str = "",
+    list_name: str = "",
+    columns: dict[str, str] | None = None,
+) -> dict[str, Any] | None:
+    """Create or update the single board binding for a channel."""
+    existing = db_get_board_binding_for_channel(data_dir, channel_id)
+    store = SlackBoardStore(data_dir)
+    if existing:
+        old_list_id = str(existing.get("list_id") or "")
+        update_fields: dict[str, Any] = {
+            "list_id": list_id,
+            "board_key": board_key,
+        }
+        if channel_name:
+            update_fields["channel_name"] = channel_name
+        if list_name:
+            update_fields["list_name"] = list_name
+        if columns:
+            update_fields["columns"] = columns
+        binding = db_update_board_binding(data_dir, str(existing["id"]), **update_fields)
+        if old_list_id and old_list_id != list_id:
+            store.clear_schema_cache(old_list_id)
+    else:
+        create_kwargs: dict[str, Any] = {
+            "board_key": board_key,
+            "list_id": list_id,
+            "channel_id": channel_id,
+            "channel_name": channel_name,
+            "list_name": list_name,
+        }
+        if columns:
+            create_kwargs["columns"] = columns
+        binding = db_create_board_binding(data_dir, **create_kwargs)
+    store.clear_schema_cache(list_id)
+    fresh = db_get_board_binding_for_channel(data_dir, channel_id)
+    if not fresh or str(fresh.get("list_id") or "") != list_id:
+        return None
+    _ensure_slack_list_workflow(data_dir, channel_id)
+    return fresh or binding
 
 
 def format_channel_board_status(data_dir, channel_id: str) -> str:
@@ -61,10 +128,11 @@ def format_channel_board_status(data_dir, channel_id: str) -> str:
         return (
             "**Not configured** for this channel yet.\n\n"
             "To enable Slack List task tracking:\n"
-            "1. `@alfred link board to F…` (List id from your Task List tab), or\n"
-            "2. **Settings → Automation → Slack boards** → Add board binding\n\n"
+            "1. **`@alfred setup board`** — Alfred creates the List, grants access, and links this channel (recommended), or\n"
+            "2. `@alfred link board to F…` (List id from your Task List tab), or\n"
+            "3. **Settings → Automation → Slack boards** → Add board binding\n\n"
             "To remove a binding: `@alfred unlink` or `@alfred unlink board`.\n\n"
-            "Then ask `@alfred create task for … for above` in a thread."
+            "Then ask `@alfred create task for …` in a thread."
         )
     lines = ["**Channel workflow**"]
     if workflow:
@@ -177,8 +245,74 @@ def try_slack_board_admin_command(
             summary = f"Removed **{removed}** board bindings for this channel."
         return AssistantResponse.from_text(
             f"{summary} Task create/update for this channel is disabled until you link again. "
+            "Run `@alfred setup board` or `@alfred link board to F…`. "
             "Confirm with `@alfred show board config`."
         )
+
+    if _SETUP_BOARD_RE.search(text):
+        token = (config.slack.bot_token or "").strip()
+        if not token:
+            return AssistantResponse.from_text(
+                "Slack bot token is not configured — cannot create a List."
+            )
+        from slack_sdk import WebClient
+
+        from backend.integrations.slack.lists_client import (
+            ALFRED_BOARD_COLUMN_MAP,
+            SlackListAccessError,
+            provision_alfred_board_list,
+        )
+
+        name_match = _SETUP_BOARD_RE.search(text)
+        custom_name = (name_match.group(1) or "").strip() if name_match else ""
+        channel_name = fetch_slack_channel_name(config, channel_id)
+        list_name = custom_name or derive_list_name(
+            channel_name=channel_name,
+            channel_id=channel_id,
+        )
+        board_key = derive_board_key(channel_name=channel_name, channel_id=channel_id)
+        client = WebClient(token=token)
+        try:
+            list_id, grant_notes = provision_alfred_board_list(
+                client,
+                channel_id=channel_id,
+                list_name=list_name,
+            )
+        except SlackListAccessError as exc:
+            return AssistantResponse.from_text(str(exc))
+        except RuntimeError as exc:
+            return AssistantResponse.from_text(
+                f"Could not create Slack List: {exc}\n\n"
+                "Ensure Alfred has **`lists:write`** and **`lists:read`**, then reinstall the Slack app."
+            )
+
+        binding = _upsert_channel_board_binding(
+            data_dir,
+            channel_id=channel_id,
+            list_id=list_id,
+            board_key=board_key,
+            channel_name=channel_name,
+            list_name=list_name,
+            columns=ALFRED_BOARD_COLUMN_MAP,
+        )
+        if not binding:
+            return AssistantResponse.from_text(
+                f"Created List `{list_id}` but could not save the channel binding. "
+                "Try again or add it in **Settings → Slack boards**."
+            )
+        lines = [
+            f"Created and linked Slack List **`{list_name}`** (`{list_id}`) for this channel.",
+            f"- Board key: **{binding['board_key']}**",
+            f"- Display prefix: `{binding['display_id_prefix']}` → next id `{binding['display_id_prefix']}-{binding['next_display_num']}`",
+            "",
+            "Try **`@alfred create task for smoke test`** now.",
+            "",
+            "If the List is not on the channel tab yet, open **+** → **List** → pick "
+            f"**{list_name}** (Alfred already granted this channel edit access).",
+        ]
+        if grant_notes:
+            lines.extend(["", "Notes:", *[f"- {note}" for note in grant_notes]])
+        return AssistantResponse.from_text("\n".join(lines))
 
     match = _LINK_BOARD_RE.search(text)
     if match:
@@ -201,18 +335,21 @@ def try_slack_board_admin_command(
                 "**Settings → Automation → Slack boards**."
             )
         token = (config.slack.bot_token or "").strip()
-        if token:
-            from slack_sdk import WebClient
-
-            from backend.integrations.slack.lists_client import verify_list_id
-
-            ok, verify_msg = verify_list_id(
-                WebClient(token=token),
-                list_id,
-                channel_id=channel_id,
+        if not token:
+            return AssistantResponse.from_text(
+                "Slack bot token is not configured — cannot verify List access before linking."
             )
-            if not ok:
-                return AssistantResponse.from_text(verify_msg)
+        from slack_sdk import WebClient
+
+        from backend.integrations.slack.lists_client import verify_list_id
+
+        ok, verify_msg = verify_list_id(
+            WebClient(token=token),
+            list_id,
+            channel_id=channel_id,
+        )
+        if not ok:
+            return AssistantResponse.from_text(verify_msg)
         name_match = re.search(r"\bfor\s+([a-z0-9_-]{2,40})\b", text, re.I)
         existing = db_get_board_binding_for_channel(data_dir, channel_id)
         channel_name = fetch_slack_channel_name(config, channel_id)
@@ -222,48 +359,17 @@ def try_slack_board_admin_command(
             board_key = str(existing["board_key"])
         else:
             board_key = derive_board_key(channel_name=channel_name, channel_id=channel_id)
-        if existing:
-            update_fields: dict[str, str] = {"list_id": list_id}
-            if name_match:
-                update_fields["board_key"] = board_key
-            if channel_name:
-                update_fields["channel_name"] = channel_name
-            updated = db_update_board_binding(
-                data_dir,
-                existing["id"],
-                **update_fields,
-            )
-            if not updated:
-                return AssistantResponse.from_text(
-                    "Could not update the board binding in the database. "
-                    "Try again or edit the binding in **Settings → Slack boards**."
-                )
-            binding = updated
-        else:
-            binding = db_create_board_binding(
-                data_dir,
-                board_key=board_key,
-                list_id=list_id,
-                channel_id=channel_id,
-                channel_name=channel_name,
-            )
-        fresh = db_get_board_binding_for_channel(data_dir, channel_id)
-        if not fresh or str(fresh.get("list_id") or "") != list_id:
+        binding = _upsert_channel_board_binding(
+            data_dir,
+            channel_id=channel_id,
+            list_id=list_id,
+            board_key=board_key,
+            channel_name=channel_name,
+        )
+        if not binding:
             return AssistantResponse.from_text(
                 f"Board link did not persist list `{list_id}`. "
                 "Check **Settings → Slack boards** or try `@alfred show board config`."
-            )
-        binding = fresh
-        store = SlackBoardStore(data_dir)
-        if existing and str(existing.get("list_id") or "") != list_id:
-            store.clear_schema_cache(str(existing.get("list_id") or ""))
-        store.clear_schema_cache(list_id)
-        workflow = db_get_channel_workflow(data_dir, channel_id)
-        if not workflow:
-            db_upsert_channel_workflow(
-                data_dir,
-                channel_id=channel_id,
-                ticket_system="slack_list",
             )
         return AssistantResponse.from_text(
             "Linked this channel to Slack List "
@@ -280,7 +386,7 @@ def try_slack_board_admin_command(
         if not binding:
             return AssistantResponse.from_text(
                 "No board linked to this channel yet. "
-                "Say `@alfred link board to F0123…` first."
+                "Say `@alfred setup board` or `@alfred link board to F0123…` first."
             )
         updated = db_update_board_binding(
             data_dir,

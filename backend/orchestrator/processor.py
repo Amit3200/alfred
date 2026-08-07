@@ -159,6 +159,7 @@ class TaskProcessor:
             from backend.routing.slack_board_direct import (
                 try_slack_board_create_direct,
                 try_slack_board_status_followup,
+                try_slack_board_update_direct,
             )
 
             session_turns: tuple[str, ...] = ()
@@ -211,6 +212,31 @@ class TaskProcessor:
                         metadata_patch=board_meta or None,
                     )
                 return self._finish_response(create_response, metadata_patch=board_meta or None)
+
+            update_response, update_meta = try_slack_board_update_direct(
+                task,
+                self.config,
+                self._data_dir_path(),
+                session=session,
+            )
+            if update_response is not None:
+                if update_meta and session:
+                    session.metadata.update(update_meta)
+                    if session_key and self.session_store:
+                        self.session_store.save(session)
+                if session_key and self.session_store:
+                    rendered = render_for_channel(update_response, channel)
+                    self.session_store.append_exchange(
+                        session_key,
+                        source=task.source,
+                        scope_id=task.channel_id,
+                        thread_id=task.thread_ts or "",
+                        user_content=task.cleaned_intent,
+                        assistant_content=rendered,
+                        assistant_payload=update_response.payload,
+                        metadata_patch=update_meta or None,
+                    )
+                return self._finish_response(update_response, metadata_patch=update_meta or None)
 
         if (
             self.config.governance.enabled

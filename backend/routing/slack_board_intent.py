@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import re
+from typing import Any
 
 _CREATE_TASK_RE = re.compile(
     r"\b(?:create|add|open|file|raise|log)\b.{0,20}\b(?:task|ticket|item|bug)\b",
@@ -161,11 +162,25 @@ def looks_like_slack_board_create(intent: str) -> bool:
 
 
 def looks_like_slack_board_update(intent: str) -> bool:
-    text = intent or ""
-    return bool(
-        (_UPDATE_STATUS_RE.search(text) or _ASSIGN_RE.search(text))
-        and (_TICKET_REF_RE.search(text) or "task" in text.lower())
-    )
+    text = (intent or "").strip()
+    if not text or looks_like_slack_board_create(text):
+        return False
+    if not (_UPDATE_STATUS_RE.search(text) or _ASSIGN_RE.search(text)):
+        return False
+    if _TICKET_REF_RE.search(text):
+        return True
+    if re.search(r"\b(?:this|the|that|last)\s+(?:task|ticket)\b", text, re.I):
+        return True
+    return bool(re.search(r"\b(?:task|ticket)\b", text, re.I))
+
+
+def resolve_ticket_ref(intent: str, *, session_metadata: dict[str, Any] | None = None) -> str:
+    """Resolve TS-/Rec id from message or recent session task."""
+    ref = extract_ticket_ref(intent)
+    if ref:
+        return ref
+    last = dict((session_metadata or {}).get("last_board_task") or {})
+    return str(last.get("display_id") or last.get("record_id") or "")
 
 
 def references_thread_context(intent: str) -> bool:

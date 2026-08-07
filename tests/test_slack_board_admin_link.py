@@ -91,7 +91,7 @@ def test_link_board_rejects_invalid_list_id(mock_verify, tmp_path):
 @patch("backend.integrations.slack.lists_client.verify_list_id", return_value=(True, ""))
 @patch(
     "backend.routing.slack_board_admin.db_get_board_binding_for_channel",
-    side_effect=[None, None],
+    side_effect=[None, None, None],
 )
 def test_link_board_rejects_when_persist_fails(mock_get, mock_verify, tmp_path):
     task = Task(
@@ -199,7 +199,9 @@ def test_link_board_preserves_existing_key_on_relink(tmp_path):
         "backend.integrations.slack.lists_client.verify_list_id", return_value=(True, "")
     ):
         response = try_slack_board_admin_command(
-            task, AlfredConfig(slack=SlackConfig(enabled=True)), tmp_path
+            task,
+            AlfredConfig(slack=SlackConfig(enabled=True, bot_token="xoxb-test")),
+            tmp_path,
         )
     assert response is not None
     binding = db_get_board_binding_for_channel(tmp_path, "C_TMP")

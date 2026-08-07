@@ -9,8 +9,10 @@ from backend.models.config import AlfredConfig, SlackBoardColumnMap, SlackBoardP
 from backend.models.task import Task
 from backend.routing.slack_board_direct import (
     extract_board_create_fields,
+    extract_board_update_fields,
     try_slack_board_create_direct,
     try_slack_board_status_followup,
+    try_slack_board_update_direct,
 )
 from backend.routing.slack_board_intent import (
     extract_list_id_override,
@@ -213,6 +215,96 @@ def test_status_followup_uses_session_metadata():
     )
     assert response is not None
     assert "TS-9" in (response.payload.data.get("text") or "")
+
+
+def test_direct_update_status(tmp_path: Path):
+    from backend.db.slack_board_store import SlackBoardStore
+    from backend.db.slack_workflows_db import db_create_board_binding
+
+    db_create_board_binding(
+        tmp_path,
+        board_key="bugs-tracker",
+        list_id="Fbugs001",
+        channel_id="Ctech",
+    )
+    store = SlackBoardStore(tmp_path)
+    store.register_record(
+        "Rec1",
+        board_key="bugs-tracker",
+        list_id="Fbugs001",
+        channel_id="Ctech",
+        display_id="TS-3",
+        title="Smoke test",
+    )
+    config = AlfredConfig(slack=SlackConfig(enabled=True, bot_token="xoxb-test"))
+    task = Task(
+        source="slack",
+        user_id="U1",
+        channel_id="Ctech",
+        raw_text="@alfred move TS-3 to in progress",
+        cleaned_intent="move TS-3 to in progress",
+    )
+    fake = {
+        "record_id": "Rec1",
+        "list_id": "Fbugs001",
+        "updated": {"status": "In progress"},
+    }
+    with patch(
+        "backend.routing.slack_board_direct.update_board_task",
+        return_value=fake,
+    ) as update_mock:
+        response, meta = try_slack_board_update_direct(task, config, tmp_path)
+    assert response is not None
+    text = response.payload.data.get("text") or ""
+    assert "In progress" in text
+    update_mock.assert_called_once()
+    assert update_mock.call_args.kwargs["status"] == "In progress"
+
+
+def test_direct_assign_uses_session_task_ref(tmp_path: Path):
+    from backend.db.slack_workflows_db import db_create_board_binding
+
+    db_create_board_binding(
+        tmp_path,
+        board_key="bugs-tracker",
+        list_id="Fbugs001",
+        channel_id="Ctech",
+    )
+    config = AlfredConfig(slack=SlackConfig(enabled=True, bot_token="xoxb-test"))
+    task = Task(
+        source="slack",
+        user_id="U1",
+        channel_id="Ctech",
+        raw_text="@alfred assign this task to <@U2>",
+        cleaned_intent="assign this task to user",
+    )
+    session = MagicMock()
+    session.metadata = {
+        "last_board_task": {
+            "display_id": "TS-9",
+            "record_id": "Rec1",
+            "title": "Smoke",
+            "status": "Not picked",
+        }
+    }
+    fields = extract_board_update_fields(task, session_metadata=session.metadata)
+    assert fields["ticket_ref"] == "TS-9"
+    assert fields["assignee_user_id"] == "U2"
+    fake = {
+        "record_id": "Rec1",
+        "updated": {"assignee_user_id": "U2"},
+    }
+    with patch(
+        "backend.routing.slack_board_direct.update_board_task",
+        return_value=fake,
+    ) as update_mock:
+        response, _meta = try_slack_board_update_direct(
+            task, config, tmp_path, session=session
+        )
+    assert response is not None
+    update_mock.assert_called_once()
+    assert update_mock.call_args.kwargs["ticket_ref"] == "TS-9"
+    assert update_mock.call_args.kwargs["assignee_user_id"] == "U2"
 
 
 def test_board_skill_keeps_full_tool_manifest():

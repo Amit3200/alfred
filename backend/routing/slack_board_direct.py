@@ -7,7 +7,7 @@ import re
 from typing import Any
 
 from backend.db.slack_workflows_db import db_update_board_binding
-from backend.integrations.slack.board_service import board_enabled, create_board_task
+from backend.integrations.slack.board_service import board_enabled, create_board_task, update_board_task
 from backend.integrations.slack.workflow_registry import (
     binding_to_profile,
     fresh_board_binding_for_channel,
@@ -19,11 +19,15 @@ from backend.models.task import Task
 from backend.routing.slack_board_intent import (
     build_thread_description,
     extract_list_id_override,
+    extract_status_target,
     extract_task_title,
+    extract_ticket_ref,
     is_placeholder_list_id,
     looks_like_slack_board_create,
     looks_like_slack_board_followup,
+    looks_like_slack_board_update,
     references_thread_context,
+    resolve_ticket_ref,
 )
 
 logger = logging.getLogger(__name__)
@@ -80,8 +84,7 @@ def format_board_task_created(result: dict[str, Any], *, severity: str = "", ass
 def _placeholder_binding_message(list_id: str) -> str:
     return (
         f"This channel is linked to placeholder List id `{list_id}`, not a real Slack List. "
-        "Run `@alfred link board to F…` with the id from your Task List tab URL, "
-        "or say `@alfred create task for … on list F…` with the real id."
+        "Run **`@alfred setup board`** or `@alfred link board to F…` with the id from your Task List tab URL."
     )
 
 
@@ -146,8 +149,8 @@ def _resolve_board_for_create(
     if board is None:
         return None, AssistantResponse.from_text(
             "This channel is not linked to a Slack List yet. "
-            "Say `@alfred link board to F…` (List id from the Task List tab), "
-            "or `@alfred create task for … on list F…` with the List id from the tab URL."
+            "Say **`@alfred setup board`** (recommended), `@alfred link board to F…`, "
+            "or `@alfred create task for … on list F…`."
         )
     bound_list_id = (board.list_id or "").strip()
     if not bound_list_id:
@@ -175,7 +178,7 @@ def try_slack_board_create_direct(
         return (
             AssistantResponse.from_text(
                 "Slack List boards are not configured yet. "
-                "Say `@alfred link board to F…` or use **Settings → Slack boards**."
+                "Say **`@alfred setup board`** or use **Settings → Slack boards**."
             ),
             {},
         )
@@ -264,6 +267,124 @@ def try_slack_board_create_direct(
             "board": result.get("board"),
         }
     }
+    return AssistantResponse.from_text(body), metadata
+
+
+def extract_board_update_fields(
+    task: Task,
+    *,
+    session_metadata: dict[str, Any] | None = None,
+) -> dict[str, str]:
+    """Parse ticket ref, status, and assignee from an update/assign message."""
+    intent = task.cleaned_intent or task.raw_text or ""
+    ticket_ref = resolve_ticket_ref(intent, session_metadata=session_metadata)
+    status = extract_status_target(intent)
+    user_ids = extract_slack_user_ids(task.raw_text or intent)
+    assignee_user_id = user_ids[-1] if user_ids else ""
+    return {
+        "ticket_ref": ticket_ref.strip(),
+        "status": status.strip(),
+        "assignee_user_id": assignee_user_id.strip(),
+    }
+
+
+def format_board_task_updated(result: dict[str, Any]) -> str:
+    updated = result.get("updated") or {}
+    record_id = result.get("record_id") or ""
+    lines = [f"Updated board task **`{record_id}`**"]
+    if updated.get("status"):
+        lines.append(f"- Status: `{updated['status']}`")
+    if updated.get("assignee_user_id"):
+        lines.append(f"- Assignee: `<@{updated['assignee_user_id']}>`")
+    if updated.get("severity"):
+        lines.append(f"- Severity: `{updated['severity']}`")
+    return "\n".join(lines)
+
+
+def try_slack_board_update_direct(
+    task: Task,
+    config: AlfredConfig,
+    data_dir: Any,
+    *,
+    session: Any | None = None,
+) -> tuple[AssistantResponse | None, dict[str, Any]]:
+    """Update status or assignee immediately when the user asks (Slack only)."""
+    if task.source != "slack" or not config.slack.enabled:
+        return None, {}
+    if not looks_like_slack_board_update(task.cleaned_intent or ""):
+        return None, {}
+
+    if not board_enabled(config, data_dir):
+        return (
+            AssistantResponse.from_text(
+                "Slack List boards are not configured yet. "
+                "Say **`@alfred setup board`** first."
+            ),
+            {},
+        )
+
+    token = (config.slack.bot_token or "").strip()
+    if not token:
+        return AssistantResponse.error("Slack bot token is not configured."), {}
+
+    from slack_sdk import WebClient
+
+    from backend.db.slack_board_store import SlackBoardStore
+
+    client = WebClient(token=token)
+    store = SlackBoardStore(data_dir) if data_dir else SlackBoardStore(None)
+    session_meta = dict((session.metadata if session else {}) or {})
+    fields = extract_board_update_fields(task, session_metadata=session_meta)
+
+    if not fields["ticket_ref"]:
+        return (
+            AssistantResponse.from_text(
+                "Which task should I update? Use a display id like **`TS-3`**, "
+                "or say `@alfred assign this task to @user` right after creating one."
+            ),
+            {},
+        )
+    if not fields["status"] and not fields["assignee_user_id"]:
+        return (
+            AssistantResponse.from_text(
+                "What should I change? Examples:\n"
+                "• `@alfred move TS-3 to in progress`\n"
+                "• `@alfred assign TS-3 to @user`\n"
+                "• `@alfred set TS-3 status to review`"
+            ),
+            {},
+        )
+
+    try:
+        result = update_board_task(
+            client,
+            config,
+            store,
+            ticket_ref=fields["ticket_ref"],
+            status=fields["status"],
+            assignee_user_id=fields["assignee_user_id"],
+            channel_id=task.channel_id or "",
+        )
+    except Exception as exc:
+        logger.exception("Direct Slack board update failed")
+        return AssistantResponse.error(f"Could not update board task: {exc}"), {}
+
+    body = format_board_task_updated(result)
+    metadata: dict[str, Any] = {}
+    last = dict(session_meta.get("last_board_task") or {})
+    ticket_ref = fields["ticket_ref"].upper()
+    last_ref = str(last.get("display_id") or last.get("record_id") or "").upper()
+    if last_ref and last_ref == ticket_ref:
+        if fields["status"]:
+            last["status"] = fields["status"]
+        metadata["last_board_task"] = last
+    elif result.get("record_id"):
+        metadata["last_board_task"] = {
+            "display_id": fields["ticket_ref"],
+            "record_id": result.get("record_id"),
+            "status": fields["status"] or last.get("status") or "Not picked",
+        }
+
     return AssistantResponse.from_text(body), metadata
 
 

@@ -7,7 +7,9 @@ from backend.routing.slack_board_intent import (
     extract_ticket_ref,
     looks_like_slack_board_create,
     looks_like_slack_board_request,
+    looks_like_slack_board_update,
     references_thread_context,
+    resolve_ticket_ref,
 )
 
 
@@ -32,4 +34,19 @@ def test_create_task_simple():
 def test_board_request_and_ticket_ref():
     intent = "move TS-42 to in progress"
     assert looks_like_slack_board_request(intent)
+    assert looks_like_slack_board_update(intent)
     assert extract_ticket_ref(intent) == "TS-42"
+
+
+def test_update_detects_assign_this_task():
+    intent = "assign this task to @user"
+    assert looks_like_slack_board_update(intent)
+    assert not looks_like_slack_board_create(intent)
+
+
+def test_resolve_ticket_ref_from_session():
+    ref = resolve_ticket_ref(
+        "assign this task to @user",
+        session_metadata={"last_board_task": {"display_id": "TS-9", "record_id": "Rec1"}},
+    )
+    assert ref == "TS-9"

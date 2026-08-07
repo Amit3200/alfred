@@ -306,6 +306,11 @@ def update_board_task(
     if not board or not list_id or not record_id:
         raise RuntimeError(f"Unknown ticket `{ticket_ref}` — register the board or use a valid ticket id.")
 
+    grant_list_access(
+        client,
+        list_id,
+        channel_id=channel_id or (board.channel_ids[0] if board.channel_ids else ""),
+    )
     schema = load_schema(client, list_id, store)
     cells_list: list[dict[str, Any]] = []
 

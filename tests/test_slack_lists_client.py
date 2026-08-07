@@ -88,9 +88,37 @@ def test_verify_list_id_accepts_when_schema_loads():
                 {"id": "Col1", "name": "Name", "type": "text", "is_primary_column": True},
             ],
         )
+        mp.setattr(
+            "backend.integrations.slack.lists_client.probe_list_write_access",
+            lambda *_args, **_kwargs: None,
+        )
         ok, msg = verify_list_id(client, "F0GOOD", channel_id="C1")
     assert ok is True
     assert msg == ""
+
+
+def test_verify_list_id_rejects_when_write_probe_fails():
+    client = MagicMock()
+    client.auth_test.return_value = {"user_id": "UBOT"}
+    client.api_call.return_value = {"ok": True}
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(
+            "backend.integrations.slack.lists_client.list_columns",
+            lambda _client, _lid: [
+                {"id": "Col1", "name": "Name", "type": "text", "is_primary_column": True},
+            ],
+        )
+        mp.setattr(
+            "backend.integrations.slack.lists_client.probe_list_write_access",
+            lambda *_args, **_kwargs: (_ for _ in ()).throw(  # noqa: E731
+                SlackListAccessError(
+                    "Slack List `F0READONLY` is visible but Alfred cannot **create** items."
+                )
+            ),
+        )
+        ok, msg = verify_list_id(client, "F0READONLY", channel_id="C1")
+    assert ok is False
+    assert "cannot **create** items" in msg
 
 
 def test_verify_list_id_rejects_missing_list():
