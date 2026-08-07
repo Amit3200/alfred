@@ -399,6 +399,12 @@ def try_slack_board_update_direct(
         )
 
     try:
+        record_id_hint = ""
+        last = dict(session_meta.get("last_board_task") or {})
+        last_display = str(last.get("display_id") or "").upper()
+        if last_display and last_display == fields["ticket_ref"].upper():
+            record_id_hint = str(last.get("record_id") or "")
+
         result = update_board_task(
             client,
             config,
@@ -408,6 +414,7 @@ def try_slack_board_update_direct(
             assignee_user_id=fields["assignee_user_id"],
             severity=fields["severity"],
             channel_id=task.channel_id or "",
+            record_id_hint=record_id_hint,
         )
     except Exception as exc:
         logger.exception("Direct Slack board update failed")

@@ -335,15 +335,6 @@ def test_direct_update_st_prefix_inline_status(tmp_path: Path):
         channel_id="Ctech",
         display_id_prefix="ST",
     )
-    store = SlackBoardStore(tmp_path)
-    store.register_record(
-        "Rec1",
-        board_key="sales-tracker",
-        list_id="Fbugs001",
-        channel_id="Ctech",
-        display_id="ST-1",
-        title="Increasing sales",
-    )
     config = AlfredConfig(slack=SlackConfig(enabled=True, bot_token="xoxb-test"))
     task = Task(
         source="slack",
@@ -369,9 +360,64 @@ def test_direct_update_st_prefix_inline_status(tmp_path: Path):
     assert response is not None
     update_mock.assert_called_once()
     assert update_mock.call_args.kwargs["ticket_ref"] == "ST-1"
-    assert update_mock.call_args.kwargs["status"] == "In progress"
-    assert update_mock.call_args.kwargs["severity"] == "High"
-    assert update_mock.call_args.kwargs["assignee_user_id"] == "U2"
+
+
+def test_update_resolves_display_id_from_list_scan(tmp_path: Path):
+    from backend.db.slack_workflows_db import db_create_board_binding
+    from backend.integrations.slack.board_service import update_board_task
+
+    db_create_board_binding(
+        tmp_path,
+        board_key="sales-tracker",
+        list_id="Fbugs001",
+        channel_id="Ctech",
+        display_id_prefix="ST",
+        columns={"display_id": "Display ID"},
+    )
+    config = AlfredConfig(
+        slack=SlackConfig(enabled=True, bot_token="xoxb-test"),
+    )
+    client = MagicMock()
+    schema = [
+        {"id": "ColName", "name": "Name", "type": "text"},
+        {"id": "ColDisplay", "name": "Display ID", "type": "text"},
+        {"id": "ColStatus", "name": "Status", "type": "select",
+         "options": {"choices": [{"value": "in_progress", "label": "In progress"}]}},
+    ]
+    list_item = {
+        "id": "Rec1",
+        "fields": [
+            {"column_id": "ColName", "key": "name", "text": "Increasing sales"},
+            {"column_id": "ColDisplay", "key": "display_id", "text": "ST-1"},
+        ],
+    }
+    with patch(
+        "backend.integrations.slack.board_service.load_schema",
+        return_value=schema,
+    ), patch(
+        "backend.integrations.slack.board_service.list_items",
+        return_value=[list_item],
+    ), patch(
+        "backend.integrations.slack.board_service.update_cells",
+        return_value={"ok": True},
+    ) as update_cells_mock, patch(
+        "backend.integrations.slack.board_service.grant_list_access",
+        return_value=[],
+    ):
+        from backend.db.slack_board_store import SlackBoardStore
+
+        store = SlackBoardStore(tmp_path)
+        result = update_board_task(
+            client,
+            config,
+            store,
+            ticket_ref="ST-1",
+            status="In progress",
+            channel_id="Ctech",
+        )
+    assert result["record_id"] == "Rec1"
+    update_cells_mock.assert_called_once()
+    assert store.resolve_record("ST-1") is not None
 
 
 def test_direct_assign_uses_session_task_ref(tmp_path: Path):

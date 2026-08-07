@@ -117,10 +117,15 @@ class SlackBoardStore:
         meta = self.find_record(key)
         if not meta:
             return None
+        target_display = str(meta.get("display_id") or key).upper()
+        list_id = str(meta.get("list_id") or "")
         for rid, row in records.items():
-            if rid.startswith("Rec") and isinstance(row, dict) and row.get("list_id") == meta.get("list_id"):
-                if row.get("display_id") == meta.get("display_id") and row.get("title") == meta.get("title"):
-                    return rid, dict(row)
+            if not rid.startswith("Rec") or not isinstance(row, dict):
+                continue
+            if list_id and str(row.get("list_id") or "") != list_id:
+                continue
+            if str(row.get("display_id") or "").upper() == target_display:
+                return rid, dict(row)
         return None
 
     def get_schema_cache(self, list_id: str) -> list[dict[str, Any]] | None:
