@@ -34,6 +34,7 @@ def list_access_error_message(list_id: str, *, error_code: str = "") -> str:
 
 
 def api_call(client: Any, method: str, payload: dict[str, Any]) -> dict[str, Any]:
+    """Call a Slack Web API method (JSON body for Lists APIs)."""
     try:
         response = client.api_call(method, json=payload)
     except Exception as exc:
@@ -47,6 +48,36 @@ def api_call(client: Any, method: str, payload: dict[str, Any]) -> dict[str, Any
         error = str(response.get("error") or "unknown_error")
         raise RuntimeError(f"Slack {method} failed: {error}")
     return response
+
+
+def _files_info(client: Any, file_id: str) -> dict[str, Any]:
+    """files.info must use query params (GET), not JSON — unlike slackLists.* methods."""
+    lid = (file_id or "").strip()
+    try:
+        if hasattr(client, "files_info"):
+            response = client.files_info(file=lid)
+        else:
+            response = client.api_call("files.info", params={"file": lid})
+    except Exception as exc:
+        from slack_sdk.errors import SlackApiError
+
+        if isinstance(exc, SlackApiError):
+            error = _slack_error_code(exc) or str(exc)
+            raise RuntimeError(f"Slack files.info failed: {error}") from exc
+        raise
+    if not response.get("ok"):
+        error = str(response.get("error") or "unknown_error")
+        raise RuntimeError(f"Slack files.info failed: {error}")
+    return response
+
+
+def _list_api_reachable(client: Any, list_id: str) -> bool:
+    """Best-effort check that slackLists.* calls work for this list id."""
+    try:
+        api_call(client, "slackLists.items.list", {"list_id": list_id, "limit": 1})
+        return True
+    except RuntimeError:
+        return False
 
 
 def _schema_from_list_metadata(list_obj: dict[str, Any]) -> list[dict[str, Any]]:
@@ -65,17 +96,21 @@ def verify_list_id(client: Any, list_id: str) -> tuple[bool, str]:
     if not lid.startswith("F"):
         return False, f"List id must start with F (got `{lid}`)."
     try:
-        response = api_call(client, "files.info", {"file": lid})
+        response = _files_info(client, lid)
     except RuntimeError as exc:
         code = _slack_error_code(exc) or str(exc)
+        if _list_api_reachable(client, lid):
+            return True, ""
         if "not_found" in code.lower():
             return False, list_access_error_message(lid, error_code=code)
         return False, f"Could not verify List `{lid}`: {exc}"
     file_obj = response.get("file") or {}
     ftype = str(file_obj.get("filetype") or file_obj.get("mode") or "")
-    if ftype != "list":
-        return False, f"`{lid}` is not a Slack List (type `{ftype or 'unknown'}`)."
-    return True, ""
+    if ftype == "list":
+        return True, ""
+    if _list_api_reachable(client, lid):
+        return True, ""
+    return False, f"`{lid}` is not a Slack List (type `{ftype or 'unknown'}`)."
 
 
 def list_columns(client: Any, list_id: str) -> list[dict[str, Any]]:
@@ -85,13 +120,13 @@ def list_columns(client: Any, list_id: str) -> list[dict[str, Any]]:
     and ``slackLists.items.info``.
     """
     try:
-        response = api_call(client, "files.info", {"file": list_id})
+        response = _files_info(client, list_id)
         schema = _schema_from_list_metadata(response.get("file") or {})
         if schema:
             return schema
     except RuntimeError as exc:
         code = _slack_error_code(exc)
-        if code in ("list_not_found", "file_not_found"):
+        if code in ("list_not_found", "file_not_found") and not _list_api_reachable(client, list_id):
             raise SlackListAccessError(list_access_error_message(list_id, error_code=code)) from exc
         logger.warning("files.info schema fetch failed: %s", exc)
 

@@ -17,7 +17,7 @@ from backend.integrations.slack.lists_client import (
 
 def test_list_columns_prefers_files_info_schema():
     client = MagicMock()
-    client.api_call.return_value = {
+    client.files_info.return_value = {
         "ok": True,
         "file": {
             "filetype": "list",
@@ -37,13 +37,17 @@ def test_list_columns_prefers_files_info_schema():
     schema = list_columns(client, "F0LIST001")
     assert len(schema) == 1
     assert schema[0]["name"] == "Name"
-    client.api_call.assert_called_once_with("files.info", json={"file": "F0LIST001"})
+    client.files_info.assert_called_once_with(file="F0LIST001")
+    client.api_call.assert_not_called()
 
 
 def test_list_columns_falls_back_to_items_info():
     client = MagicMock()
+    client.files_info.return_value = {
+        "ok": True,
+        "file": {"filetype": "list", "list_metadata": {"schema": []}},
+    }
     client.api_call.side_effect = [
-        {"ok": True, "file": {"filetype": "list", "list_metadata": {"schema": []}}},
         {"ok": True, "items": [{"id": "Rec001"}]},
         {
             "ok": True,
@@ -64,14 +68,25 @@ def test_list_columns_raises_when_list_missing():
     client = MagicMock()
     response = MagicMock()
     response.data = {"ok": False, "error": "list_not_found"}
+    client.files_info.side_effect = SlackApiError(message="file_not_found", response=response)
     client.api_call.side_effect = SlackApiError(message="list_not_found", response=response)
     with pytest.raises(SlackListAccessError, match="F0MISSING"):
         list_columns(client, "F0MISSING")
 
 
+def test_verify_list_id_accepts_list_api_when_files_info_fails():
+    client = MagicMock()
+    client.files_info.return_value = {"ok": False, "error": "file_not_found"}
+    client.api_call.return_value = {"ok": True, "items": []}
+    ok, msg = verify_list_id(client, "F0GOOD")
+    assert ok is True
+    assert msg == ""
+
+
 def test_verify_list_id_rejects_missing_list():
     client = MagicMock()
-    client.api_call.return_value = {"ok": False, "error": "file_not_found"}
+    client.files_info.return_value = {"ok": False, "error": "file_not_found"}
+    client.api_call.return_value = {"ok": False, "error": "list_not_found"}
     ok, msg = verify_list_id(client, "F0BAD")
     assert ok is False
     assert "F0BAD" in msg
