@@ -6,9 +6,11 @@ import re
 
 from backend.db.slack_workflows_db import (
     db_create_board_binding,
-    db_delete_board_binding,
+    db_delete_board_bindings_for_channel,
     db_get_board_binding_for_channel,
+    db_get_board_binding_for_list_id,
     db_get_channel_workflow,
+    db_list_board_bindings_for_channel,
     db_update_board_binding,
     db_upsert_channel_workflow,
 )
@@ -24,7 +26,8 @@ _LINK_BOARD_RE = re.compile(
     re.I,
 )
 _UNLINK_BOARD_RE = re.compile(
-    r"\b(?:unlink|unbind|delink|disconnect|remove)\b.{0,20}\b(?:board|list)\b",
+    r"^\s*(?:unlink|unbind|delink|disconnect)(?:\s+(?:the\s+)?(?:board|list|binding))?\s*$"
+    r"|\b(?:unlink|unbind|delink|disconnect|remove)\b.{0,20}\b(?:board|list)\b",
     re.I,
 )
 _SET_PREFIX_RE = re.compile(
@@ -51,14 +54,16 @@ _CONFIG_STATUS_RE = re.compile(
 def format_channel_board_status(data_dir, channel_id: str) -> str:
     from backend.db.slack_workflows_db import db_get_channel_workflow
 
-    binding = db_get_board_binding_for_channel(data_dir, channel_id)
+    bindings = db_list_board_bindings_for_channel(data_dir, channel_id)
+    binding = bindings[0] if bindings else None
     workflow = db_get_channel_workflow(data_dir, channel_id)
-    if not binding and not workflow:
+    if not bindings and not workflow:
         return (
             "**Not configured** for this channel yet.\n\n"
             "To enable Slack List task tracking:\n"
-            "1. `@alfred link board to F0123…` (List id from your Task List tab), or\n"
+            "1. `@alfred link board to F…` (List id from your Task List tab), or\n"
             "2. **Settings → Automation → Slack boards** → Add board binding\n\n"
+            "To remove a binding: `@alfred unlink` or `@alfred unlink board`.\n\n"
             "Then ask `@alfred create task for … for above` in a thread."
         )
     lines = ["**Channel workflow**"]
@@ -69,6 +74,15 @@ def format_channel_board_status(data_dir, channel_id: str) -> str:
     else:
         lines.append("- Ticket system: `ask` (default)")
     if binding:
+        if len(bindings) > 1:
+            lines.extend(
+                [
+                    "",
+                    f"**Warning:** {len(bindings)} board bindings found for this channel "
+                    "(only one should exist). Remove extras in **Settings → Slack boards** "
+                    "or run `@alfred unlink`.",
+                ]
+            )
         lines.extend(
             [
                 "",
@@ -80,6 +94,18 @@ def format_channel_board_status(data_dir, channel_id: str) -> str:
                 f"`{binding['display_id_prefix']}-{binding['next_display_num']}`",
                 f"- Default status: `{binding['default_status']}`",
                 f"- Auto-approve writes: `{binding['auto_approve_writes']}`",
+            ]
+        )
+        if len(bindings) > 1:
+            lines.append("")
+            lines.append("**All bindings for this channel:**")
+            for row in bindings:
+                active = "active" if row.get("enabled") else "disabled"
+                lines.append(
+                    f"- `{row['list_id']}` / `{row['board_key']}` ({active}, id `{row['id'][:8]}…`)"
+                )
+        lines.extend(
+            [
                 "",
                 "This channel **can** track and assign tasks via `@alfred` when the List is linked.",
             ]
@@ -123,27 +149,34 @@ def try_slack_board_admin_command(
         )
 
     if _UNLINK_BOARD_RE.search(text):
-        binding = db_get_board_binding_for_channel(data_dir, channel_id)
-        if not binding:
+        bindings = db_list_board_bindings_for_channel(data_dir, channel_id)
+        if not bindings:
             return AssistantResponse.from_text(
                 "This channel has no board binding to remove. "
                 "Use `@alfred show board config` to confirm."
             )
-        list_id = str(binding.get("list_id") or "")
-        board_key = str(binding.get("board_key") or "board")
-        deleted = db_delete_board_binding(data_dir, str(binding["id"]))
-        fresh = db_get_board_binding_for_channel(data_dir, channel_id)
-        if not deleted or fresh is not None:
+        removed = db_delete_board_bindings_for_channel(data_dir, channel_id)
+        fresh = db_list_board_bindings_for_channel(data_dir, channel_id)
+        if removed <= 0 or fresh:
             return AssistantResponse.from_text(
                 "Could not remove the board binding from the database. "
                 "Try **Settings → Automation → Slack boards**, or try again."
             )
         store = SlackBoardStore(data_dir)
-        if list_id:
-            store.clear_schema_cache(list_id)
+        for row in bindings:
+            list_id = str(row.get("list_id") or "")
+            if list_id:
+                store.clear_schema_cache(list_id)
+        if len(bindings) == 1:
+            row = bindings[0]
+            summary = (
+                f"Removed the board binding for this channel "
+                f"(`{row.get('board_key')}` → List `{row.get('list_id')}`)."
+            )
+        else:
+            summary = f"Removed **{removed}** board bindings for this channel."
         return AssistantResponse.from_text(
-            f"Removed the board binding for this channel (`{board_key}` → List `{list_id}`). "
-            "Task create/update for this channel is disabled until you link again. "
+            f"{summary} Task create/update for this channel is disabled until you link again. "
             "Confirm with `@alfred show board config`."
         )
 
@@ -154,6 +187,18 @@ def try_slack_board_admin_command(
             return AssistantResponse.from_text(
                 f"`{list_id}` looks like a placeholder List id from docs or the admin UI, not your real List. "
                 "Open the channel **Task List** tab and copy the **F…** id from the browser URL."
+            )
+        other = db_get_board_binding_for_list_id(
+            data_dir,
+            list_id,
+            exclude_channel_id=channel_id,
+        )
+        if other:
+            other_channel = other.get("channel_name") or other.get("channel_id") or "another channel"
+            return AssistantResponse.from_text(
+                f"Slack List `{list_id}` is already linked to **{other_channel}**. "
+                "Run `@alfred unlink` in that channel first, or remove the binding in "
+                "**Settings → Automation → Slack boards**."
             )
         token = (config.slack.bot_token or "").strip()
         if token:

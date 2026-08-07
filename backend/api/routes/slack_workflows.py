@@ -12,13 +12,17 @@ from backend.config_manager import ConfigManager
 from backend.db.slack_workflows_db import (
     db_create_board_binding,
     db_delete_board_binding,
+    db_delete_board_bindings_for_channel,
     db_delete_channel_workflow,
     db_get_board_binding,
+    db_get_board_binding_for_list_id,
     db_list_board_bindings,
     db_list_channel_workflows,
+    db_repair_board_bindings,
     db_update_board_binding,
     db_upsert_channel_workflow,
 )
+from backend.routing.slack_board_intent import is_placeholder_list_id
 
 router = APIRouter(prefix="/slack/workflows", tags=["slack-workflows"])
 
@@ -99,11 +103,48 @@ def list_boards(manager: ConfigManager = Depends(require_admin)) -> dict[str, An
     return {"boards": rows, "total": len(rows)}
 
 
+@router.post("/boards/dedupe")
+def dedupe_boards(manager: ConfigManager = Depends(require_admin)) -> dict[str, Any]:
+    """Remove duplicate channel/list bindings and apply unique indexes."""
+    removed = db_repair_board_bindings(manager.data_dir)
+    rows = db_list_board_bindings(manager.data_dir)
+    return {"ok": True, "boards": len(rows), "duplicate_rows_removed": removed}
+
+
+@router.delete("/boards/channel/{channel_id}")
+def delete_boards_for_channel(
+    channel_id: str,
+    manager: ConfigManager = Depends(require_admin),
+) -> dict[str, Any]:
+    removed = db_delete_board_bindings_for_channel(manager.data_dir, channel_id)
+    if removed <= 0:
+        raise HTTPException(status_code=404, detail="No board bindings found for this channel")
+    return {"ok": True, "removed": removed}
+
+
 @router.post("/boards")
 def create_board(
     payload: BoardBindingPayload,
     manager: ConfigManager = Depends(require_admin),
 ) -> dict[str, Any]:
+    if is_placeholder_list_id(payload.list_id):
+        raise HTTPException(
+            status_code=400,
+            detail="List id looks like a placeholder from docs/UI — use the real F… id from Slack.",
+        )
+    other = db_get_board_binding_for_list_id(
+        manager.data_dir,
+        payload.list_id,
+        exclude_channel_id=payload.channel_id,
+    )
+    if other:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"List {payload.list_id} is already linked to channel "
+                f"{other.get('channel_name') or other.get('channel_id')}."
+            ),
+        )
     try:
         row = db_create_board_binding(
             manager.data_dir,
@@ -141,20 +182,45 @@ def update_board(
     payload: BoardBindingUpdatePayload,
     manager: ConfigManager = Depends(require_admin),
 ) -> dict[str, Any]:
-    row = db_update_board_binding(
+    existing = db_get_board_binding(manager.data_dir, binding_id)
+    if not existing:
+        raise HTTPException(status_code=404, detail="Board binding not found")
+    next_list_id = payload.list_id or existing["list_id"]
+    if payload.list_id and is_placeholder_list_id(payload.list_id):
+        raise HTTPException(
+            status_code=400,
+            detail="List id looks like a placeholder from docs/UI — use the real F… id from Slack.",
+        )
+    other = db_get_board_binding_for_list_id(
         manager.data_dir,
-        binding_id,
-        board_key=payload.board_key,
-        list_id=payload.list_id,
-        channel_name=payload.channel_name,
-        list_name=payload.list_name,
-        display_id_prefix=payload.display_id_prefix,
-        next_display_num=payload.next_display_num,
-        default_status=payload.default_status,
-        auto_approve_writes=payload.auto_approve_writes,
-        columns=payload.columns,
-        enabled=payload.enabled,
+        next_list_id,
+        exclude_channel_id=existing["channel_id"],
     )
+    if other:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"List {next_list_id} is already linked to channel "
+                f"{other.get('channel_name') or other.get('channel_id')}."
+            ),
+        )
+    try:
+        row = db_update_board_binding(
+            manager.data_dir,
+            binding_id,
+            board_key=payload.board_key,
+            list_id=payload.list_id,
+            channel_name=payload.channel_name,
+            list_name=payload.list_name,
+            display_id_prefix=payload.display_id_prefix,
+            next_display_num=payload.next_display_num,
+            default_status=payload.default_status,
+            auto_approve_writes=payload.auto_approve_writes,
+            columns=payload.columns,
+            enabled=payload.enabled,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
     if not row:
         raise HTTPException(status_code=404, detail="Board binding not found")
     return {"board": row}

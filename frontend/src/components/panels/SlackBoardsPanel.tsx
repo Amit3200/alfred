@@ -2,8 +2,10 @@ import {
   CommentOutlined,
   DeleteOutlined,
   EditOutlined,
+  LinkOutlined,
   PlusOutlined,
   SyncOutlined,
+  WarningOutlined,
 } from "@ant-design/icons";
 import {
   Alert,
@@ -23,7 +25,7 @@ import {
   Typography,
 } from "antd";
 import type { ColumnsType } from "antd/es/table";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   api,
   type SlackBoardBinding,
@@ -38,6 +40,18 @@ const TICKET_SYSTEM_OPTIONS = [
   { value: "jira", label: "JIRA only" },
 ];
 
+function countDuplicates(boards: SlackBoardBinding[]) {
+  const byChannel = new Map<string, number>();
+  const byList = new Map<string, number>();
+  for (const row of boards) {
+    byChannel.set(row.channel_id, (byChannel.get(row.channel_id) || 0) + 1);
+    byList.set(row.list_id, (byList.get(row.list_id) || 0) + 1);
+  }
+  const duplicateChannels = [...byChannel.entries()].filter(([, n]) => n > 1).map(([id]) => id);
+  const duplicateLists = [...byList.entries()].filter(([, n]) => n > 1).map(([id]) => id);
+  return { duplicateChannels, duplicateLists };
+}
+
 export function SlackBoardsPanel() {
   const { notify } = useApp();
   const [channels, setChannels] = useState<SlackChannelWorkflow[]>([]);
@@ -45,11 +59,14 @@ export function SlackBoardsPanel() {
   const [loading, setLoading] = useState(true);
   const [boardModalOpen, setBoardModalOpen] = useState(false);
   const [channelModalOpen, setChannelModalOpen] = useState(false);
+  const [quickLinkOpen, setQuickLinkOpen] = useState(false);
   const [editingBoard, setEditingBoard] = useState<SlackBoardBinding | null>(null);
   const [editingChannel, setEditingChannel] = useState<SlackChannelWorkflow | null>(null);
   const [boardForm] = Form.useForm();
   const [channelForm] = Form.useForm();
+  const [quickLinkForm] = Form.useForm();
   const [saving, setSaving] = useState(false);
+  const [repairing, setRepairing] = useState(false);
 
   const refresh = useCallback(async () => {
     setLoading(true);
@@ -72,6 +89,10 @@ export function SlackBoardsPanel() {
     refresh();
   }, [refresh]);
 
+  const duplicates = useMemo(() => countDuplicates(boards), [boards]);
+  const hasDuplicates =
+    duplicates.duplicateChannels.length > 0 || duplicates.duplicateLists.length > 0;
+
   const openBoardModal = (record?: SlackBoardBinding) => {
     setEditingBoard(record || null);
     boardForm.setFieldsValue(
@@ -84,7 +105,7 @@ export function SlackBoardsPanel() {
             display_id_column: record.columns?.display_id,
           }
         : {
-            board_key: "bugs-tracker",
+            board_key: "",
             display_id_prefix: "TS",
             next_display_num: 1,
             default_status: "Not picked",
@@ -138,6 +159,68 @@ export function SlackBoardsPanel() {
     }
   };
 
+  const saveQuickLink = async () => {
+    const values = await quickLinkForm.validateFields();
+    setSaving(true);
+    try {
+      const channelId = String(values.channel_id || "").trim();
+      const listId = String(values.list_id || "").trim();
+      const existing = boards.filter((b) => b.channel_id === channelId);
+      if (existing.length > 0) {
+        await api.deleteSlackBoardBindingsForChannel(channelId);
+      }
+      await api.createSlackBoardBinding({
+        board_key: values.board_key || values.channel_name || channelId,
+        list_id: listId,
+        channel_id: channelId,
+        channel_name: values.channel_name || "",
+        display_id_prefix: values.display_id_prefix || "TS",
+        next_display_num: 1,
+        default_status: "Not picked",
+        enabled: true,
+      });
+      notify("success", "Channel linked to Slack List.");
+      setQuickLinkOpen(false);
+      quickLinkForm.resetFields();
+      refresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      notify("error", message);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const unlinkChannel = async (channelId: string) => {
+    try {
+      const result = await api.deleteSlackBoardBindingsForChannel(channelId);
+      notify("success", `Removed ${result.removed} binding(s) for channel.`);
+      refresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      notify("error", message);
+    }
+  };
+
+  const repairDuplicates = async () => {
+    setRepairing(true);
+    try {
+      const result = await api.dedupeSlackBoardBindings();
+      notify(
+        "success",
+        result.duplicate_rows_removed > 0
+          ? `Removed ${result.duplicate_rows_removed} duplicate row(s). ${result.boards} binding(s) remain.`
+          : `No duplicate rows found. ${result.boards} binding(s) in database.`,
+      );
+      refresh();
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      notify("error", message);
+    } finally {
+      setRepairing(false);
+    }
+  };
+
   const openChannelModal = (record?: SlackChannelWorkflow) => {
     setEditingChannel(record || null);
     channelForm.setFieldsValue(
@@ -176,30 +259,60 @@ export function SlackBoardsPanel() {
   const boardColumns: ColumnsType<SlackBoardBinding> = [
     {
       title: "Channel",
-      render: (_, r) => r.channel_name || r.channel_id,
+      render: (_, r) => (
+        <Space direction="vertical" size={0}>
+          <span>{r.channel_name || "—"}</span>
+          <Typography.Text type="secondary" code>
+            {r.channel_id}
+          </Typography.Text>
+        </Space>
+      ),
     },
-    { title: "Board key", dataIndex: "board_key", width: 140 },
-    { title: "List id", dataIndex: "list_id", ellipsis: true },
+    { title: "Board key", dataIndex: "board_key", width: 130 },
+    {
+      title: "List id",
+      dataIndex: "list_id",
+      ellipsis: true,
+      render: (v: string, r) => (
+        <Space direction="vertical" size={0}>
+          <Typography.Text code>{v}</Typography.Text>
+          {duplicates.duplicateLists.includes(v) && <Tag color="warning">duplicate list</Tag>}
+          {duplicates.duplicateChannels.includes(r.channel_id) && (
+            <Tag color="warning">duplicate channel</Tag>
+          )}
+        </Space>
+      ),
+    },
     {
       title: "Display id",
-      width: 120,
+      width: 110,
       render: (_, r) => `${r.display_id_prefix}-${r.next_display_num}`,
     },
-    { title: "Status", dataIndex: "default_status", width: 110 },
     {
       title: "Active",
       dataIndex: "enabled",
-      width: 80,
+      width: 70,
       render: (v: boolean) => <Tag color={v ? "success" : "default"}>{v ? "yes" : "no"}</Tag>,
     },
     {
       title: "",
-      width: 120,
+      width: 180,
       render: (_, record) => (
-        <Space>
-          <Button type="link" icon={<EditOutlined />} onClick={() => openBoardModal(record)} />
+        <Space wrap>
+          <Button type="link" icon={<EditOutlined />} onClick={() => openBoardModal(record)}>
+            Edit
+          </Button>
           <Popconfirm
-            title="Delete this board binding?"
+            title={`Unlink all bindings for ${record.channel_id}?`}
+            description="Removes every board binding row for this channel."
+            onConfirm={() => unlinkChannel(record.channel_id)}
+          >
+            <Button type="link" icon={<LinkOutlined />}>
+              Unlink channel
+            </Button>
+          </Popconfirm>
+          <Popconfirm
+            title="Delete this binding row?"
             onConfirm={async () => {
               await api.deleteSlackBoardBinding(record.id);
               notify("success", "Deleted.");
@@ -255,13 +368,47 @@ export function SlackBoardsPanel() {
               <CommentOutlined /> Slack boards & channels
             </Typography.Title>
             <Typography.Paragraph type="secondary" style={{ marginBottom: 0 }}>
-              Runtime configuration stored in Alfred&apos;s database — no restart required.
+              One binding per channel and per List id. Changes apply immediately — no restart.
             </Typography.Paragraph>
           </div>
-          <Button icon={<SyncOutlined />} onClick={refresh} loading={loading}>
-            Refresh
-          </Button>
+          <Space wrap>
+            {hasDuplicates && (
+              <Button
+                icon={<WarningOutlined />}
+                onClick={repairDuplicates}
+                loading={repairing}
+                danger
+              >
+                Remove duplicates
+              </Button>
+            )}
+            <Button icon={<SyncOutlined />} onClick={refresh} loading={loading}>
+              Refresh
+            </Button>
+          </Space>
         </Flex>
+
+        {hasDuplicates && (
+          <Alert
+            type="warning"
+            showIcon
+            message="Duplicate bindings detected"
+            description={
+              <>
+                Channels with multiple rows:{" "}
+                {duplicates.duplicateChannels.length
+                  ? duplicates.duplicateChannels.map((id) => <code key={id}>{id}</code>)
+                  : "none"}
+                . Lists linked more than once:{" "}
+                {duplicates.duplicateLists.length
+                  ? duplicates.duplicateLists.map((id) => <code key={id}>{id}</code>)
+                  : "none"}
+                . Click <strong>Remove duplicates</strong> to keep the newest row per channel and
+                List id.
+              </>
+            }
+          />
+        )}
 
         <Alert
           type="info"
@@ -269,10 +416,8 @@ export function SlackBoardsPanel() {
           message="In Slack"
           description={
             <>
-              Link a channel: <code>@alfred link board to F0123…</code> · Show config:{" "}
-              <code>@alfred show board config</code> · Set prefix:{" "}
-              <code>@alfred set display prefix TS</code> · Ticket system:{" "}
-              <code>@alfred set ticket system ask|slack|jira</code>
+              Link: <code>@alfred link board to F…</code> · Unlink: <code>@alfred unlink</code> ·
+              Config: <code>@alfred show board config</code>
             </>
           }
         />
@@ -281,17 +426,24 @@ export function SlackBoardsPanel() {
           items={[
             {
               key: "boards",
-              label: "Board bindings",
+              label: `Board bindings (${boards.length})`,
               children: (
                 <>
-                  <Button
-                    type="primary"
-                    icon={<PlusOutlined />}
-                    onClick={() => openBoardModal()}
-                    style={{ marginBottom: 12 }}
-                  >
-                    Add board binding
-                  </Button>
+                  <Space style={{ marginBottom: 12 }} wrap>
+                    <Button
+                      type="primary"
+                      icon={<LinkOutlined />}
+                      onClick={() => {
+                        quickLinkForm.resetFields();
+                        setQuickLinkOpen(true);
+                      }}
+                    >
+                      Link channel to List
+                    </Button>
+                    <Button icon={<PlusOutlined />} onClick={() => openBoardModal()}>
+                      Advanced binding
+                    </Button>
+                  </Space>
                   <Table
                     rowKey="id"
                     loading={loading}
@@ -330,6 +482,42 @@ export function SlackBoardsPanel() {
       </Space>
 
       <Modal
+        title="Link channel to Slack List"
+        open={quickLinkOpen}
+        onCancel={() => setQuickLinkOpen(false)}
+        onOk={saveQuickLink}
+        confirmLoading={saving}
+        okText="Link"
+      >
+        <Form form={quickLinkForm} layout="vertical">
+          <Form.Item
+            name="channel_id"
+            label="Slack channel id"
+            rules={[{ required: true, message: "Required" }]}
+          >
+            <Input placeholder="C0BNNSMGG91" />
+          </Form.Item>
+          <Form.Item name="channel_name" label="Channel name (optional)">
+            <Input placeholder="#tmp-board-test" />
+          </Form.Item>
+          <Form.Item
+            name="list_id"
+            label="Slack List id"
+            rules={[{ required: true, message: "Required" }]}
+            extra="From the Task List tab URL (starts with F…). Do not use doc placeholders."
+          >
+            <Input placeholder="F0BNP40SLV9" />
+          </Form.Item>
+          <Form.Item name="board_key" label="Board key (optional)">
+            <Input placeholder="Auto from channel name if empty" />
+          </Form.Item>
+          <Form.Item name="display_id_prefix" label="Display id prefix" initialValue="TS">
+            <Input />
+          </Form.Item>
+        </Form>
+      </Modal>
+
+      <Modal
         title={editingBoard ? "Edit board binding" : "New board binding"}
         open={boardModalOpen}
         onCancel={() => setBoardModalOpen(false)}
@@ -348,10 +536,10 @@ export function SlackBoardsPanel() {
             <Input />
           </Form.Item>
           <Form.Item name="list_id" label="Slack List id" rules={[{ required: true }]}>
-            <Input placeholder="F01234567" />
+            <Input placeholder="F0BNP40SLV9" />
           </Form.Item>
           <Form.Item name="list_name" label="List name (optional)">
-            <Input placeholder="Bugs tracker" />
+            <Input placeholder="Task List" />
           </Form.Item>
           <Flex gap="middle">
             <Form.Item name="display_id_prefix" label="Display id prefix" style={{ flex: 1 }}>

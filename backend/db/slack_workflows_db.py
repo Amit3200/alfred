@@ -66,8 +66,49 @@ def init_slack_workflows_db(db_file: Path) -> None:
     cursor.execute(
         "CREATE INDEX IF NOT EXISTS idx_slack_board_bindings_board_key ON slack_board_bindings(board_key)"
     )
+    _migrate_slack_board_bindings(conn)
     conn.commit()
     conn.close()
+
+
+def _migrate_slack_board_bindings(conn: sqlite3.Connection) -> None:
+    """Remove legacy duplicate rows and enforce one binding per channel and list."""
+    for column in ("channel_id", "list_id"):
+        dupes = conn.execute(
+            f"""
+            SELECT {column} AS key_value, COUNT(*) AS cnt
+            FROM slack_board_bindings
+            GROUP BY {column}
+            HAVING cnt > 1
+            """
+        ).fetchall()
+        for row in dupes:
+            key_value = row[0]
+            rows = conn.execute(
+                f"""
+                SELECT id FROM slack_board_bindings
+                WHERE {column} = ?
+                ORDER BY enabled DESC, updated_at DESC, created_at DESC
+                """,
+                (key_value,),
+            ).fetchall()
+            for stale in rows[1:]:
+                conn.execute(
+                    "DELETE FROM slack_board_bindings WHERE id = ?",
+                    (stale[0],),
+                )
+                logger.warning(
+                    "Removed duplicate slack_board_bindings row %s for %s=%r",
+                    stale[0],
+                    column,
+                    key_value,
+                )
+    conn.execute(
+        """
+        CREATE UNIQUE INDEX IF NOT EXISTS idx_slack_board_bindings_list_id
+        ON slack_board_bindings(list_id)
+        """
+    )
 
 
 def _connect(data_dir: Path | None) -> sqlite3.Connection:
@@ -233,6 +274,58 @@ def db_get_board_binding(data_dir: Path | None, binding_id: str) -> dict[str, An
         conn.close()
 
 
+def db_get_board_binding_for_list_id(
+    data_dir: Path | None,
+    list_id: str,
+    *,
+    exclude_channel_id: str = "",
+) -> dict[str, Any] | None:
+    conn = _connect(data_dir)
+    try:
+        lid = list_id.strip()
+        exclude = exclude_channel_id.strip()
+        if exclude:
+            row = conn.execute(
+                """
+                SELECT * FROM slack_board_bindings
+                WHERE list_id = ? AND channel_id != ? AND enabled = 1
+                LIMIT 1
+                """,
+                (lid, exclude),
+            ).fetchone()
+        else:
+            row = conn.execute(
+                """
+                SELECT * FROM slack_board_bindings
+                WHERE list_id = ? AND enabled = 1
+                LIMIT 1
+                """,
+                (lid,),
+            ).fetchone()
+        return _row_to_board_binding(row) if row else None
+    finally:
+        conn.close()
+
+
+def db_list_board_bindings_for_channel(
+    data_dir: Path | None,
+    channel_id: str,
+) -> list[dict[str, Any]]:
+    conn = _connect(data_dir)
+    try:
+        rows = conn.execute(
+            """
+            SELECT * FROM slack_board_bindings
+            WHERE channel_id = ?
+            ORDER BY enabled DESC, updated_at DESC, created_at DESC
+            """,
+            (channel_id.strip(),),
+        ).fetchall()
+        return [_row_to_board_binding(row) for row in rows]
+    finally:
+        conn.close()
+
+
 def db_get_board_binding_for_channel(
     data_dir: Path | None,
     channel_id: str,
@@ -301,6 +394,12 @@ def db_create_board_binding(
         )
         conn.commit()
     except sqlite3.IntegrityError as exc:
+        message = str(exc).lower()
+        if "list_id" in message:
+            raise ValueError(
+                "This Slack List is already linked to another channel. "
+                "Unlink it there first, or edit the existing binding in Settings → Slack boards."
+            ) from exc
         raise ValueError("A board binding already exists for this channel.") from exc
     finally:
         conn.close()
@@ -378,9 +477,78 @@ def db_update_board_binding(
             ),
         )
         conn.commit()
+    except sqlite3.IntegrityError as exc:
+        message = str(exc).lower()
+        if "list_id" in message:
+            raise ValueError(
+                "This Slack List is already linked to another channel. "
+                "Unlink it there first, or edit the existing binding in Settings → Slack boards."
+            ) from exc
+        raise
     finally:
         conn.close()
     return db_get_board_binding(data_dir, binding_id)
+
+
+def db_repair_board_bindings(data_dir: Path | None) -> int:
+    """Remove duplicate rows and ensure unique indexes."""
+    db_file = db_path(data_dir)
+    conn = sqlite3.connect(db_file, timeout=10.0)
+    try:
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS slack_channel_workflows (
+                channel_id TEXT PRIMARY KEY,
+                channel_name TEXT NOT NULL DEFAULT '',
+                ticket_system TEXT NOT NULL DEFAULT 'ask',
+                jira_project_key TEXT NOT NULL DEFAULT '',
+                enabled INTEGER NOT NULL DEFAULT 1,
+                updated_at REAL NOT NULL
+            )
+            """
+        )
+        cursor.execute(
+            """
+            CREATE TABLE IF NOT EXISTS slack_board_bindings (
+                id TEXT PRIMARY KEY,
+                board_key TEXT NOT NULL,
+                list_id TEXT NOT NULL,
+                list_name TEXT NOT NULL DEFAULT '',
+                channel_id TEXT NOT NULL UNIQUE,
+                channel_name TEXT NOT NULL DEFAULT '',
+                display_id_prefix TEXT NOT NULL DEFAULT 'TS',
+                next_display_num INTEGER NOT NULL DEFAULT 1,
+                default_status TEXT NOT NULL DEFAULT 'Not picked',
+                auto_approve_writes INTEGER NOT NULL DEFAULT 0,
+                column_map_json TEXT NOT NULL DEFAULT '{}',
+                enabled INTEGER NOT NULL DEFAULT 1,
+                created_at REAL NOT NULL,
+                updated_at REAL NOT NULL
+            )
+            """
+        )
+        conn.commit()
+        before = int(conn.execute("SELECT COUNT(*) FROM slack_board_bindings").fetchone()[0])
+        _migrate_slack_board_bindings(conn)
+        conn.commit()
+        after = int(conn.execute("SELECT COUNT(*) FROM slack_board_bindings").fetchone()[0])
+        return max(0, before - after)
+    finally:
+        conn.close()
+
+
+def db_delete_board_bindings_for_channel(data_dir: Path | None, channel_id: str) -> int:
+    conn = _connect(data_dir)
+    try:
+        cur = conn.execute(
+            "DELETE FROM slack_board_bindings WHERE channel_id = ?",
+            (channel_id.strip(),),
+        )
+        conn.commit()
+        return int(cur.rowcount or 0)
+    finally:
+        conn.close()
 
 
 def db_delete_board_binding(data_dir: Path | None, binding_id: str) -> bool:

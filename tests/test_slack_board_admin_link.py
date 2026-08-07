@@ -134,6 +134,29 @@ def test_unlink_board_removes_channel_binding(tmp_path):
     assert db_get_board_binding_for_channel(tmp_path, "C_TMP") is None
 
 
+def test_bare_unlink_removes_channel_binding(tmp_path):
+    db_create_board_binding(
+        tmp_path,
+        board_key="tmp-board-test",
+        list_id="F0BNP40SLV9",
+        channel_id="C_TMP",
+    )
+    task = Task(
+        source="slack",
+        user_id="U1",
+        channel_id="C_TMP",
+        raw_text="@alfred unlink",
+        cleaned_intent="unlink",
+    )
+    response = try_slack_board_admin_command(
+        task, AlfredConfig(slack=SlackConfig(enabled=True)), tmp_path
+    )
+    assert response is not None
+    text = response.payload.data.get("text") or ""
+    assert "removed" in text.lower()
+    assert db_get_board_binding_for_channel(tmp_path, "C_TMP") is None
+
+
 def test_unlink_board_keeps_channel_workflow(tmp_path):
     db_create_board_binding(
         tmp_path,

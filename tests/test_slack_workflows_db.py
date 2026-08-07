@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import pytest
+
 from backend.db.slack_workflows_db import (
     db_bump_display_id,
     db_create_board_binding,
@@ -60,6 +62,84 @@ def test_display_id_bump_isolated_per_channel(tmp_path: Path):
     assert db_bump_display_id(tmp_path, channel_id="C2", prefix="TS") == "TS-10"
     assert db_get_board_binding_for_channel(tmp_path, "C1")["next_display_num"] == 2
     assert db_get_board_binding_for_channel(tmp_path, "C2")["next_display_num"] == 11
+
+
+def test_list_id_unique_across_channels(tmp_path: Path):
+    db_create_board_binding(
+        tmp_path,
+        board_key="board-a",
+        list_id="FSHARED",
+        channel_id="C1",
+    )
+    with pytest.raises(ValueError, match="already linked"):
+        db_create_board_binding(
+            tmp_path,
+            board_key="board-b",
+            list_id="FSHARED",
+            channel_id="C2",
+        )
+
+
+def test_repair_board_bindings_removes_duplicate_list_rows(tmp_path: Path):
+    import sqlite3
+
+    from backend.db.slack_workflows_db import db_repair_board_bindings
+    from backend.paths import db_path
+
+    db_file = db_path(tmp_path)
+    conn = sqlite3.connect(db_file)
+    conn.execute(
+        """
+        CREATE TABLE slack_board_bindings (
+            id TEXT PRIMARY KEY,
+            board_key TEXT NOT NULL,
+            list_id TEXT NOT NULL,
+            list_name TEXT NOT NULL DEFAULT '',
+            channel_id TEXT NOT NULL UNIQUE,
+            channel_name TEXT NOT NULL DEFAULT '',
+            display_id_prefix TEXT NOT NULL DEFAULT 'TS',
+            next_display_num INTEGER NOT NULL DEFAULT 1,
+            default_status TEXT NOT NULL DEFAULT 'Not picked',
+            auto_approve_writes INTEGER NOT NULL DEFAULT 0,
+            column_map_json TEXT NOT NULL DEFAULT '{}',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            created_at REAL NOT NULL,
+            updated_at REAL NOT NULL
+        )
+        """
+    )
+    now = 1.0
+    conn.execute(
+        """
+        INSERT INTO slack_board_bindings (
+            id, board_key, list_id, list_name, channel_id, channel_name,
+            display_id_prefix, next_display_num, default_status,
+            auto_approve_writes, column_map_json, enabled, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        ("old", "bugs", "FSHARED", "", "C1", "", "TS", 1, "Not picked", 0, "{}", 1, now, now),
+    )
+    conn.execute(
+        """
+        INSERT INTO slack_board_bindings (
+            id, board_key, list_id, list_name, channel_id, channel_name,
+            display_id_prefix, next_display_num, default_status,
+            auto_approve_writes, column_map_json, enabled, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        ("new", "bugs", "FSHARED", "", "C2", "", "TS", 1, "Not picked", 0, "{}", 1, now + 1, now + 1),
+    )
+    conn.commit()
+    conn.close()
+
+    removed = db_repair_board_bindings(tmp_path)
+    assert removed == 1
+    rows = db_get_board_binding_for_channel(tmp_path, "C1"), db_get_board_binding_for_channel(
+        tmp_path, "C2"
+    )
+    active = [row for row in rows if row is not None]
+    assert len(active) == 1
+    assert active[0]["list_id"] == "FSHARED"
 
 
 def test_resolve_board_from_db(tmp_path: Path):

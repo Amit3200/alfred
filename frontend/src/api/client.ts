@@ -672,6 +672,18 @@ export const api = {
       { method: "DELETE" },
       true,
     ),
+  deleteSlackBoardBindingsForChannel: (channelId: string) =>
+    request<{ ok: boolean; removed: number }>(
+      `/api/slack/workflows/boards/channel/${encodeURIComponent(channelId)}`,
+      { method: "DELETE" },
+      true,
+    ),
+  dedupeSlackBoardBindings: () =>
+    request<{ ok: boolean; boards: number; duplicate_rows_removed: number }>(
+      "/api/slack/workflows/boards/dedupe",
+      { method: "POST" },
+      true,
+    ),
 
   toggleSchedule: (jobId: string, active: boolean) =>
     request<{ status: string }>(
