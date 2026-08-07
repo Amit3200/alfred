@@ -71,6 +71,52 @@ def looks_like_slack_board_request(intent: str) -> bool:
     return False
 
 
+_TITLE_ON_RE = re.compile(
+    r"\b(?:create|add|open|file)\b.{0,20}\b(?:a\s+)?(?:task|ticket)\b.{0,15}\b(?:on|for|about)\s+"
+    r"(.+?)(?:\s+as\s+(?:p0|p1|p2|p3)\b|\s+and\s+assign\b|\s*$)",
+    re.I,
+)
+_FOLLOWUP_STATUS_RE = re.compile(
+    r"\b(?:yes|yep|yeah|ok(?:ay)?)\b.{0,40}\b(?:created|done|there|it)\b"
+    r"|\b(?:is|was)\s+it\s+created\b"
+    r"|\b(?:did\s+(?:you|that|it)|has\s+it)\s+(?:create|work)\b"
+    r"|\bcreated\s*\?\s*$",
+    re.I,
+)
+_BOARD_SESSION_MARKERS = (
+    "create task",
+    "create a task",
+    "board task",
+    "slack list",
+    "slack board",
+    "assign",
+    "p0",
+    "p1",
+    "ts-",
+    "rec",
+    "display id",
+    "created board task",
+)
+
+
+def looks_like_slack_board_followup(
+    intent: str,
+    *,
+    session_turns: tuple[str, ...] = (),
+    thread_context: str | None = None,
+) -> bool:
+    """Short thread follow-up after a board create (e.g. 'yes is it created?')."""
+    if looks_like_slack_board_create(intent):
+        return False
+    text = (intent or "").strip()
+    if not text:
+        return False
+    if not _FOLLOWUP_STATUS_RE.search(text):
+        return False
+    combined = "\n".join([*session_turns[-8:], thread_context or "", text]).lower()
+    return sum(1 for marker in _BOARD_SESSION_MARKERS if marker in combined) >= 1
+
+
 def looks_like_slack_board_create(intent: str) -> bool:
     return bool(_CREATE_TASK_RE.search(intent or ""))
 
@@ -94,12 +140,22 @@ def extract_ticket_ref(intent: str) -> str:
 
 def extract_task_title(intent: str) -> str:
     text = (intent or "").strip()
+
+    def _clean_title(raw: str) -> str:
+        title = raw.strip(" .,:;\"'")
+        title = re.sub(r"\s+for\s+(the\s+)?above\s*$", "", title, flags=re.I).strip()
+        return title[:200]
+
     match = _TITLE_FOR_RE.search(text)
     if match:
-        title = match.group(1).strip(" .,:;\"'")
-        title = re.sub(r"\s+for\s+(the\s+)?above\s*$", "", title, flags=re.I).strip()
+        title = _clean_title(match.group(1))
         if title:
-            return title[:200]
+            return title
+    on_match = _TITLE_ON_RE.search(text)
+    if on_match:
+        title = _clean_title(on_match.group(1))
+        if title:
+            return title
     quoted = re.search(r"['\"]([^'\"]{3,200})['\"]", text)
     if quoted:
         return quoted.group(1).strip()

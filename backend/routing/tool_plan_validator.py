@@ -6,6 +6,16 @@ from backend.routing.tool_plan_types import ScopedToolBinding, ToolPlan
 from backend.tools.catalog_formatter import format_tool_manifest
 from backend.tools.registry import ToolRegistry
 
+_SLACK_BOARD_SKILL = "slack_board_management"
+_SLACK_BOARD_TOOLS = (
+    "slack_fetch_thread",
+    "slack_board_create_task",
+    "slack_board_update_task",
+    "slack_board_search_tasks",
+    "slack_board_get_task",
+    "slack_board_comment",
+)
+
 
 def validate_tool_plan(
     plan: ToolPlan | None,
@@ -44,6 +54,13 @@ def validate_tool_plan(
 
     if not validated and skill_allowed:
         validated = [t for t in skill_allowed if t in registered]
+
+    if skill_name == _SLACK_BOARD_SKILL and skill_allowed:
+        validated = [
+            t
+            for t in _SLACK_BOARD_TOOLS
+            if t in skill_allowed and t in registered
+        ] or validated
 
     if missing and plan:
         plan.missing_capabilities = missing

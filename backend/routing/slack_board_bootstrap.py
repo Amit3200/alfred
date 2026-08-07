@@ -31,12 +31,12 @@ def bootstrap_slack_board_create(
     title_override: str = "",
 ) -> str:
     """Fetch thread context and create a list item. Returns context for the agent."""
-    if not board_enabled(config):
+    if not board_enabled(config, data_dir):
         return "Slack board workflows are disabled in config."
 
-    board = resolve_board_for_task(config, task)
+    board = resolve_board_for_task(config, task, data_dir=data_dir)
     if board is None:
-        return "No Slack board configured for this channel — set slack.board_workflows in config."
+        return "No Slack board configured for this channel — link a List in Settings → Slack boards."
 
     from backend.db.slack_board_store import SlackBoardStore
 

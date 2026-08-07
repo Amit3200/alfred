@@ -155,6 +155,63 @@ class TaskProcessor:
                     )
                 return self._finish_response(admin_response)
 
+        if task.source == "slack":
+            from backend.routing.slack_board_direct import (
+                try_slack_board_create_direct,
+                try_slack_board_status_followup,
+            )
+
+            session_turns: tuple[str, ...] = ()
+            if session and session.turns:
+                session_turns = tuple(
+                    turn.content for turn in session.turns[-4:] if (turn.content or "").strip()
+                )
+
+            followup_response = try_slack_board_status_followup(
+                task,
+                self.config,
+                self._data_dir_path(),
+                session=session,
+                session_turns=session_turns,
+            )
+            if followup_response is not None:
+                if session_key and self.session_store:
+                    rendered = render_for_channel(followup_response, channel)
+                    self.session_store.append_exchange(
+                        session_key,
+                        source=task.source,
+                        scope_id=task.channel_id,
+                        thread_id=task.thread_ts or "",
+                        user_content=task.cleaned_intent,
+                        assistant_content=rendered,
+                        assistant_payload=followup_response.payload,
+                    )
+                return self._finish_response(followup_response)
+
+            create_response, board_meta = try_slack_board_create_direct(
+                task,
+                self.config,
+                self._data_dir_path(),
+            )
+            if create_response is not None:
+                if board_meta and session:
+                    session.metadata.update(board_meta)
+                    if session_key and self.session_store:
+                        self.session_store.save(session)
+                if session_key and self.session_store:
+                    rendered = render_for_channel(create_response, channel)
+                    self.session_store.append_exchange(
+                        session_key,
+                        source=task.source,
+                        scope_id=task.channel_id,
+                        thread_id=task.thread_ts or "",
+                        user_content=task.cleaned_intent,
+                        assistant_content=rendered,
+                        assistant_payload=create_response.payload,
+                        metadata_patch=board_meta or None,
+                    )
+                return self._finish_response(create_response, metadata_patch=board_meta or None)
+
         if (
             self.config.governance.enabled
             and gov_patch
@@ -284,10 +341,11 @@ class TaskProcessor:
                     logger.info("Persona %s → skill %s", chat_persona, forced)
 
         legacy_routing = self.config.routing.planner_strategy == "rules_first"
-        if investigation is None and legacy_routing and ticket_target != "jira":
+        if investigation is None and ticket_target != "jira":
             from backend.integrations.slack.board_service import board_enabled, resolve_board_for_task
             from backend.routing.slack_board_intent import (
                 looks_like_slack_board_config_question,
+                looks_like_slack_board_followup,
                 looks_like_slack_board_request,
             )
 
@@ -295,16 +353,26 @@ class TaskProcessor:
                 self.config, task, data_dir=self._data_dir_path()
             )
             config_question = looks_like_slack_board_config_question(task.cleaned_intent)
-            if looks_like_slack_board_request(task.cleaned_intent) and (
-                config_question
-                or (
-                    board_enabled(self.config, self._data_dir_path())
-                    and board_ready
+            followup = looks_like_slack_board_followup(
+                task.cleaned_intent,
+                session_turns=route_context.session_turns,
+                thread_context=route_context.thread_context,
+            )
+            if followup or (
+                looks_like_slack_board_request(task.cleaned_intent)
+                and (
+                    config_question
+                    or board_ready
+                    or (
+                        legacy_routing
+                        and board_enabled(self.config, self._data_dir_path())
+                        and board_ready
+                    )
                 )
             ):
                 investigation = self._playbooks.get_by_name("slack_board_management")
                 if investigation:
-                    logger.info("Forced slack_board_management for Slack List board intent")
+                    logger.info("Using slack_board_management for board intent or follow-up")
 
         if investigation is None and legacy_routing and self.config.repo_knowledge.enabled:
             from backend.routing.tool_planner import looks_like_repo_doc_question
