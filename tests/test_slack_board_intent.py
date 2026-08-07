@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from backend.routing.slack_board_intent import (
+    extract_severity_target,
     extract_task_title,
     extract_ticket_ref,
     looks_like_slack_board_create,
@@ -42,6 +43,28 @@ def test_update_detects_assign_this_task():
     intent = "assign this task to @user"
     assert looks_like_slack_board_update(intent)
     assert not looks_like_slack_board_create(intent)
+
+
+def test_update_detects_st_prefix_inline_status():
+    intent = "ST-1 is in progress and assign severity to High. Also assign it to @user"
+    assert looks_like_slack_board_update(intent)
+    assert extract_ticket_ref(intent) == "ST-1"
+
+
+def test_update_detects_slack_board_context():
+    intent = "Update (slack board sales-tracker) ST-1 is in progress"
+    assert looks_like_slack_board_update(intent)
+    assert extract_ticket_ref(intent) == "ST-1"
+
+
+def test_display_prefix_update_not_board_task_update():
+    intent = "update the Display Prefix to ST"
+    assert not looks_like_slack_board_update(intent)
+
+
+def test_extract_severity_target():
+    intent = "ST-1 is in progress and assign severity to High"
+    assert extract_severity_target(intent) == "High"
 
 
 def test_resolve_ticket_ref_from_session():

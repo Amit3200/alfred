@@ -324,6 +324,56 @@ def test_direct_update_status(tmp_path: Path):
     assert update_mock.call_args.kwargs["status"] == "In progress"
 
 
+def test_direct_update_st_prefix_inline_status(tmp_path: Path):
+    from backend.db.slack_board_store import SlackBoardStore
+    from backend.db.slack_workflows_db import db_create_board_binding
+
+    db_create_board_binding(
+        tmp_path,
+        board_key="sales-tracker",
+        list_id="Fbugs001",
+        channel_id="Ctech",
+        display_id_prefix="ST",
+    )
+    store = SlackBoardStore(tmp_path)
+    store.register_record(
+        "Rec1",
+        board_key="sales-tracker",
+        list_id="Fbugs001",
+        channel_id="Ctech",
+        display_id="ST-1",
+        title="Increasing sales",
+    )
+    config = AlfredConfig(slack=SlackConfig(enabled=True, bot_token="xoxb-test"))
+    task = Task(
+        source="slack",
+        user_id="U1",
+        channel_id="Ctech",
+        raw_text="@alfred ST-1 is in progress and assign severity to High. Also assign it to <@U2>",
+        cleaned_intent="ST-1 is in progress and assign severity to High. Also assign it to user",
+    )
+    fake = {
+        "record_id": "Rec1",
+        "list_id": "Fbugs001",
+        "updated": {
+            "status": "In progress",
+            "severity": "High",
+            "assignee_user_id": "U2",
+        },
+    }
+    with patch(
+        "backend.routing.slack_board_direct.update_board_task",
+        return_value=fake,
+    ) as update_mock:
+        response, _meta = try_slack_board_update_direct(task, config, tmp_path)
+    assert response is not None
+    update_mock.assert_called_once()
+    assert update_mock.call_args.kwargs["ticket_ref"] == "ST-1"
+    assert update_mock.call_args.kwargs["status"] == "In progress"
+    assert update_mock.call_args.kwargs["severity"] == "High"
+    assert update_mock.call_args.kwargs["assignee_user_id"] == "U2"
+
+
 def test_direct_assign_uses_session_task_ref(tmp_path: Path):
     from backend.db.slack_workflows_db import db_create_board_binding
 

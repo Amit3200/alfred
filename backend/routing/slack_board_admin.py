@@ -39,7 +39,8 @@ _UNLINK_BOARD_RE = re.compile(
     re.I,
 )
 _SET_PREFIX_RE = re.compile(
-    r"\b(?:set|change|update)\b.{0,20}\b(?:display\s*)?(?:id\s*)?prefix\b.{0,10}\b([A-Z]{1,8})\b",
+    r"\b(?:set|change|update)\b.{0,40}\b(?:display\s*)?(?:id\s*)?prefix\b"
+    r"(?:\s+to\s+|\s*[:=]\s*|\s+)([A-Z]{1,8})\b",
     re.I,
 )
 _SHOW_CONFIG_RE = re.compile(
@@ -307,7 +308,6 @@ def try_slack_board_admin_command(
             )
         from slack_sdk import WebClient
 
-        from backend.db.slack_board_store import SlackBoardStore
         from backend.integrations.slack.lists_client import (
             ALFRED_BOARD_COLUMN_MAP,
             SlackListAccessError,

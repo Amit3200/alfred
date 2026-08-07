@@ -19,6 +19,7 @@ from backend.models.task import Task
 from backend.routing.slack_board_intent import (
     build_thread_description,
     extract_list_id_override,
+    extract_severity_target,
     extract_status_target,
     extract_task_title,
     extract_ticket_ref,
@@ -305,16 +306,20 @@ def extract_board_update_fields(
     task: Task,
     *,
     session_metadata: dict[str, Any] | None = None,
+    bot_user_id: str = "",
 ) -> dict[str, str]:
-    """Parse ticket ref, status, and assignee from an update/assign message."""
+    """Parse ticket ref, status, severity, and assignee from an update/assign message."""
     intent = task.cleaned_intent or task.raw_text or ""
     ticket_ref = resolve_ticket_ref(intent, session_metadata=session_metadata)
     status = extract_status_target(intent)
+    severity = extract_severity_target(intent)
     user_ids = extract_slack_user_ids(task.raw_text or intent)
+    user_ids = [uid for uid in user_ids if uid and uid != bot_user_id]
     assignee_user_id = user_ids[-1] if user_ids else ""
     return {
         "ticket_ref": ticket_ref.strip(),
         "status": status.strip(),
+        "severity": severity.strip(),
         "assignee_user_id": assignee_user_id.strip(),
     }
 
@@ -362,26 +367,33 @@ def try_slack_board_update_direct(
 
     from backend.db.slack_board_store import SlackBoardStore
 
+    from backend.routing.slack_board_bootstrap import _bot_user_id
+
     client = WebClient(token=token)
     store = SlackBoardStore(data_dir) if data_dir else SlackBoardStore(None)
     session_meta = dict((session.metadata if session else {}) or {})
-    fields = extract_board_update_fields(task, session_metadata=session_meta)
+    fields = extract_board_update_fields(
+        task,
+        session_metadata=session_meta,
+        bot_user_id=_bot_user_id(client),
+    )
 
     if not fields["ticket_ref"]:
         return (
             AssistantResponse.from_text(
-                "Which task should I update? Use a display id like **`TS-3`**, "
+                "Which task should I update? Use a display id like **`ST-1`** or **`TS-3`**, "
                 "or say `@alfred assign this task to @user` right after creating one."
             ),
             {},
         )
-    if not fields["status"] and not fields["assignee_user_id"]:
+    if not fields["status"] and not fields["assignee_user_id"] and not fields["severity"]:
         return (
             AssistantResponse.from_text(
                 "What should I change? Examples:\n"
-                "• `@alfred move TS-3 to in progress`\n"
-                "• `@alfred assign TS-3 to @user`\n"
-                "• `@alfred set TS-3 status to review`"
+                "• `@alfred ST-1 is in progress`\n"
+                "• `@alfred move ST-1 to in progress`\n"
+                "• `@alfred assign ST-1 severity to High`\n"
+                "• `@alfred assign ST-1 to @user`"
             ),
             {},
         )
@@ -394,6 +406,7 @@ def try_slack_board_update_direct(
             ticket_ref=fields["ticket_ref"],
             status=fields["status"],
             assignee_user_id=fields["assignee_user_id"],
+            severity=fields["severity"],
             channel_id=task.channel_id or "",
         )
     except Exception as exc:

@@ -393,6 +393,7 @@ class TaskProcessor:
                 looks_like_slack_board_config_question,
                 looks_like_slack_board_followup,
                 looks_like_slack_board_request,
+                looks_like_slack_board_update,
             )
 
             board_ready = resolve_board_for_task(
@@ -404,7 +405,8 @@ class TaskProcessor:
                 session_turns=route_context.session_turns,
                 thread_context=route_context.thread_context,
             )
-            if followup or (
+            board_update = looks_like_slack_board_update(task.cleaned_intent or "")
+            if followup or board_update or (
                 looks_like_slack_board_request(task.cleaned_intent)
                 and (
                     config_question
@@ -420,6 +422,25 @@ class TaskProcessor:
                 if investigation:
                     logger.info("Using slack_board_management for board intent or follow-up")
 
+        if (
+            investigation is not None
+            and investigation.name == "jira_management"
+            and task.source == "slack"
+        ):
+            from backend.integrations.slack.board_service import resolve_board_for_task
+            from backend.routing.slack_board_intent import looks_like_slack_board_update
+
+            if (
+                resolve_board_for_task(self.config, task, data_dir=self._data_dir_path())
+                and looks_like_slack_board_update(task.cleaned_intent or "")
+            ):
+                slack_skill = self._playbooks.get_by_name("slack_board_management")
+                if slack_skill:
+                    investigation = slack_skill
+                    logger.info(
+                        "Preferring slack_board_management over jira for board update in linked channel"
+                    )
+
         if investigation is None and legacy_routing and self.config.repo_knowledge.enabled:
             from backend.routing.tool_planner import looks_like_repo_doc_question
 
@@ -434,9 +455,22 @@ class TaskProcessor:
             if investigation:
                 logger.info("Using slack_board_management from ticket_create_target")
         if investigation is None and ticket_target == "jira":
-            investigation = self._playbooks.get_by_name("jira_management")
-            if investigation:
-                logger.info("Using jira_management from ticket_create_target")
+            from backend.integrations.slack.board_service import resolve_board_for_task
+            from backend.routing.slack_board_intent import looks_like_slack_board_update
+
+            if (
+                resolve_board_for_task(self.config, task, data_dir=self._data_dir_path())
+                and looks_like_slack_board_update(task.cleaned_intent or "")
+            ):
+                investigation = self._playbooks.get_by_name("slack_board_management")
+                if investigation:
+                    logger.info(
+                        "Using slack_board_management instead of jira for board update in linked channel"
+                    )
+            else:
+                investigation = self._playbooks.get_by_name("jira_management")
+                if investigation:
+                    logger.info("Using jira_management from ticket_create_target")
 
         if (
             investigation is None

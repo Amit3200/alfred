@@ -37,7 +37,7 @@ _ABOVE_RE = re.compile(
     re.I,
 )
 _TICKET_REF_RE = re.compile(
-    r"\b((?:TS|BUG|TK|T)-\d+|Rec[A-Za-z0-9]+)\b",
+    r"\b((?:[A-Z]{1,8}-\d+|Rec[A-Za-z0-9]+))\b",
     re.I,
 )
 _LIST_ID_OVERRIDE_RE = re.compile(
@@ -98,6 +98,8 @@ def looks_like_slack_board_request(intent: str) -> bool:
         return True
     if _CREATE_TASK_RE.search(text):
         return True
+    if _BOARD_INLINE_STATUS_RE.search(text):
+        return True
     if _UPDATE_STATUS_RE.search(text) and _TICKET_REF_RE.search(text):
         return True
     if _ASSIGN_RE.search(text):
@@ -121,6 +123,15 @@ _FOLLOWUP_STATUS_RE = re.compile(
     r"|\b(?:is|was)\s+it\s+created\b"
     r"|\b(?:did\s+(?:you|that|it)|has\s+it)\s+(?:create|work)\b"
     r"|\bcreated\s*\?\s*$",
+    re.I,
+)
+_BOARD_INLINE_STATUS_RE = re.compile(
+    r"\b(?:[A-Z]{1,8}-\d+|Rec[A-Za-z0-9]+)\b.{0,40}\b(?:is|are)\b.{0,24}"
+    r"\b(?:not picked|in progress|review|done)\b",
+    re.I,
+)
+_SEVERITY_ASSIGN_RE = re.compile(
+    r"\b(?:set|assign|change|update)\b.{0,24}\bseverity\b.{0,20}\b(?:to\s+)?(?:high|medium|low|p0|p1|p2|p3)\b",
     re.I,
 )
 _SETUP_BOARD_RE = re.compile(
@@ -196,6 +207,17 @@ def looks_like_slack_board_update(intent: str) -> bool:
     text = (intent or "").strip()
     if not text or looks_like_slack_board_create(text):
         return False
+    if re.search(r"\b(?:display\s*)?(?:id\s*)?prefix\b", text, re.I):
+        return False
+    if _BOARD_INLINE_STATUS_RE.search(text):
+        return True
+    if re.search(r"\bslack\s+board\b", text, re.I) and _TICKET_REF_RE.search(text):
+        return True
+    if _SEVERITY_ASSIGN_RE.search(text) and (
+        _TICKET_REF_RE.search(text)
+        or re.search(r"\b(?:this|the|that|last)\s+(?:task|ticket)\b", text, re.I)
+    ):
+        return True
     if not (_UPDATE_STATUS_RE.search(text) or _ASSIGN_RE.search(text)):
         return False
     if _TICKET_REF_RE.search(text):
@@ -263,6 +285,19 @@ def extract_status_target(intent: str) -> str:
     move = re.search(r"\bto\s+([a-z][a-z\s-]{2,30})\b", text, re.I)
     if move:
         return move.group(1).strip().title()
+    return ""
+
+
+def extract_severity_target(intent: str) -> str:
+    text = (intent or "").lower()
+    for label in ("high", "medium", "low"):
+        if re.search(rf"\bseverity\b.{{0,24}}\b{label}\b", text):
+            return label.title()
+        if re.search(rf"\b{label}\b.{{0,24}}\bseverity\b", text):
+            return label.title()
+    for level in ("p0", "p1", "p2", "p3"):
+        if level in text:
+            return level.upper()
     return ""
 
 

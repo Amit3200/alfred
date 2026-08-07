@@ -16,6 +16,33 @@ from backend.models.task import Task
 from backend.routing.slack_board_admin import try_slack_board_admin_command
 
 
+def test_set_display_prefix_update_phrase(tmp_path):
+    db_create_board_binding(
+        tmp_path,
+        board_key="sales-tracker",
+        list_id="F0LIST",
+        channel_id="C_TMP",
+    )
+    task = Task(
+        source="slack",
+        user_id="U1",
+        channel_id="C_TMP",
+        raw_text="@alfred update the Display Prefix to ST",
+        cleaned_intent="update the Display Prefix to ST",
+    )
+    response = try_slack_board_admin_command(
+        task,
+        AlfredConfig(slack=SlackConfig(enabled=True, bot_token="xoxb-test")),
+        tmp_path,
+    )
+    assert response is not None
+    text = response.payload.data.get("text") or ""
+    assert "ST" in text
+    binding = db_get_board_binding_for_channel(tmp_path, "C_TMP")
+    assert binding is not None
+    assert binding["display_id_prefix"] == "ST"
+
+
 def test_derive_board_key_from_channel_name():
     assert derive_board_key(channel_name="tmp-board-test") == "tmp-board-test"
     assert derive_board_key(channel_id="C0BNNSMGG91") == "board-nnsmgg91"
