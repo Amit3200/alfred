@@ -159,6 +159,7 @@ class TaskProcessor:
                 try_slack_board_create_direct,
                 try_slack_board_status_followup,
                 try_slack_board_update_direct,
+                try_slack_board_where_direct,
             )
 
             session_turns: tuple[str, ...] = ()
@@ -166,6 +167,26 @@ class TaskProcessor:
                 session_turns = tuple(
                     turn.content for turn in session.turns[-4:] if (turn.content or "").strip()
                 )
+
+            followup_response = try_slack_board_where_direct(
+                task,
+                self.config,
+                self._data_dir_path(),
+                session=session,
+            )
+            if followup_response is not None:
+                if session_key and self.session_store:
+                    rendered = render_for_channel(followup_response, channel)
+                    self.session_store.append_exchange(
+                        session_key,
+                        source=task.source,
+                        scope_id=task.channel_id,
+                        thread_id=task.thread_ts or "",
+                        user_content=task.cleaned_intent,
+                        assistant_content=rendered,
+                        assistant_payload=followup_response.payload,
+                    )
+                return self._finish_response(followup_response)
 
             followup_response = try_slack_board_status_followup(
                 task,

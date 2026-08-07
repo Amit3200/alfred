@@ -123,6 +123,57 @@ def test_setup_board_surfaces_create_errors(mock_provision, tmp_path):
     assert db_get_board_binding_for_channel(tmp_path, "C_TMP") is None
 
 
+def test_create_task_with_board_in_title_does_not_run_setup(tmp_path):
+    task = Task(
+        source="slack",
+        user_id="U1",
+        channel_id="C_TMP",
+        raw_text="@alfred create task for net-new board smoke test",
+        cleaned_intent="create task for net-new board smoke test",
+    )
+    response = try_slack_board_admin_command(
+        task,
+        AlfredConfig(slack=SlackConfig(enabled=True, bot_token="xoxb-test")),
+        tmp_path,
+    )
+    assert response is None
+
+
+def test_setup_board_skips_when_channel_already_linked(tmp_path):
+    from backend.db.slack_workflows_db import db_create_board_binding
+
+    db_create_board_binding(
+        tmp_path,
+        board_key="tmp-01",
+        list_id="F0EXISTING",
+        list_name="tmp-01 Tasks",
+        channel_id="C_TMP",
+    )
+    task = Task(
+        source="slack",
+        user_id="U1",
+        channel_id="C_TMP",
+        raw_text="@alfred setup board",
+        cleaned_intent="setup board",
+    )
+    with patch(
+        "backend.integrations.slack.lists_client.provision_alfred_board_list",
+    ) as mock_provision, patch(
+        "backend.integrations.slack.lists_client.list_open_url",
+        return_value="https://app.slack.com/client/T1/F0EXISTING",
+    ):
+        response = try_slack_board_admin_command(
+            task,
+            AlfredConfig(slack=SlackConfig(enabled=True, bot_token="xoxb-test")),
+            tmp_path,
+        )
+    assert response is not None
+    text = response.payload.data.get("text") or ""
+    assert "already linked" in text.lower()
+    assert "F0EXISTING" in text
+    mock_provision.assert_not_called()
+
+
 def test_share_board_grants_access(tmp_path):
     from backend.db.slack_workflows_db import db_create_board_binding
 

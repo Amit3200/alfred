@@ -561,6 +561,34 @@ def db_delete_board_binding(data_dir: Path | None, binding_id: str) -> bool:
         conn.close()
 
 
+def db_peek_display_id(
+    data_dir: Path | None,
+    *,
+    channel_id: str,
+    prefix: str | None = None,
+) -> str | None:
+    """Return the next display id without consuming it."""
+    conn = _connect(data_dir)
+    cid = channel_id.strip()
+    try:
+        row = conn.execute(
+            """
+            SELECT display_id_prefix, next_display_num
+            FROM slack_board_bindings
+            WHERE channel_id = ? AND enabled = 1
+            LIMIT 1
+            """,
+            (cid,),
+        ).fetchone()
+        if not row:
+            return None
+        use_prefix = (prefix or row["display_id_prefix"] or "TS").strip()
+        num = int(row["next_display_num"] or 1)
+        return f"{use_prefix}-{num}"
+    finally:
+        conn.close()
+
+
 def db_bump_display_id(
     data_dir: Path | None,
     *,

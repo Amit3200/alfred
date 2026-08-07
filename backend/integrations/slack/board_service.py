@@ -15,6 +15,9 @@ from backend.integrations.slack.lists_client import (
     list_columns,
     list_items,
     update_cells,
+    confirm_item_visible,
+    SlackListAccessError,
+    _record_id_from_item,
 )
 from backend.models.config import AlfredConfig, SlackBoardProfile
 from backend.models.task import Task
@@ -192,17 +195,23 @@ def create_board_task(
     channel_id: str = "",
     thread_ts: str = "",
 ) -> dict[str, Any]:
-    list_id = board.list_id
-    grant_list_access(
-        client,
-        list_id,
-        channel_id=channel_id or (board.channel_ids[0] if board.channel_ids else ""),
-    )
-    schema = load_schema(client, list_id, store)
+    list_id = (board.list_id or "").strip()
+    if not list_id:
+        raise RuntimeError("Board has no List id — run `@alfred setup board` or `@alfred link board to F…`.")
+
+    channel = (channel_id or (board.channel_ids[0] if board.channel_ids else "")).strip()
+    grant_list_access(client, list_id, channel_id=channel)
+    store.clear_schema_cache(list_id)
+
+    try:
+        schema = list_columns(client, list_id)
+    except SlackListAccessError as exc:
+        raise RuntimeError(str(exc)) from exc
     if not schema:
         raise RuntimeError(
             "Could not load Slack List columns. Add lists:read scope and reinstall the Slack app."
         )
+    store.set_schema_cache(list_id, schema)
 
     cols = board.columns
     initial_fields: list[dict[str, Any]] = []
@@ -225,14 +234,14 @@ def create_board_task(
     _append_field(initial_fields, status_col, board.default_status or "Not picked")
 
     display_id = ""
+    display_col = None
     if cols.display_id:
         display_col = _column_by_name(schema, cols.display_id)
         if display_col:
-            bump_channel = (channel_id or (board.channel_ids[0] if board.channel_ids else "")).strip()
-            if not bump_channel:
+            if not channel:
                 raise RuntimeError("Cannot allocate display id without a channel binding.")
-            display_id = store.next_display_id(
-                channel_id=bump_channel,
+            display_id = store.peek_display_id(
+                channel_id=channel,
                 prefix=board.display_id_prefix or "TS",
             )
             _append_field(initial_fields, display_col, display_id)
@@ -249,10 +258,30 @@ def create_board_task(
     if not initial_fields:
         raise RuntimeError("No list columns matched — check board column mapping in config.")
 
+    logger.info(
+        "Creating Slack List item on %s with %d field(s) title=%r",
+        list_id,
+        len(initial_fields),
+        title.strip(),
+    )
     record = create_item(client, list_id, initial_fields)
     record_id = str(record.get("id") or record.get("record_id") or "")
     if not record_id:
         raise RuntimeError("Slack List create succeeded but returned no record id.")
+
+    if not confirm_item_visible(client, list_id, record_id):
+        raise RuntimeError(
+            f"Slack accepted record `{record_id}` but it is not visible in List `{list_id}`. "
+            "Your channel List tab may show a **different** List — run `@alfred show board config`, "
+            "open the linked List URL from that reply, or `@alfred link board to F…` using the id "
+            "from your channel tab URL."
+        )
+
+    if display_id:
+        store.next_display_id(
+            channel_id=channel,
+            prefix=board.display_id_prefix or "TS",
+        )
 
     store.register_record(
         record_id,

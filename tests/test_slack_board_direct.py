@@ -13,11 +13,13 @@ from backend.routing.slack_board_direct import (
     try_slack_board_create_direct,
     try_slack_board_status_followup,
     try_slack_board_update_direct,
+    try_slack_board_where_direct,
 )
 from backend.routing.slack_board_intent import (
     extract_list_id_override,
     extract_task_title,
     is_placeholder_list_id,
+    looks_like_setup_board_command,
     looks_like_slack_board_followup,
 )
 from backend.routing.tool_plan_types import ToolPlan
@@ -127,6 +129,24 @@ def test_extract_board_create_fields_severity_and_title():
     assert fields["assignee_user_id"] == "U2"
 
 
+def test_extract_board_create_fields_assign_to_me():
+    task = Task(
+        source="slack",
+        user_id="U_HUMAN",
+        channel_id="C1",
+        raw_text="<@UBOT> create a task for testing checkout and assign it to me",
+        cleaned_intent="create a task for testing checkout and assign it to me",
+    )
+    fields = extract_board_create_fields(task, bot_user_id="UBOT")
+    assert "testing checkout" in fields["title"].lower()
+    assert fields["assignee_user_id"] == "U_HUMAN"
+
+
+def test_create_task_with_board_in_title_is_not_setup_command():
+    intent = "create task for net-new board smoke test"
+    assert looks_like_setup_board_command(intent) is False
+
+
 def test_followup_detects_is_it_created():
     assert looks_like_slack_board_followup(
         "yes is it created?",
@@ -197,6 +217,9 @@ def test_status_followup_uses_session_metadata():
             "display_id": "TS-9",
             "title": "revamping the AI",
             "status": "Not picked",
+            "list_id": "Fbugs001",
+            "list_name": "bugs-tracker Tasks",
+            "open_url": "https://app.slack.com/client/T1/Fbugs001",
         }
     }
     task = Task(
@@ -214,7 +237,47 @@ def test_status_followup_uses_session_metadata():
         session_turns=("create a task on revamping the AI",),
     )
     assert response is not None
-    assert "TS-9" in (response.payload.data.get("text") or "")
+    text = response.payload.data.get("text") or ""
+    assert "TS-9" in text
+    assert "Fbugs001" in text
+
+
+def test_where_task_uses_latest_session_metadata():
+    session = MagicMock()
+    session.metadata = {
+        "last_board_task": {
+            "display_id": "TS-2",
+            "record_id": "Rec2",
+            "title": "testing checkout",
+            "status": "Not picked",
+            "list_id": "F0LIST",
+            "list_name": "tmp-01 Tasks",
+            "open_url": "https://app.slack.com/client/T1/F0LIST",
+        }
+    }
+    task = Task(
+        source="slack",
+        user_id="U1",
+        channel_id="C1",
+        raw_text="where is task created?",
+        cleaned_intent="where is task created?",
+    )
+    with patch(
+        "backend.integrations.slack.lists_client.get_item",
+        return_value={"id": "Rec2"},
+    ):
+        response = try_slack_board_where_direct(
+            task,
+            AlfredConfig(slack=SlackConfig(enabled=True, bot_token="xoxb-test")),
+            Path("."),
+            session=session,
+        )
+    assert response is not None
+    text = response.payload.data.get("text") or ""
+    assert "TS-2" in text
+    assert "tmp-01 Tasks" in text
+    assert "F0LIST" in text
+    assert "TS-1" not in text
 
 
 def test_direct_update_status(tmp_path: Path):

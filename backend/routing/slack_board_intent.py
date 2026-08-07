@@ -123,6 +123,13 @@ _FOLLOWUP_STATUS_RE = re.compile(
     r"|\bcreated\s*\?\s*$",
     re.I,
 )
+_SETUP_BOARD_RE = re.compile(
+    r"\b(?:setup|set\s*up|provision|initialize|init)\b.{0,24}\b(?:board|list)\b"
+    r"(?:\s+(?:named|called)\s+[\"']?([^\"'\n]{2,60})[\"']?)?"
+    r"|\b(?:setup|set\s*up|provision)\b.{0,10}\b(?:this|the)\b.{0,10}\b(?:channel\s+)?(?:board|list)\b"
+    r"|\bcreate\b.{0,12}\b(?:a\s+)?(?:new\s+)?(?:slack\s+)?(?:board|list)\b(?!\s*(?:task|ticket|item)\b)",
+    re.I,
+)
 _BOARD_SESSION_MARKERS = (
     "create task",
     "create a task",
@@ -146,7 +153,7 @@ def looks_like_slack_board_followup(
     thread_context: str | None = None,
 ) -> bool:
     """Short thread follow-up after a board create (e.g. 'yes is it created?')."""
-    if looks_like_slack_board_create(intent):
+    if looks_like_slack_board_create(intent) or looks_like_board_where_question(intent):
         return False
     text = (intent or "").strip()
     if not text:
@@ -159,6 +166,30 @@ def looks_like_slack_board_followup(
 
 def looks_like_slack_board_create(intent: str) -> bool:
     return bool(_CREATE_TASK_RE.search(intent or ""))
+
+
+def looks_like_setup_board_command(intent: str) -> bool:
+    """True for `@alfred setup board`, not `create task for … board …`."""
+    text = (intent or "").strip()
+    if not text or looks_like_slack_board_create(text):
+        return False
+    return bool(_SETUP_BOARD_RE.search(text))
+
+
+def extract_setup_board_custom_name(intent: str) -> str:
+    match = _SETUP_BOARD_RE.search(intent or "")
+    return (match.group(1) or "").strip() if match else ""
+
+
+_WHERE_TASK_RE = re.compile(
+    r"\bwhere\b.{0,24}\b(?:is|are|did|was)\b.{0,24}\b(?:the\s+)?(?:task|it|ticket)\b"
+    r"|\bwhere\b.{0,20}\b(?:task|ticket)\b.{0,20}\b(?:created|go|land)\b",
+    re.I,
+)
+
+
+def looks_like_board_where_question(intent: str) -> bool:
+    return bool(_WHERE_TASK_RE.search(intent or ""))
 
 
 def looks_like_slack_board_update(intent: str) -> bool:

@@ -23,6 +23,7 @@ from backend.routing.slack_board_intent import (
     extract_task_title,
     extract_ticket_ref,
     is_placeholder_list_id,
+    looks_like_board_where_question,
     looks_like_slack_board_create,
     looks_like_slack_board_followup,
     looks_like_slack_board_update,
@@ -34,9 +35,10 @@ logger = logging.getLogger(__name__)
 
 _SEVERITY_RE = re.compile(r"\b(p0|p1|p2|p3)\b", re.I)
 _TICKET_REF_IN_TEXT_RE = re.compile(r"\b((?:TS|BUG|TK|T)-\d+|Rec[A-Za-z0-9]+)\b", re.I)
+_ASSIGN_ME_RE = re.compile(r"\bassign\b.{0,24}\b(?:it\s+)?to\s+me\b", re.I)
 
 
-def extract_board_create_fields(task: Task) -> dict[str, str]:
+def extract_board_create_fields(task: Task, *, bot_user_id: str = "") -> dict[str, str]:
     """Parse title, severity, and assignee from a create-task message."""
     intent = task.cleaned_intent or task.raw_text or ""
     title = extract_task_title(intent).strip()
@@ -55,9 +57,13 @@ def extract_board_create_fields(task: Task) -> dict[str, str]:
         flags=re.I,
     ).strip(" .,:;-")
     assignee_user_id = ""
-    user_ids = extract_slack_user_ids(task.raw_text or intent)
-    if user_ids:
-        assignee_user_id = user_ids[-1]
+    if _ASSIGN_ME_RE.search(intent) and task.user_id:
+        assignee_user_id = task.user_id
+    else:
+        user_ids = extract_slack_user_ids(task.raw_text or intent)
+        user_ids = [uid for uid in user_ids if uid and uid != bot_user_id]
+        if user_ids:
+            assignee_user_id = user_ids[-1]
     return {
         "title": title[:200],
         "severity": severity,
@@ -69,8 +75,11 @@ def format_board_task_created(result: dict[str, Any], *, severity: str = "", ass
     display_id = result.get("display_id") or ""
     title = result.get("title") or "Task"
     status = result.get("status") or "Not picked"
+    list_id = result.get("list_id") or ""
+    list_name = result.get("list_name") or result.get("board") or "board"
     lines = [
         f"Created board task **{display_id or result.get('record_id')}** — *{title}*",
+        f"- List: **{list_name}** (`{list_id}`)" if list_id else f"- Board: `{list_name}`",
         f"- Status: `{status}`",
     ]
     if severity:
@@ -78,6 +87,9 @@ def format_board_task_created(result: dict[str, Any], *, severity: str = "", ass
     if assignee_user_id:
         lines.append(f"- Assignee: `<@{assignee_user_id}>`")
     lines.append(f"- Record: `{result.get('record_id')}`")
+    open_url = (result.get("open_url") or "").strip()
+    if open_url:
+        lines.append(f"- Open List: {open_url}")
     return "\n".join(lines)
 
 
@@ -216,7 +228,7 @@ def try_slack_board_create_direct(
             board = board.model_copy(update={"list_id": bound_list_id})
             store.clear_schema_cache(bound_list_id)
 
-    fields = extract_board_create_fields(task)
+    fields = extract_board_create_fields(task, bot_user_id=_bot_user_id(client))
     title = fields["title"]
     if not title and references_thread_context(task.cleaned_intent or ""):
         title = (task.cleaned_intent or "Slack thread task")[:120].strip()
@@ -260,6 +272,15 @@ def try_slack_board_create_direct(
         logger.exception("Direct Slack board create failed")
         return AssistantResponse.error(f"Could not create board task: {exc}"), {}
 
+    from backend.integrations.slack.lists_client import list_open_url
+
+    list_name = str((binding or {}).get("list_name") or board.name or "")
+    result = {
+        **result,
+        "list_name": list_name,
+        "open_url": list_open_url(client, result.get("list_id") or "") if result.get("list_id") else "",
+    }
+
     body = format_board_task_created(
         result,
         severity=fields["severity"],
@@ -272,6 +293,9 @@ def try_slack_board_create_direct(
             "title": result.get("title"),
             "status": result.get("status"),
             "board": result.get("board"),
+            "list_id": result.get("list_id"),
+            "list_name": result.get("list_name"),
+            "open_url": result.get("open_url"),
         }
     }
     return AssistantResponse.from_text(body), metadata
@@ -395,6 +419,70 @@ def try_slack_board_update_direct(
     return AssistantResponse.from_text(body), metadata
 
 
+def try_slack_board_where_direct(
+    task: Task,
+    config: AlfredConfig,
+    data_dir: Any,
+    *,
+    session: Any | None = None,
+) -> AssistantResponse | None:
+    """Answer 'where is the task?' using the latest session task and List binding."""
+    if task.source != "slack" or not config.slack.enabled:
+        return None
+    if not looks_like_board_where_question(task.cleaned_intent or ""):
+        return None
+
+    last = dict((session.metadata or {}).get("last_board_task") or {}) if session else {}
+    if not last.get("display_id") and not last.get("record_id"):
+        return AssistantResponse.from_text(
+            "I don't see a task created in this thread yet. "
+            "Ask `@alfred create task for …` first."
+        )
+
+    display = last.get("display_id") or last.get("record_id")
+    title = last.get("title") or "Task"
+    status = last.get("status") or "Not picked"
+    list_id = str(last.get("list_id") or "").strip()
+    list_name = str(last.get("list_name") or last.get("board") or "board")
+    open_url = str(last.get("open_url") or "").strip()
+
+    if not list_id and task.channel_id:
+        binding = fresh_board_binding_for_channel(data_dir, task.channel_id or "")
+        if binding:
+            list_id = str(binding.get("list_id") or "").strip()
+            list_name = str(binding.get("list_name") or list_name)
+
+    verify_note = ""
+    token = (config.slack.bot_token or "").strip()
+    record_id = str(last.get("record_id") or "").strip()
+    if token and list_id and record_id:
+        from slack_sdk import WebClient
+
+        from backend.integrations.slack.lists_client import get_item
+
+        client = WebClient(token=token)
+        if get_item(client, list_id, record_id) is None:
+            verify_note = (
+                f"\n\nNote: Slack API could not read record `{record_id}` in List `{list_id}`. "
+                "Run `@alfred show board config` and confirm the channel List tab uses that id."
+            )
+        elif not open_url:
+            from backend.integrations.slack.lists_client import list_open_url
+
+            open_url = list_open_url(client, list_id)
+
+    lines = [
+        f"**{display}** — *{title}* is on List **{list_name}** (`{list_id or 'unknown'}`).",
+        f"Status: `{status}`. Record: `{last.get('record_id') or display}`.",
+    ]
+    if open_url:
+        lines.append(f"Open List: {open_url}")
+    body = "\n".join(lines)
+    if verify_note:
+        body += verify_note
+    return AssistantResponse.from_text(body)
+
+
 def try_slack_board_status_followup(
     task: Task,
     config: AlfredConfig,
@@ -428,9 +516,15 @@ def try_slack_board_status_followup(
         display = last.get("display_id") or last.get("record_id")
         title = last.get("title") or "Task"
         status = last.get("status") or "Not picked"
-        return AssistantResponse.from_text(
-            f"Yes — **{display}** is on the board: *{title}* (status `{status}`)."
-        )
+        list_id = str(last.get("list_id") or "").strip()
+        list_name = str(last.get("list_name") or last.get("board") or "board")
+        open_url = str(last.get("open_url") or "").strip()
+        lines = [
+            f"Yes — **{display}** is on List **{list_name}** (`{list_id or 'unknown'}`): *{title}* (status `{status}`).",
+        ]
+        if open_url:
+            lines.append(f"Open List: {open_url}")
+        return AssistantResponse.from_text("\n".join(lines))
 
     return AssistantResponse.from_text(
         "I don't see a task created in this thread yet. "

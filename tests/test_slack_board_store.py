@@ -50,3 +50,19 @@ def test_next_display_id_increments(tmp_path: Path):
     store = SlackBoardStore(tmp_path)
     assert store.next_display_id(channel_id="C001", prefix="TS") == "TS-1"
     assert store.next_display_id(channel_id="C001", prefix="TS") == "TS-2"
+
+
+def test_peek_display_id_does_not_consume(tmp_path: Path):
+    from backend.db.slack_workflows_db import db_create_board_binding
+
+    db_create_board_binding(
+        tmp_path,
+        board_key="bugs",
+        list_id="F001",
+        channel_id="C001",
+    )
+    store = SlackBoardStore(tmp_path)
+    assert store.peek_display_id(channel_id="C001", prefix="TS") == "TS-1"
+    assert store.peek_display_id(channel_id="C001", prefix="TS") == "TS-1"
+    assert store.next_display_id(channel_id="C001", prefix="TS") == "TS-1"
+    assert store.peek_display_id(channel_id="C001", prefix="TS") == "TS-2"

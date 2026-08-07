@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+import time
 from typing import Any
 
 logger = logging.getLogger(__name__)
@@ -404,6 +405,7 @@ def provision_alfred_board_list(
     list_name: str,
     description: str = "Task board managed by Alfred.",
     requesting_user_id: str = "",
+    schema_cache: Any | None = None,
 ) -> tuple[str, list[str], str]:
     """Create a List Alfred owns, grant access, verify create works."""
     created = create_list(
@@ -413,6 +415,9 @@ def provision_alfred_board_list(
         schema=alfred_board_list_schema(include_display_id=True),
     )
     list_id = created["list_id"]
+    schema = _schema_from_list_metadata(created.get("list_metadata") or {})
+    if schema and schema_cache is not None:
+        schema_cache.set_schema_cache(list_id, schema)
     grant_notes = grant_list_access(
         client,
         list_id,
@@ -558,6 +563,31 @@ def list_columns(client: Any, list_id: str) -> list[dict[str, Any]]:
             return schema
 
     raise SlackListAccessError(list_access_error_message(list_id))
+
+
+def confirm_item_visible(
+    client: Any,
+    list_id: str,
+    record_id: str,
+    *,
+    retries: int = 3,
+    delay_seconds: float = 0.4,
+) -> bool:
+    """Return True when the record is readable back from the List API."""
+    rid = (record_id or "").strip()
+    lid = (list_id or "").strip()
+    if not rid or not lid:
+        return False
+    attempts = max(1, retries)
+    for attempt in range(attempts):
+        if get_item(client, lid, rid) is not None:
+            return True
+        items = list_items(client, lid, limit=100)
+        if any(_record_id_from_item(item) == rid for item in items):
+            return True
+        if attempt + 1 < attempts:
+            time.sleep(delay_seconds)
+    return False
 
 
 def get_item(client: Any, list_id: str, record_id: str) -> dict[str, Any] | None:

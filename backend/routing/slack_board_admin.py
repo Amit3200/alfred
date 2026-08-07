@@ -20,7 +20,11 @@ from backend.integrations.slack.board_keys import (
     derive_list_name,
     fetch_slack_channel_name,
 )
-from backend.routing.slack_board_intent import is_placeholder_list_id
+from backend.routing.slack_board_intent import (
+    extract_setup_board_custom_name,
+    is_placeholder_list_id,
+    looks_like_setup_board_command,
+)
 from backend.models.config import AlfredConfig
 from backend.models.response import AssistantResponse
 from backend.models.task import Task
@@ -53,12 +57,7 @@ _CONFIG_STATUS_RE = re.compile(
     r"|\b(?:does|do)\s+(?:this|alfred|we)\b.{0,30}\b(?:track|assign)\b.{0,20}\b(?:task|ticket)\b",
     re.I,
 )
-_SETUP_BOARD_RE = re.compile(
-    r"\b(?:setup|set\s*up|create|provision|initialize|init)\b.{0,24}\b(?:board|list)\b"
-    r"(?:\s+(?:named|called)\s+[\"']?([^\"'\n]{2,60})[\"']?)?"
-    r"|\b(?:setup|set\s*up|create|provision)\b.{0,10}\b(?:this|the)\b.{0,10}\b(?:channel\s+)?(?:board|list)\b",
-    re.I,
-)
+
 _SHARE_BOARD_RE = re.compile(
     r"\bshare\b.{0,40}\b(?:the\s+)?(?:board|list)\b",
     re.I,
@@ -300,7 +299,7 @@ def try_slack_board_admin_command(
             lines.extend(["", "Notes:", *[f"- {note}" for note in share_notes]])
         return AssistantResponse.from_text("\n".join(lines))
 
-    if _SETUP_BOARD_RE.search(text):
+    if looks_like_setup_board_command(text):
         token = (config.slack.bot_token or "").strip()
         if not token:
             return AssistantResponse.from_text(
@@ -308,6 +307,7 @@ def try_slack_board_admin_command(
             )
         from slack_sdk import WebClient
 
+        from backend.db.slack_board_store import SlackBoardStore
         from backend.integrations.slack.lists_client import (
             ALFRED_BOARD_COLUMN_MAP,
             SlackListAccessError,
@@ -316,21 +316,40 @@ def try_slack_board_admin_command(
             try_add_list_bookmark,
         )
 
-        name_match = _SETUP_BOARD_RE.search(text)
-        custom_name = (name_match.group(1) or "").strip() if name_match else ""
+        existing = db_get_board_binding_for_channel(data_dir, channel_id)
+        force_new = bool(re.search(r"\b(?:force|new|replace)\b", text, re.I))
+        client = WebClient(token=token)
+        if existing and not force_new:
+            list_id = str(existing.get("list_id") or "")
+            list_name = str(existing.get("list_name") or existing.get("board_key") or "board")
+            open_url = list_open_url(client, list_id) if list_id else ""
+            lines = [
+                f"This channel is already linked to List **`{list_name}`** (`{list_id}`).",
+                "",
+                "Tasks are added to **that** List — your channel tab may show a different one.",
+                "Copy **F…** from the channel tab URL and run `@alfred link board to F…` to use the tab you see.",
+                "",
+                "Try **`@alfred create task for smoke test`** now.",
+            ]
+            if open_url:
+                lines.extend(["", f"**Open linked List:** {open_url}"])
+            return AssistantResponse.from_text("\n".join(lines))
+
+        custom_name = extract_setup_board_custom_name(text)
         channel_name = fetch_slack_channel_name(config, channel_id)
         list_name = custom_name or derive_list_name(
             channel_name=channel_name,
             channel_id=channel_id,
         )
         board_key = derive_board_key(channel_name=channel_name, channel_id=channel_id)
-        client = WebClient(token=token)
+        store = SlackBoardStore(data_dir) if data_dir else SlackBoardStore(None)
         try:
             list_id, grant_notes, open_url = provision_alfred_board_list(
                 client,
                 channel_id=channel_id,
                 list_name=list_name,
                 requesting_user_id=task.user_id or "",
+                schema_cache=store,
             )
         except SlackListAccessError as exc:
             return AssistantResponse.from_text(str(exc))
@@ -368,6 +387,9 @@ def try_slack_board_admin_command(
             f"- Display prefix: `{binding['display_id_prefix']}` → next id `{binding['display_id_prefix']}-{binding['next_display_num']}`",
             "",
             "Try **`@alfred create task for smoke test`** now.",
+            "",
+            "**Important:** If this channel already has a List tab, open it and copy **F…** from the URL, "
+            "then run `@alfred link board to F…` so tasks appear where you look.",
             "",
             "**Open the List:**",
             f"- Direct link: {open_url}" if open_url else f"- List id: `{list_id}`",
