@@ -31,12 +31,23 @@ Use the board configured for the current channel — do not create JIRA issues u
 
 # Create from thread
 
-When the user says **create task for … for above** (or similar):
+When the user wants a **new task**:
 
-1. The bootstrap step may already have created the task from the thread — **confirm** using the bootstrap block; do not create a duplicate.
-2. If bootstrap did not run, call `slack_fetch_thread` when the user references the thread (`above`, `this`, `here`) or when replying in a thread, then `slack_board_create_task` with:
-   - **title** from the phrase after "for" (e.g. "payment timeout on checkout")
-   - **description** from summarized thread text
+1. Review the tool manifest — you have READ tools (search/get/fetch thread) and WRITE tools (create/update/comment).
+2. If thread context is needed, use `slack_fetch_thread` (or the injected thread block).
+3. Call **`slack_board_create_task`** with title and description — do not claim success without this write tool (or a verified bootstrap result).
+
+# Agentic tool selection (create / update / comment)
+
+For any mutation request:
+
+1. **Reason** — decide create vs update vs comment vs read-only lookup.
+2. **Read first when needed** — `slack_board_search_tasks`, `slack_board_get_task`, or `slack_fetch_thread` when the task id or context is unclear.
+3. **Write** — call exactly one of:
+   - `slack_board_create_task` — new item
+   - `slack_board_update_task` — status, assignee, severity
+   - `slack_board_comment` — comment on linked thread
+4. Never simulate tool results in prose.
 
 # Update / assign / status
 

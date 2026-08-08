@@ -96,6 +96,50 @@ def bootstrap_slack_board_create(
     return "\n".join(lines)
 
 
+def bootstrap_slack_board_thread_context(
+    client: Any,
+    config: Any,
+    *,
+    task: Any,
+    data_dir: Path | None,
+) -> str:
+    """Fetch thread context for the agent without creating a task."""
+    if not board_enabled(config, data_dir):
+        return "Slack board workflows are disabled in config."
+
+    board = resolve_board_for_task(config, task, data_dir=data_dir)
+    if board is None:
+        return "No Slack board configured for this channel — link a List in Settings → Slack boards."
+
+    in_thread = bool(task.channel_id and task.thread_ts)
+    if not in_thread:
+        return (
+            "## Slack thread context\n"
+            "No thread attached — use the user message for the task title and description."
+        )
+
+    try:
+        messages = fetch_thread_messages(
+            client,
+            task,
+            limit=50,
+            bot_user_id=_bot_user_id(client),
+        )
+        description = build_thread_description(messages_to_text(messages))
+    except Exception as exc:
+        logger.warning("Thread fetch for board create failed: %s", exc)
+        return f"Thread context unavailable: {exc}"
+
+    return "\n".join(
+        [
+            "## Slack thread context (for task create/update)",
+            description[:4000],
+            "",
+            "Call `slack_fetch_thread` if you need fresher context, then the appropriate WRITE tool.",
+        ]
+    )
+
+
 def inject_slack_board_bootstrap_message(
     messages: list[Message],
     client: Any,
@@ -103,25 +147,36 @@ def inject_slack_board_bootstrap_message(
     *,
     task: Any,
     data_dir: Path | None,
+    auto_create: bool = False,
 ) -> list[Message]:
-    bootstrap = bootstrap_slack_board_create(
-        client,
-        config,
-        task=task,
-        data_dir=data_dir,
-    )
-    out = list(messages)
-    out.append(
-        Message(
-            role="user",
-            content=(
-                f"{bootstrap}\n\n"
-                "Using ONLY the result above, confirm the task was created. "
-                "Include the display id (if any), record id, title, and status. "
-                "Do not claim success if the bootstrap reports failure."
-            ),
+    if auto_create:
+        bootstrap = bootstrap_slack_board_create(
+            client,
+            config,
+            task=task,
+            data_dir=data_dir,
         )
-    )
+        user_content = (
+            f"{bootstrap}\n\n"
+            "Using ONLY the result above, confirm the task was created. "
+            "Include the display id (if any), record id, title, and status. "
+            "Do not claim success if the bootstrap reports failure."
+        )
+    else:
+        bootstrap = bootstrap_slack_board_thread_context(
+            client,
+            config,
+            task=task,
+            data_dir=data_dir,
+        )
+        user_content = (
+            f"{bootstrap}\n\n"
+            "Review the thread context, then call the appropriate WRITE tool "
+            "(`slack_board_create_task`, `slack_board_update_task`, or `slack_board_comment`). "
+            "Use READ tools first only if you still need task lookup."
+        )
+    out = list(messages)
+    out.append(Message(role="user", content=user_content))
     return out
 
 

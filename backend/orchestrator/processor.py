@@ -261,13 +261,13 @@ class TaskProcessor:
                 return self._finish_response(update_response, metadata_patch=update_meta or None)
 
             if self.config.routing.tool_planner_enabled:
-                from backend.routing.slack_board_llm_router import try_slack_board_llm_direct
+                from backend.routing.slack_board_agent import seed_slack_board_agent_plan
                 from backend.routing.tool_planner import planner_llm_enabled
 
                 if planner_llm_enabled(self.config):
                     set_call_kind("skill_matching")
                     _, planner_provider, planner_model = self._resolve_llm("skill_matching")
-                    llm_response, llm_meta = try_slack_board_llm_direct(
+                    llm_meta = seed_slack_board_agent_plan(
                         task,
                         self.config,
                         self._data_dir_path(),
@@ -276,24 +276,10 @@ class TaskProcessor:
                         provider=planner_provider,
                         model=planner_model,
                     )
-                    if llm_response is not None:
-                        if llm_meta and session:
-                            session.metadata.update(llm_meta)
-                            if session_key and self.session_store:
-                                self.session_store.save(session)
+                    if llm_meta and session:
+                        session.metadata.update(llm_meta)
                         if session_key and self.session_store:
-                            rendered = render_for_channel(llm_response, channel)
-                            self.session_store.append_exchange(
-                                session_key,
-                                source=task.source,
-                                scope_id=task.channel_id,
-                                thread_id=task.thread_ts or "",
-                                user_content=task.cleaned_intent,
-                                assistant_content=rendered,
-                                assistant_payload=llm_response.payload,
-                                metadata_patch=llm_meta or None,
-                            )
-                        return self._finish_response(llm_response, metadata_patch=llm_meta or None)
+                            self.session_store.save(session)
 
         if (
             self.config.governance.enabled
@@ -1039,6 +1025,14 @@ class TaskProcessor:
         from backend.routing.chat_persona import normalize_persona, resolve_effective_persona
         from backend.routing.tool_planner import planner_llm_enabled, resolve_tool_plan
 
+        if session:
+            forced_skill = str(session.metadata.get("force_investigation_skill") or "").strip()
+            if forced_skill:
+                skill = self._playbooks.get_by_name(forced_skill)
+                if skill is not None:
+                    logger.info("Forced investigation skill from board agent seed: %s", forced_skill)
+                    return skill
+
         persona = resolve_effective_persona(task, session) if task.source == "ui" else "all"
         if normalize_persona(persona) == "support":
             skill = self._playbooks.get_by_name("repo_knowledge")
@@ -1062,6 +1056,7 @@ class TaskProcessor:
                 skill_allowed=None,
                 data_dir=data_dir,
                 playbook_store=self._playbooks,
+                session_metadata=dict(session.metadata if session else {}),
             )
             if plan and plan.confidence >= routing.tool_planner_min_confidence:
                 skill = resolve_policy_skill(
@@ -1281,6 +1276,11 @@ class TaskProcessor:
 
         if plan.intent_class == "repo.docs.qa" and tool_name == "search_repo_docs":
             # Doc Q&A uses LangGraph worker (search → read → grounded answer), not the BM25 fast path.
+            return None, None
+
+        from backend.routing.slack_board_agent import SLACK_BOARD_WRITE_TOOLS
+
+        if tool_name in SLACK_BOARD_WRITE_TOOLS:
             return None, None
 
         if not skill.allowed_tools or tool_name not in skill.allowed_tools:
@@ -1595,16 +1595,28 @@ class TaskProcessor:
         set_call_kind("skill_matching")
         _, provider, model = self._resolve_llm("skill_matching")
 
-        plan = resolve_tool_plan(
-            self.config,
-            task,
-            route_context,
-            provider=provider if planner_llm_enabled(self.config) else None,
-            model=model or None,
-            skill_allowed=skill_allowed or None,
-            data_dir=self._data_dir_path(),
-            playbook_store=self._playbooks,
-        )
+        from backend.routing.slack_board_agent import clear_board_agent_plan_seed, seeded_board_agent_plan
+
+        plan = seeded_board_agent_plan(session)
+        used_seed = plan is not None
+        if used_seed:
+            logger.info(
+                "Using seeded board agent plan intent=%s confidence=%.2f",
+                plan.intent_class,
+                plan.confidence,
+            )
+        else:
+            plan = resolve_tool_plan(
+                self.config,
+                task,
+                route_context,
+                provider=provider if planner_llm_enabled(self.config) else None,
+                model=model or None,
+                skill_allowed=skill_allowed or None,
+                data_dir=self._data_dir_path(),
+                playbook_store=self._playbooks,
+                session_metadata=dict(session.metadata if session else {}),
+            )
 
         registry = build_git_tool_registry(
             self.config,
@@ -1624,6 +1636,11 @@ class TaskProcessor:
                 binding.allowed_tools,
                 registered=set(registry._tools.keys()),
             )
+        if used_seed and session:
+            clear_board_agent_plan_seed(session)
+            seed_key = task_session_key(task)
+            if seed_key and self.session_store:
+                self.session_store.save(session)
         return binding
 
     def _record_routing_trace(
@@ -1761,24 +1778,28 @@ class TaskProcessor:
                 session_key=task_session_key(task),
             )
 
-        if goal_spec and goal_spec.intent_class == "slack.board.create":
+        if goal_spec and goal_spec.intent_class.startswith("slack.board."):
             from backend.routing.slack_board_bootstrap import inject_slack_board_bootstrap_message
-            from backend.routing.slack_board_prompt import slack_board_create_addendum
+            from backend.routing.slack_board_prompt import slack_board_agentic_addendum
             from slack_sdk import WebClient
 
             if messages and messages[0].role == "system":
                 messages[0] = Message(
                     role="system",
-                    content=f"{messages[0].content.rstrip()}{slack_board_create_addendum()}",
+                    content=(
+                        f"{messages[0].content.rstrip()}"
+                        f"{slack_board_agentic_addendum(intent_class=goal_spec.intent_class)}"
+                    ),
                 )
             token = (self.config.slack.bot_token or "").strip()
-            if token:
+            if token and goal_spec.intent_class == "slack.board.create":
                 messages = inject_slack_board_bootstrap_message(
                     messages,
                     WebClient(token=token),
                     self.config,
                     task=task,
                     data_dir=self._data_dir_path(),
+                    auto_create=False,
                 )
 
         if skill.mode in ("investigation", "workflow") and skill.name != "plan_task":

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from backend.routing.slack_board_agent import SLACK_BOARD_READ_TOOLS, SLACK_BOARD_WRITE_TOOLS
 from backend.tools.catalog import (
     AWS_TOOLS,
     COMPANY_SCRIPT_TOOLS,
@@ -135,10 +136,29 @@ def format_tool_manifest(
         "",
         "You have EXACTLY these tools:",
     ]
-    for name in allowed:
-        desc = _TOOL_DESCRIPTIONS.get(name, "")
-        suffix = f" — {desc}" if desc else ""
-        lines.append(f"- `{name}`{suffix}")
+    read_tools = [n for n in allowed if n in SLACK_BOARD_READ_TOOLS]
+    write_tools = [n for n in allowed if n in SLACK_BOARD_WRITE_TOOLS]
+    other_tools = [n for n in allowed if n not in read_tools and n not in write_tools]
+
+    def _append_tools(label: str, names: list[str]) -> None:
+        if not names:
+            return
+        lines.append("")
+        lines.append(f"**{label}:**")
+        for name in sorted(names):
+            desc = _TOOL_DESCRIPTIONS.get(name, "")
+            suffix = f" — {desc}" if desc else ""
+            lines.append(f"- `{name}`{suffix}")
+
+    _append_tools("READ (lookup / context)", read_tools)
+    _append_tools("WRITE (mutations — required for create/update/comment)", write_tools)
+    if other_tools:
+        _append_tools("Other", other_tools)
+    if not read_tools and not write_tools and not other_tools:
+        for name in allowed:
+            desc = _TOOL_DESCRIPTIONS.get(name, "")
+            suffix = f" — {desc}" if desc else ""
+            lines.append(f"- `{name}`{suffix}")
 
     if registered_tools is not None:
         missing_common = [

@@ -65,15 +65,34 @@ def goal_spec_from_plan(plan: ToolPlan | None) -> GoalSpec | None:
     if plan.intent_class == "slack.board.create":
         criteria.extend(
             [
-                "Confirm task creation from bootstrap or slack_board_create_task result",
+                "Review scoped board tools in manifest before acting",
+                "Use slack_fetch_thread when thread context is needed",
+                "Call slack_board_create_task for the mutation unless bootstrap already succeeded",
                 "Include display id, record id, title, and status when present",
                 "Do not invent task ids",
+            ]
+        )
+    if plan.intent_class == "slack.board.update":
+        criteria.extend(
+            [
+                "Review scoped board tools in manifest before acting",
+                "Use slack_board_search_tasks or slack_board_get_task when task id is unclear",
+                "Call slack_board_update_task for status/assignee/severity changes",
+                "Do not invent task ids",
+            ]
+        )
+    if plan.intent_class == "slack.board.comment":
+        criteria.extend(
+            [
+                "Use read tools to resolve task id when needed",
+                "Call slack_board_comment for the mutation",
             ]
         )
     if plan.intent_class.startswith("slack.board."):
         requires_write = requires_write or plan.intent_class in (
             "slack.board.create",
             "slack.board.update",
+            "slack.board.comment",
         )
 
     failure = plan.goal

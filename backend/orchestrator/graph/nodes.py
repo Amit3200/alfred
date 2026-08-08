@@ -64,17 +64,28 @@ def plan_tools_node(state: AlfredGraphState, config: RunnableConfig) -> dict[str
     processor = runtime.processor
     skill = runtime.active_skill
 
-    _, planner_provider, planner_model = processor._resolve_llm("skill_matching")
-    plan = resolve_tool_plan(
-        processor.config,
-        runtime.task,
-        runtime.route_context,
-        provider=planner_provider if planner_llm_enabled(processor.config) else None,
-        model=planner_model or None,
-        skill_allowed=list(skill.allowed_tools or []),
-        data_dir=processor._data_dir_path(),
-        playbook_store=processor._playbooks,
-    )
+    from backend.routing.slack_board_agent import seeded_board_agent_plan
+
+    plan = seeded_board_agent_plan(runtime.session)
+    if plan is None:
+        _, planner_provider, planner_model = processor._resolve_llm("skill_matching")
+        plan = resolve_tool_plan(
+            processor.config,
+            runtime.task,
+            runtime.route_context,
+            provider=planner_provider if planner_llm_enabled(processor.config) else None,
+            model=planner_model or None,
+            skill_allowed=list(skill.allowed_tools or []),
+            data_dir=processor._data_dir_path(),
+            playbook_store=processor._playbooks,
+            session_metadata=dict(getattr(runtime.session, "metadata", None) or {}),
+        )
+    else:
+        logger.info(
+            "LangGraph using seeded board agent plan intent=%s confidence=%.2f",
+            plan.intent_class,
+            plan.confidence,
+        )
 
     policy_skill = resolve_policy_skill(
         plan,
@@ -265,28 +276,35 @@ def run_worker_node(state: AlfredGraphState, config: RunnableConfig) -> dict[str
         )
         log_checkpoint("doc_bootstrap", "search_and_read", "completed")
 
-    if plan and plan.intent_class == "slack.board.create":
-        from backend.routing.slack_board_bootstrap import inject_slack_board_bootstrap_message
-        from backend.routing.slack_board_prompt import slack_board_create_addendum
-        from slack_sdk import WebClient
+    if plan:
+        from backend.routing.slack_board_agent import is_slack_board_write_intent
 
-        if messages and messages[0].role == "system":
-            messages[0] = Message(
-                role="system",
-                content=f"{messages[0].content.rstrip()}{slack_board_create_addendum()}",
-            )
-        token = (processor.config.slack.bot_token or "").strip()
-        slack_client = WebClient(token=token) if token else None
-        if slack_client:
-            log_checkpoint("board_bootstrap", "thread_and_create", "started")
-            messages = inject_slack_board_bootstrap_message(
-                messages,
-                slack_client,
-                processor.config,
-                task=runtime.task,
-                data_dir=processor._data_dir_path(),
-            )
-            log_checkpoint("board_bootstrap", "thread_and_create", "completed")
+        if is_slack_board_write_intent(plan.intent_class):
+            from backend.routing.slack_board_bootstrap import inject_slack_board_bootstrap_message
+            from backend.routing.slack_board_prompt import slack_board_agentic_addendum
+            from slack_sdk import WebClient
+
+            if messages and messages[0].role == "system":
+                messages[0] = Message(
+                    role="system",
+                    content=(
+                        f"{messages[0].content.rstrip()}"
+                        f"{slack_board_agentic_addendum(intent_class=plan.intent_class)}"
+                    ),
+                )
+            token = (processor.config.slack.bot_token or "").strip()
+            slack_client = WebClient(token=token) if token else None
+            if slack_client and plan.intent_class == "slack.board.create":
+                log_checkpoint("board_bootstrap", "thread_context", "started")
+                messages = inject_slack_board_bootstrap_message(
+                    messages,
+                    slack_client,
+                    processor.config,
+                    task=runtime.task,
+                    data_dir=processor._data_dir_path(),
+                    auto_create=False,
+                )
+                log_checkpoint("board_bootstrap", "thread_context", "completed")
 
     log_checkpoint("agent_loop_start", runner, "started")
 
