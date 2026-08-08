@@ -33,6 +33,17 @@ def test_create_task_to_title():
     assert extract_task_title(intent) == "talk to CottonThreads"
 
 
+def test_create_task_dash_title():
+    intent = "create a task - Smoke Test Integration of slack"
+    assert looks_like_slack_board_create(intent)
+    assert extract_task_title(intent) == "Smoke Test Integration of slack"
+
+
+def test_create_task_colon_title():
+    intent = "create task: merchant onboarding follow-up"
+    assert extract_task_title(intent) == "merchant onboarding follow-up"
+
+
 def test_board_create_title_followup():
     from backend.routing.slack_board_intent import (
         extract_board_title_followup,

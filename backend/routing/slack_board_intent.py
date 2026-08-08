@@ -123,6 +123,12 @@ _TITLE_TO_RE = re.compile(
     r"(.+?)(?:\s+and\s+assign\b|\s*$)",
     re.I,
 )
+_TITLE_SEP_RE = re.compile(
+    r"\b(?:create|add|open|file)\b.{0,20}\b(?:a\s+)?(?:task|ticket)\b\s*"
+    r"(?:[-–—:|]\s*|\b(?:named|called|titled)\s+)"
+    r"(.+?)(?:\s+and\s+assign\b|\s*$)",
+    re.I,
+)
 _BOARD_TITLE_PROMPT_MARKERS = (
     "what should the task be called",
     "what should the task be named",
@@ -305,6 +311,11 @@ def extract_task_title(intent: str) -> str:
     to_match = _TITLE_TO_RE.search(text)
     if to_match:
         title = _clean_title(to_match.group(1))
+        if title:
+            return title
+    sep_match = _TITLE_SEP_RE.search(text)
+    if sep_match:
+        title = _clean_title(sep_match.group(1))
         if title:
             return title
     quoted = re.search(r"['\"]([^'\"]{3,200})['\"]", text)

@@ -213,6 +213,19 @@ def try_slack_board_create_direct(
             {},
         )
 
+    if not title_followup and not title_override and force_intent_class != "slack.board.create":
+        preliminary_title = extract_task_title(intent)
+        if not preliminary_title:
+            preliminary_title = extract_task_title(task.raw_text or "")
+        if not preliminary_title and not references_thread_context(intent):
+            return (
+                AssistantResponse.from_text(
+                    "What should the task be called? Reply with the title, for example: "
+                    "**Talk to CottonThreads** or `@alfred create task for payment delay`."
+                ),
+                {"pending_board_create": True},
+            )
+
     token = (config.slack.bot_token or "").strip()
     if not token:
         return AssistantResponse.error("Slack bot token is not configured."), {}
@@ -264,7 +277,7 @@ def try_slack_board_create_direct(
         return (
             AssistantResponse.from_text(
                 "What should the task be called? Reply with the title, for example: "
-                "**Talk to CottonThreads** or `@alfred create task for payment timeout`."
+                "**Talk to CottonThreads** or `@alfred create task for payment delay`."
             ),
             {"pending_board_create": True},
         )
