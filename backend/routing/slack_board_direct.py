@@ -186,6 +186,8 @@ def try_slack_board_create_direct(
     *,
     session: Any | None = None,
     session_turns: tuple[str, ...] = (),
+    force_intent_class: str = "",
+    title_override: str = "",
 ) -> tuple[AssistantResponse | None, dict[str, Any]]:
     """Create a list task immediately when the user asks (Slack only)."""
     if task.source != "slack" or not config.slack.enabled:
@@ -199,7 +201,8 @@ def try_slack_board_create_direct(
         session_metadata=session_meta,
     )
     if not looks_like_slack_board_create(intent) and not title_followup:
-        return None, {}
+        if force_intent_class != "slack.board.create":
+            return None, {}
 
     if not board_enabled(config, data_dir):
         return (
@@ -245,6 +248,10 @@ def try_slack_board_create_direct(
     fields = extract_board_create_fields(task, bot_user_id=_bot_user_id(client))
     if title_followup:
         title = extract_board_title_followup(intent)
+        severity = fields["severity"]
+        assignee_user_id = fields["assignee_user_id"]
+    elif title_override:
+        title = title_override.strip()[:200]
         severity = fields["severity"]
         assignee_user_id = fields["assignee_user_id"]
     else:
@@ -364,12 +371,15 @@ def try_slack_board_update_direct(
     data_dir: Any,
     *,
     session: Any | None = None,
+    force_intent_class: str = "",
+    plan_fields: dict[str, str] | None = None,
 ) -> tuple[AssistantResponse | None, dict[str, Any]]:
     """Update status or assignee immediately when the user asks (Slack only)."""
     if task.source != "slack" or not config.slack.enabled:
         return None, {}
     if not looks_like_slack_board_update(task.cleaned_intent or ""):
-        return None, {}
+        if force_intent_class != "slack.board.update":
+            return None, {}
 
     if not board_enabled(config, data_dir):
         return (
@@ -398,6 +408,9 @@ def try_slack_board_update_direct(
         session_metadata=session_meta,
         bot_user_id=_bot_user_id(client),
     )
+    for key, value in dict(plan_fields or {}).items():
+        if value and key in fields and not fields[key]:
+            fields[key] = value
 
     if not fields["ticket_ref"]:
         return (

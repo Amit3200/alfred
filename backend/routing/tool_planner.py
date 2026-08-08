@@ -341,10 +341,32 @@ def plan_tools_rules(
     return None
 
 
+def _format_planner_session_context(session_metadata: dict[str, Any] | None) -> str:
+    meta = dict(session_metadata or {})
+    lines: list[str] = []
+    if meta.get("pending_board_create"):
+        lines.append("Session: awaiting task title for Slack List create.")
+    last = dict(meta.get("last_board_task") or {})
+    if last:
+        display_id = last.get("display_id") or ""
+        title = last.get("title") or ""
+        record_id = last.get("record_id") or ""
+        if display_id or record_id:
+            lines.append(
+                "Last board task in this thread: "
+                f"{display_id or record_id}"
+                + (f" — {title}" if title else "")
+                + (f" (record {record_id})" if record_id and display_id else "")
+            )
+    return "\n".join(lines)
+
+
 def _build_planner_channel_context(
     config: AlfredConfig | None,
     task: Task,
     data_dir: Any,
+    *,
+    session_metadata: dict[str, Any] | None = None,
 ) -> str:
     if config is None or task.source != "slack" or not task.channel_id:
         return ""
@@ -366,6 +388,9 @@ def _build_planner_channel_context(
         )
     else:
         lines.append("Slack List board: not linked for this channel")
+    session_context = _format_planner_session_context(session_metadata)
+    if session_context:
+        lines.append(session_context)
     return "\n".join(lines)
 
 
@@ -380,6 +405,7 @@ def plan_tools_llm(
     config: AlfredConfig | None = None,
     task: Task | None = None,
     data_dir: Any = None,
+    session_metadata: dict[str, Any] | None = None,
 ) -> ToolPlan | None:
     """LLM tool planner — structured JSON only."""
     catalog_tools = list(skill_allowed) if skill_allowed else all_plannable_tool_names()
@@ -400,7 +426,16 @@ def plan_tools_llm(
     if context.session_turns:
         user_parts.extend(["", "Recent session turns:"])
         user_parts.extend(f"- {t}" for t in context.session_turns[-2:])
-    channel_context = _build_planner_channel_context(config, task, data_dir) if task else ""
+    channel_context = (
+        _build_planner_channel_context(
+            config,
+            task,
+            data_dir,
+            session_metadata=session_metadata,
+        )
+        if task
+        else ""
+    )
     if channel_context:
         user_parts.extend(["", "Channel configuration:", channel_context])
 
@@ -424,6 +459,8 @@ Rules:
 5. Questions about whether THIS Slack channel is configured for task tracking/boards are NOT repo documentation — prefer slack_board_* tools or set tools_needed=[] with intent_class slack.board.config.
 6. Product/runbook/documentation questions use search_repo_docs + read_repo_doc with intent_class repo.docs.qa.
 7. Slack List task create/update/search uses slack_board_* tools with intent_class slack.board.*.
+   Include args_hint on steps: title for create; ticket_ref/display_id, status, assignee_user_id, severity for update.
+   For follow-ups like "assign it to @user", use last board task from session context as ticket_ref when no id in message.
 8. If impossible with catalog, set tools_needed=[] and list missing_capabilities.
 9. Max 6 tools in tools_needed."""
 
@@ -472,6 +509,7 @@ def resolve_tool_plan(
     skill_allowed: list[str] | None = None,
     data_dir: Any = None,
     playbook_store: Any = None,
+    session_metadata: dict[str, Any] | None = None,
 ) -> ToolPlan | None:
     """Resolve tool plan: LLM-first (default) or rules-first (legacy)."""
     if not config.routing.tool_planner_enabled:
@@ -516,7 +554,7 @@ def resolve_tool_plan(
             min_confidence=min_conf,
             config=config,
             task=task,
-            data_dir=data_dir,
+            session_metadata=session_metadata,
         )
         if llm_plan and llm_plan.confidence >= min_conf:
             logger.info(
@@ -570,7 +608,7 @@ def resolve_tool_plan(
             min_confidence=min_conf,
             config=config,
             task=task,
-            data_dir=data_dir,
+            session_metadata=session_metadata,
         )
         if llm_plan:
             return llm_plan

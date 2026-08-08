@@ -260,6 +260,41 @@ class TaskProcessor:
                     )
                 return self._finish_response(update_response, metadata_patch=update_meta or None)
 
+            if self.config.routing.tool_planner_enabled:
+                from backend.routing.slack_board_llm_router import try_slack_board_llm_direct
+                from backend.routing.tool_planner import planner_llm_enabled
+
+                if planner_llm_enabled(self.config):
+                    set_call_kind("skill_matching")
+                    _, planner_provider, planner_model = self._resolve_llm("skill_matching")
+                    llm_response, llm_meta = try_slack_board_llm_direct(
+                        task,
+                        self.config,
+                        self._data_dir_path(),
+                        session=session,
+                        session_turns=session_turns,
+                        provider=planner_provider,
+                        model=planner_model,
+                    )
+                    if llm_response is not None:
+                        if llm_meta and session:
+                            session.metadata.update(llm_meta)
+                            if session_key and self.session_store:
+                                self.session_store.save(session)
+                        if session_key and self.session_store:
+                            rendered = render_for_channel(llm_response, channel)
+                            self.session_store.append_exchange(
+                                session_key,
+                                source=task.source,
+                                scope_id=task.channel_id,
+                                thread_id=task.thread_ts or "",
+                                user_content=task.cleaned_intent,
+                                assistant_content=rendered,
+                                assistant_payload=llm_response.payload,
+                                metadata_patch=llm_meta or None,
+                            )
+                        return self._finish_response(llm_response, metadata_patch=llm_meta or None)
+
         if (
             self.config.governance.enabled
             and gov_patch
