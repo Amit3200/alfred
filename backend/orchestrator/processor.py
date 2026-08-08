@@ -213,6 +213,8 @@ class TaskProcessor:
                 task,
                 self.config,
                 self._data_dir_path(),
+                session=session,
+                session_turns=session_turns,
             )
             if create_response is not None:
                 if board_meta and session:

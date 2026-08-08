@@ -27,6 +27,9 @@ _WRITE_TOOL_PREFIXES = (
     "create_pull",
     "write_file",
     "git_commit",
+    "slack_board_create",
+    "slack_board_update",
+    "slack_board_comment",
 )
 
 
@@ -188,6 +191,12 @@ def validate_agent_result(
         issues.extend(_doc_qa_issues(prose, trace))
 
     if issues:
+        if goal and goal.intent_class.startswith("slack.board."):
+            fallback = (
+                "I couldn't complete that on the Slack List board. "
+                "Try `@alfred create task for …` or `@alfred move ST-1 to in progress`."
+            )
+            return ValidationResult(passed=False, issues=issues, fallback=fallback)
         fallback_parts = [goal.failure_response if goal else "I couldn't verify that response against tool results."]
         if goal and goal.intent_class == "repo.docs.qa":
             fallback_parts.append("Issues: " + "; ".join(issues))

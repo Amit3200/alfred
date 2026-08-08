@@ -82,6 +82,11 @@ def goal_spec_from_plan(plan: ToolPlan | None) -> GoalSpec | None:
             "I couldn't answer from indexed documentation. "
             "Try rephrasing or check Knowledge bases → FlexyPe/docs is indexed."
         )
+    if plan.intent_class.startswith("slack.board."):
+        failure = (
+            "I couldn't complete that on the Slack List board. "
+            "Try `@alfred create task for …` or `@alfred move ST-1 to in progress`."
+        )
     if plan.missing_capabilities:
         failure = (
             f"I can't complete this yet — missing tools: {', '.join(plan.missing_capabilities)}."

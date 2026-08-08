@@ -118,6 +118,15 @@ _TITLE_ON_RE = re.compile(
     r"(.+?)(?:\s+as\s+(?:p0|p1|p2|p3)\b|\s+and\s+assign\b|\s*$)",
     re.I,
 )
+_TITLE_TO_RE = re.compile(
+    r"\b(?:create|add|open|file)\b.{0,20}\b(?:a\s+)?(?:task|ticket)\b\s+to\s+"
+    r"(.+?)(?:\s+and\s+assign\b|\s*$)",
+    re.I,
+)
+_BOARD_TITLE_PROMPT_MARKERS = (
+    "what should the task be called",
+    "what should the task be named",
+)
 _FOLLOWUP_STATUS_RE = re.compile(
     r"\b(?:yes|yep|yeah|ok(?:ay)?)\b.{0,40}\b(?:created|done|there|it)\b"
     r"|\b(?:is|was)\s+it\s+created\b"
@@ -179,6 +188,31 @@ def looks_like_slack_board_create(intent: str) -> bool:
     return bool(_CREATE_TASK_RE.search(intent or ""))
 
 
+def looks_like_board_create_title_followup(
+    intent: str,
+    *,
+    session_turns: tuple[str, ...] = (),
+    session_metadata: dict[str, Any] | None = None,
+) -> bool:
+    """User replied with a task title after Alfred asked for one."""
+    if looks_like_slack_board_create(intent) or looks_like_slack_board_update(intent):
+        return False
+    text = re.sub(r"@alfred\b", "", intent or "", flags=re.I).strip()
+    if not text or len(text) > 200:
+        return False
+    if re.search(r"\b(?:create|setup|link|move|unlink|show)\b.{0,12}\b(?:task|board|list)\b", text, re.I):
+        return False
+    if (session_metadata or {}).get("pending_board_create"):
+        return True
+    combined = "\n".join(session_turns[-8:]).lower()
+    return any(marker in combined for marker in _BOARD_TITLE_PROMPT_MARKERS)
+
+
+def extract_board_title_followup(intent: str) -> str:
+    text = re.sub(r"@alfred\b", "", intent or "", flags=re.I).strip(" .,:;\"'")
+    return text[:200]
+
+
 def looks_like_setup_board_command(intent: str) -> bool:
     """True for `@alfred setup board`, not `create task for … board …`."""
     text = (intent or "").strip()
@@ -209,6 +243,10 @@ def looks_like_slack_board_update(intent: str) -> bool:
         return False
     if re.search(r"\b(?:display\s*)?(?:id\s*)?prefix\b", text, re.I):
         return False
+    if _ASSIGN_RE.search(text) and re.search(
+        r"\bassign\b.{0,16}\b(?:it|this|that|the)\b.{0,12}\bto\b", text, re.I
+    ):
+        return True
     if _BOARD_INLINE_STATUS_RE.search(text):
         return True
     if re.search(r"\bslack\s+board\b", text, re.I) and _TICKET_REF_RE.search(text):
@@ -262,6 +300,11 @@ def extract_task_title(intent: str) -> str:
     on_match = _TITLE_ON_RE.search(text)
     if on_match:
         title = _clean_title(on_match.group(1))
+        if title:
+            return title
+    to_match = _TITLE_TO_RE.search(text)
+    if to_match:
+        title = _clean_title(to_match.group(1))
         if title:
             return title
     quoted = re.search(r"['\"]([^'\"]{3,200})['\"]", text)

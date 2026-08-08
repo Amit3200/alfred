@@ -27,6 +27,30 @@ def test_create_task_on_title():
     assert "revamping" in extract_task_title(intent).lower()
 
 
+def test_create_task_to_title():
+    intent = "create a task to talk to CottonThreads"
+    assert looks_like_slack_board_create(intent)
+    assert extract_task_title(intent) == "talk to CottonThreads"
+
+
+def test_board_create_title_followup():
+    from backend.routing.slack_board_intent import (
+        extract_board_title_followup,
+        looks_like_board_create_title_followup,
+    )
+
+    assert looks_like_board_create_title_followup(
+        "Talk to CottonThreads",
+        session_turns=("What should the task be called?",),
+    )
+    assert extract_board_title_followup("@alfred Talk to CottonThreads") == "Talk to CottonThreads"
+
+
+def test_assign_it_to_detects_board_update():
+    intent = "assign it to @user"
+    assert looks_like_slack_board_update(intent)
+
+
 def test_create_task_simple():
     assert looks_like_slack_board_create("please create task for merchant sync failure")
     assert extract_task_title("create task for merchant sync failure") == "merchant sync failure"
@@ -65,6 +89,24 @@ def test_display_prefix_update_not_board_task_update():
 def test_extract_severity_target():
     intent = "ST-1 is in progress and assign severity to High"
     assert extract_severity_target(intent) == "High"
+
+
+def test_grounding_slack_board_hides_internal_issues():
+    from backend.routing.goal_spec import GoalSpec
+    from backend.routing.grounding_gate import validate_agent_result
+
+    result = validate_agent_result(
+        "Create a Slack List task to talk to CottonThreads on the sales-tracker board.",
+        [],
+        GoalSpec(
+            intent_class="slack.board.create",
+            goal="Create task",
+            requires_write=True,
+        ),
+    )
+    assert not result.passed
+    assert "Issues:" not in result.fallback
+    assert "create task for" in result.fallback.lower()
 
 
 def test_resolve_ticket_ref_from_session():

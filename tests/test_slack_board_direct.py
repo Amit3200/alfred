@@ -466,6 +466,53 @@ def test_direct_assign_uses_session_task_ref(tmp_path: Path):
     assert update_mock.call_args.kwargs["assignee_user_id"] == "U2"
 
 
+def test_direct_create_title_followup(tmp_path: Path):
+    from backend.db.slack_workflows_db import db_create_board_binding
+
+    db_create_board_binding(
+        tmp_path,
+        board_key="sales-tracker",
+        list_id="Fbugs001",
+        channel_id="Ctech",
+    )
+    config = AlfredConfig(slack=SlackConfig(enabled=True, bot_token="xoxb-test"))
+    session = MagicMock()
+    session.metadata = {"pending_board_create": True}
+    task = Task(
+        source="slack",
+        user_id="U1",
+        channel_id="Ctech",
+        raw_text="Talk to CottonThreads",
+        cleaned_intent="Talk to CottonThreads",
+    )
+    fake = {
+        "record_id": "Rec1",
+        "display_id": "ST-3",
+        "title": "Talk to CottonThreads",
+        "status": "Not picked",
+        "board": "sales-tracker",
+        "list_id": "Fbugs001",
+    }
+    with patch(
+        "backend.routing.slack_board_direct.create_board_task",
+        return_value=fake,
+    ) as create_mock:
+        response, meta = try_slack_board_create_direct(
+            task,
+            config,
+            tmp_path,
+            session=session,
+            session_turns=("What should the task be called?",),
+        )
+    assert response is not None
+    text = response.payload.data.get("text") or ""
+    assert "Task created on your board" in text
+    assert "ST-3" in text
+    assert meta.get("pending_board_create") is False
+    create_mock.assert_called_once()
+    assert create_mock.call_args.kwargs["title"] == "Talk to CottonThreads"
+
+
 def test_board_skill_keeps_full_tool_manifest():
     registry = ToolRegistry()
     for name in (

@@ -18,12 +18,14 @@ from backend.models.response import AssistantResponse
 from backend.models.task import Task
 from backend.routing.slack_board_intent import (
     build_thread_description,
+    extract_board_title_followup,
     extract_list_id_override,
     extract_severity_target,
     extract_status_target,
     extract_task_title,
     extract_ticket_ref,
     is_placeholder_list_id,
+    looks_like_board_create_title_followup,
     looks_like_board_where_question,
     looks_like_slack_board_create,
     looks_like_slack_board_followup,
@@ -78,8 +80,9 @@ def format_board_task_created(result: dict[str, Any], *, severity: str = "", ass
     status = result.get("status") or "Not picked"
     list_id = result.get("list_id") or ""
     list_name = result.get("list_name") or result.get("board") or "board"
+    record_id = result.get("record_id") or ""
     lines = [
-        f"Created board task **{display_id or result.get('record_id')}** — *{title}*",
+        f"**Task created on your board** — **{display_id or record_id}** · *{title}*",
         f"- List: **{list_name}** (`{list_id}`)" if list_id else f"- Board: `{list_name}`",
         f"- Status: `{status}`",
     ]
@@ -180,11 +183,22 @@ def try_slack_board_create_direct(
     task: Task,
     config: AlfredConfig,
     data_dir: Any,
+    *,
+    session: Any | None = None,
+    session_turns: tuple[str, ...] = (),
 ) -> tuple[AssistantResponse | None, dict[str, Any]]:
     """Create a list task immediately when the user asks (Slack only)."""
     if task.source != "slack" or not config.slack.enabled:
         return None, {}
-    if not looks_like_slack_board_create(task.cleaned_intent or ""):
+
+    intent = task.cleaned_intent or task.raw_text or ""
+    session_meta = dict((session.metadata if session else {}) or {})
+    title_followup = looks_like_board_create_title_followup(
+        intent,
+        session_turns=session_turns,
+        session_metadata=session_meta,
+    )
+    if not looks_like_slack_board_create(intent) and not title_followup:
         return None, {}
 
     if not board_enabled(config, data_dir):
@@ -209,7 +223,6 @@ def try_slack_board_create_direct(
     client = WebClient(token=token)
     store = SlackBoardStore(data_dir) if data_dir else SlackBoardStore(None)
     channel_id = task.channel_id or ""
-    intent = task.cleaned_intent or task.raw_text or ""
 
     board, resolve_error = _resolve_board_for_create(
         config=config,
@@ -230,16 +243,23 @@ def try_slack_board_create_direct(
             store.clear_schema_cache(bound_list_id)
 
     fields = extract_board_create_fields(task, bot_user_id=_bot_user_id(client))
-    title = fields["title"]
-    if not title and references_thread_context(task.cleaned_intent or ""):
+    if title_followup:
+        title = extract_board_title_followup(intent)
+        severity = fields["severity"]
+        assignee_user_id = fields["assignee_user_id"]
+    else:
+        title = fields["title"]
+        severity = fields["severity"]
+        assignee_user_id = fields["assignee_user_id"]
+    if not title and references_thread_context(intent):
         title = (task.cleaned_intent or "Slack thread task")[:120].strip()
     if not title:
         return (
             AssistantResponse.from_text(
-                "What should the task be called? Example: "
-                "`@alfred create task for payment timeout on checkout`"
+                "What should the task be called? Reply with the title, for example: "
+                "**Talk to CottonThreads** or `@alfred create task for payment timeout`."
             ),
-            {},
+            {"pending_board_create": True},
         )
 
     description = "Created from Slack conversation."
@@ -264,8 +284,8 @@ def try_slack_board_create_direct(
             board,
             title=title,
             description=description,
-            severity=fields["severity"],
-            assignee_user_id=fields["assignee_user_id"],
+            severity=severity,
+            assignee_user_id=assignee_user_id,
             channel_id=task.channel_id or "",
             thread_ts=task.thread_ts or "",
         )
@@ -284,10 +304,11 @@ def try_slack_board_create_direct(
 
     body = format_board_task_created(
         result,
-        severity=fields["severity"],
-        assignee_user_id=fields["assignee_user_id"],
+        severity=severity,
+        assignee_user_id=assignee_user_id,
     )
     metadata = {
+        "pending_board_create": False,
         "last_board_task": {
             "display_id": result.get("display_id"),
             "record_id": result.get("record_id"),
