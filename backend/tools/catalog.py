@@ -114,6 +114,22 @@ SLACK_BOARD_TOOLS = frozenset(
     }
 )
 
+SLACK_BOARD_WRITE_TOOLS = frozenset(
+    {
+        "slack_board_create_task",
+        "slack_board_update_task",
+        "slack_board_comment",
+    }
+)
+
+SLACK_BOARD_READ_TOOLS = frozenset(
+    {
+        "slack_fetch_thread",
+        "slack_board_search_tasks",
+        "slack_board_get_task",
+    }
+)
+
 SLACK_TOOLS = SLACK_READ_TOOLS | SLACK_BOARD_TOOLS
 
 WEB_TOOLS = frozenset({"web_search"})

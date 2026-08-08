@@ -2,8 +2,9 @@
 
 from __future__ import annotations
 
-from backend.routing.slack_board_agent import SLACK_BOARD_READ_TOOLS, SLACK_BOARD_WRITE_TOOLS
 from backend.tools.catalog import (
+    SLACK_BOARD_READ_TOOLS,
+    SLACK_BOARD_WRITE_TOOLS,
     AWS_TOOLS,
     COMPANY_SCRIPT_TOOLS,
     GIT_TOOLS,

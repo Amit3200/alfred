@@ -7,25 +7,9 @@ from typing import Any
 from backend.ai.base import LLMProvider
 from backend.models.config import AlfredConfig
 from backend.models.task import Task
-from backend.orchestrator.graph.serialize import tool_plan_to_dict
 from backend.routing.tool_plan_types import ToolPlan
 from backend.routing.types import RouteContext
-
-SLACK_BOARD_WRITE_TOOLS = frozenset(
-    {
-        "slack_board_create_task",
-        "slack_board_update_task",
-        "slack_board_comment",
-    }
-)
-
-SLACK_BOARD_READ_TOOLS = frozenset(
-    {
-        "slack_fetch_thread",
-        "slack_board_search_tasks",
-        "slack_board_get_task",
-    }
-)
+from backend.tools.catalog import SLACK_BOARD_READ_TOOLS, SLACK_BOARD_WRITE_TOOLS
 
 SLACK_BOARD_WRITE_INTENTS = frozenset(
     {
@@ -149,6 +133,8 @@ def seed_slack_board_agent_plan(
     write_tools = [t for t in plan.tools_needed if t in SLACK_BOARD_WRITE_TOOLS]
     if not write_tools:
         return {}
+
+    from backend.orchestrator.graph.serialize import tool_plan_to_dict
 
     return {
         "board_agent_plan": tool_plan_to_dict(plan),
