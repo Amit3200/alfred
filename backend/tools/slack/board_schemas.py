@@ -15,7 +15,7 @@ SLACK_BOARD_CREATE_TASK = ToolSchema(
         "properties": {
             "title": {"type": "string", "description": "Task title / issue name."},
             "description": {"type": "string", "description": "Details from thread or user."},
-            "severity": {"type": "string", "description": "High, Medium, or Low."},
+            "severity": {"type": "string", "description": "High, Medium, or Low (P0/P1→High, P2→Medium, P3→Low)."},
             "merchant": {"type": "string", "description": "Merchant name if known."},
             "assignee_user_id": {"type": "string", "description": "Slack user id to assign."},
         },

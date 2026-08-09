@@ -18,7 +18,8 @@ from backend.integrations.slack.board_service import (
 from backend.models.config import AlfredConfig
 from backend.models.task import Task
 from backend.routing.slack_board_intent import (
-    build_thread_description,
+    build_board_task_details,
+    normalize_board_severity,
     references_thread_context,
 )
 from backend.tools.registry import ToolRegistry
@@ -84,25 +85,44 @@ def register_slack_board_tools(
         if not title:
             return ToolResult.error("title is required.")
         description = str(args.get("description") or "").strip()
+        severity = normalize_board_severity(str(args.get("severity") or ""))
+        team_id = ""
+        try:
+            auth = client.auth_test()
+            team_id = str(auth.get("team_id") or "")
+        except Exception:
+            pass
         if not description and current and current.channel_id and current.thread_ts:
-            if references_thread_context(current.cleaned_intent or ""):
-                from backend.integrations.slack.context import (
-                    fetch_thread_messages,
-                    messages_to_text,
-                )
+            from backend.integrations.slack.context import (
+                fetch_thread_messages,
+                messages_to_text,
+            )
 
-                try:
-                    messages = fetch_thread_messages(
-                        client,
-                        current,
-                        limit=50,
-                        bot_user_id=_bot_user_id(client),
-                    )
-                    description = build_thread_description(messages_to_text(messages))
-                except Exception as exc:
-                    description = f"Thread context unavailable: {exc}"
+            try:
+                messages = fetch_thread_messages(
+                    client,
+                    current,
+                    limit=50,
+                    bot_user_id=_bot_user_id(client),
+                )
+                messages_text = messages_to_text(messages) or ""
+                description = build_board_task_details(
+                    messages_text=messages_text,
+                    channel_id=current.channel_id or "",
+                    thread_ts=current.thread_ts or "",
+                    team_id=team_id,
+                    task_title=title,
+                    bot_user_id=_bot_user_id(client),
+                )
+            except Exception as exc:
+                description = f"Thread context unavailable: {exc}"
         if not description:
-            description = "Created from Slack conversation."
+            description = build_board_task_details(
+                channel_id=current.channel_id or "",
+                thread_ts=current.thread_ts or "",
+                team_id=team_id,
+                task_title=title,
+            )
         try:
             result = create_board_task(
                 client,
@@ -111,7 +131,7 @@ def register_slack_board_tools(
                 board,
                 title=title,
                 description=description,
-                severity=str(args.get("severity") or ""),
+                severity=severity,
                 merchant=str(args.get("merchant") or ""),
                 assignee_user_id=str(args.get("assignee_user_id") or ""),
                 channel_id=current.channel_id or "",
@@ -134,7 +154,7 @@ def register_slack_board_tools(
                 ticket_ref=ticket_ref,
                 status=str(args.get("status") or ""),
                 assignee_user_id=str(args.get("assignee_user_id") or ""),
-                severity=str(args.get("severity") or ""),
+                severity=normalize_board_severity(str(args.get("severity") or "")),
                 channel_id=(current.channel_id if current else "") or "",
             )
             return ToolResult(kind="slack_board_task", data=result)

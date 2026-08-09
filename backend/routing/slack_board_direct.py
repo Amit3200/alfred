@@ -17,6 +17,7 @@ from backend.models.config import AlfredConfig
 from backend.models.response import AssistantResponse
 from backend.models.task import Task
 from backend.routing.slack_board_intent import (
+    build_board_task_details,
     build_thread_description,
     extract_board_title_followup,
     extract_list_id_override,
@@ -30,6 +31,7 @@ from backend.routing.slack_board_intent import (
     looks_like_slack_board_create,
     looks_like_slack_board_followup,
     looks_like_slack_board_update,
+    normalize_board_severity,
     references_thread_context,
     resolve_ticket_ref,
 )
@@ -47,10 +49,12 @@ def extract_board_create_fields(task: Task, *, bot_user_id: str = "") -> dict[st
     title = extract_task_title(intent).strip()
     if not title:
         title = extract_task_title(task.raw_text or "").strip()
-    severity = ""
+    severity = extract_severity_target(intent)
     sev_match = _SEVERITY_RE.search(intent)
-    if sev_match:
-        severity = sev_match.group(1).upper()
+    if not severity and sev_match:
+        severity = sev_match.group(1)
+    severity = normalize_board_severity(severity)
+    if sev_match or severity:
         title = _SEVERITY_RE.sub("", title).strip(" .,:;-")
         title = re.sub(r"\s+as\s*$", "", title, flags=re.I).strip()
     title = re.sub(
@@ -283,6 +287,12 @@ def try_slack_board_create_direct(
         )
 
     description = "Created from Slack conversation."
+    team_id = ""
+    try:
+        auth = client.auth_test()
+        team_id = str(auth.get("team_id") or "")
+    except Exception:
+        pass
     if task.channel_id and task.thread_ts:
         try:
             messages = fetch_thread_messages(
@@ -292,9 +302,24 @@ def try_slack_board_create_direct(
                 bot_user_id=_bot_user_id(client),
             )
             if messages:
-                description = build_thread_description(messages_to_text(messages))
+                messages_text = messages_to_text(messages) or ""
+                description = build_board_task_details(
+                    messages_text=messages_text,
+                    channel_id=task.channel_id or "",
+                    thread_ts=task.thread_ts or "",
+                    team_id=team_id,
+                    task_title=title,
+                    bot_user_id=_bot_user_id(client),
+                )
         except Exception as exc:
             logger.warning("Thread fetch for direct board create failed: %s", exc)
+    elif task.channel_id and task.thread_ts and title:
+        description = build_board_task_details(
+            channel_id=task.channel_id or "",
+            thread_ts=task.thread_ts or "",
+            team_id=team_id,
+            task_title=title,
+        )
 
     try:
         result = create_board_task(
@@ -353,7 +378,7 @@ def extract_board_update_fields(
     intent = task.cleaned_intent or task.raw_text or ""
     ticket_ref = resolve_ticket_ref(intent, session_metadata=session_metadata)
     status = extract_status_target(intent)
-    severity = extract_severity_target(intent)
+    severity = normalize_board_severity(extract_severity_target(intent))
     user_ids = extract_slack_user_ids(task.raw_text or intent)
     user_ids = [uid for uid in user_ids if uid and uid != bot_user_id]
     assignee_user_id = user_ids[-1] if user_ids else ""

@@ -457,13 +457,26 @@ def try_slack_board_admin_command(
                 f"Board link did not persist list `{list_id}`. "
                 "Check **Settings → Slack boards** or try `@alfred show board config`."
             )
-        return AssistantResponse.from_text(
-            "Linked this channel to Slack List "
-            f"`{binding['list_id']}` as board **{binding['board_key']}**. "
-            f"Display prefix `{binding['display_id_prefix']}`, next id `{binding['display_id_prefix']}-{binding['next_display_num']}`. "
-            "Board key is per-channel (auto from channel name unless you say `for my-key`). "
-            "Confirm with `@alfred show board config`, then create your task."
+        from backend.integrations.slack.lists_client import list_open_url
+
+        open_url = list_open_url(WebClient(token=token), str(binding["list_id"]))
+        channel_label = channel_name or channel_id
+        lines = [
+            f"Linked **#{channel_label}** to Slack List `{binding['list_id']}` as board **{binding['board_key']}**.",
+            f"- Display prefix: `{binding['display_id_prefix']}` → next id `{binding['display_id_prefix']}-{binding['next_display_num']}`",
+            f"- Ticket system: `slack_list` (set automatically)",
+        ]
+        if open_url:
+            lines.append(f"- Open List: {open_url}")
+        lines.extend(
+            [
+                "",
+                "Tasks you create with `@alfred create task …` will land in **this** List.",
+                "If your channel tab shows a **different** List, copy the **F…** id from that tab's URL and run `@alfred link board to F…` again.",
+                "Confirm anytime with `@alfred show board config`.",
+            ]
         )
+        return AssistantResponse.from_text("\n".join(lines))
 
     match = _SET_PREFIX_RE.search(text)
     if match:

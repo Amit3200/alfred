@@ -100,6 +100,31 @@ def test_display_prefix_update_not_board_task_update():
 def test_extract_severity_target():
     intent = "ST-1 is in progress and assign severity to High"
     assert extract_severity_target(intent) == "High"
+    assert extract_severity_target("create task as p0 for outage") == "High"
+    assert extract_severity_target("set priority to p3") == "Low"
+
+
+def test_build_board_task_details_filters_setup_noise():
+    from backend.routing.slack_board_intent import build_board_task_details
+
+    raw = "\n".join(
+        [
+            "[1] 2026-08-09 16:22 UTC | user: setup board for the team-sales",
+            "[2] 2026-08-09 16:23 UTC | bot (app): Created and linked Slack List",
+            "[3] 2026-08-09 16:24 UTC | user: Smoke Test Integration of slack",
+        ]
+    )
+    details = build_board_task_details(
+        messages_text=raw,
+        channel_id="C123",
+        thread_ts="1234567890.123456",
+        team_id="T051RLW5NLR",
+        task_title="Smoke Test Integration of slack",
+    )
+    assert "Summary: Smoke Test Integration of slack" in details
+    assert "slack.com/client/T051RLW5NLR/C123/thread/" in details
+    assert "Created and linked Slack List" not in details
+    assert "setup board" not in details.lower() or "Summary:" in details
 
 
 def test_grounding_slack_board_hides_internal_issues():

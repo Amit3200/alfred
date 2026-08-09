@@ -345,14 +345,135 @@ def extract_status_target(intent: str) -> str:
 def extract_severity_target(intent: str) -> str:
     text = (intent or "").lower()
     for label in ("high", "medium", "low"):
-        if re.search(rf"\bseverity\b.{{0,24}}\b{label}\b", text):
-            return label.title()
-        if re.search(rf"\b{label}\b.{{0,24}}\bseverity\b", text):
-            return label.title()
+        if re.search(rf"\b(?:severity|priority)\b.{{0,24}}\b{label}\b", text):
+            return normalize_board_severity(label)
+        if re.search(rf"\b{label}\b.{{0,24}}\b(?:severity|priority)\b", text):
+            return normalize_board_severity(label)
     for level in ("p0", "p1", "p2", "p3"):
+        if re.search(rf"\b(?:severity|priority)\b.{{0,12}}\b{level}\b", text):
+            return normalize_board_severity(level)
         if level in text:
-            return level.upper()
+            return normalize_board_severity(level)
     return ""
+
+
+_SEVERITY_ALIASES = {
+    "p0": "High",
+    "p1": "High",
+    "p2": "Medium",
+    "p3": "Low",
+    "high": "High",
+    "medium": "Medium",
+    "low": "Low",
+    "critical": "High",
+    "urgent": "High",
+}
+
+
+def normalize_board_severity(raw: str) -> str:
+    """Map P0/P1/priority wording to Slack List Severity labels (High/Medium/Low)."""
+    key = (raw or "").strip().lower()
+    if not key:
+        return ""
+    if key in _SEVERITY_ALIASES:
+        return _SEVERITY_ALIASES[key]
+    for label in ("high", "medium", "low"):
+        if label in key:
+            return label.title()
+    titled = raw.strip().title()
+    return titled if titled in ("High", "Medium", "Low") else ""
+
+
+def slack_thread_permalink(
+    *,
+    channel_id: str,
+    thread_ts: str,
+    team_id: str = "",
+) -> str:
+    cid = (channel_id or "").strip()
+    ts = (thread_ts or "").strip()
+    if not cid or not ts:
+        return ""
+    ts_link = ts.replace(".", "")
+    tid = (team_id or "").strip()
+    if tid:
+        return f"https://app.slack.com/client/{tid}/{cid}/thread/{cid}-{ts_link}"
+    return f"https://slack.com/archives/{cid}/p{ts_link}"
+
+
+_BOARD_NOISE_PATTERNS = (
+    "created and linked slack list",
+    "setup board",
+    "board key:",
+    "display prefix:",
+    "what should the task be called",
+    "linked this channel to slack list",
+    "show board config",
+)
+
+
+def _is_board_noise(text: str) -> bool:
+    lower = (text or "").lower()
+    return any(pattern in lower for pattern in _BOARD_NOISE_PATTERNS)
+
+
+def _line_message_body(line: str) -> str:
+    stripped = (line or "").strip()
+    if not stripped:
+        return ""
+    match = re.match(r"^\[\d+\]\s+[^|]+\|\s*(?:[^:]+:\s*)?(.*)$", stripped)
+    return (match.group(1) if match else stripped).strip()
+
+
+def build_board_task_details(
+    *,
+    messages_text: str = "",
+    channel_id: str = "",
+    thread_ts: str = "",
+    team_id: str = "",
+    task_title: str = "",
+    bot_user_id: str = "",
+    max_chars: int = 2000,
+) -> str:
+    """Structured ticket details: short summary, Slack thread link, key points — not raw logs."""
+    thread_url = slack_thread_permalink(
+        channel_id=channel_id,
+        thread_ts=thread_ts,
+        team_id=team_id,
+    )
+    user_points: list[str] = []
+    for line in (messages_text or "").splitlines():
+        body = _line_message_body(line)
+        if not body or _is_board_noise(body):
+            continue
+        if bot_user_id and f"bot (app):" in line.lower() and bot_user_id not in line:
+            continue
+        if body not in user_points:
+            user_points.append(body[:400])
+
+    summary = (task_title or "").strip()
+    if not summary and user_points:
+        summary = user_points[0][:200]
+    if not summary:
+        summary = "Task created from Slack"
+
+    parts = [f"Summary: {summary}"]
+    if thread_url:
+        parts.append(f"Slack thread: {thread_url}")
+    extra = [p for p in user_points if p != summary][:3]
+    if extra:
+        parts.append("Key points:")
+        parts.extend(f"• {point[:240]}" for point in extra)
+
+    body = "\n".join(parts)
+    if len(body) > max_chars:
+        return body[: max_chars - 20] + "\n… (truncated)"
+    return body
+
+
+def build_thread_description(messages_text: str, *, max_chars: int = 6000) -> str:
+    """Legacy raw thread dump — prefer build_board_task_details."""
+    return build_board_task_details(messages_text=messages_text, max_chars=max_chars)
 
 
 def extract_comment_text(intent: str) -> str:
@@ -366,12 +487,3 @@ def extract_comment_text(intent: str) -> str:
         if match:
             return match.group(1).strip()[:2000]
     return ""
-
-
-def build_thread_description(messages_text: str, *, max_chars: int = 6000) -> str:
-    body = (messages_text or "").strip()
-    if not body:
-        return "Created from Slack thread (no messages captured)."
-    if len(body) > max_chars:
-        return body[: max_chars - 20] + "\n… (truncated)"
-    return body

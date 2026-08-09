@@ -15,6 +15,7 @@ from backend.integrations.slack.board_service import (
 )
 from backend.integrations.slack.context import fetch_thread_messages, messages_to_text
 from backend.routing.slack_board_intent import (
+    build_board_task_details,
     build_thread_description,
     extract_task_title,
 )
@@ -47,6 +48,12 @@ def bootstrap_slack_board_create(
         title = (task.cleaned_intent or task.raw_text or "Slack thread task")[:120].strip()
 
     description = ""
+    team_id = ""
+    try:
+        auth = client.auth_test()
+        team_id = str(auth.get("team_id") or "")
+    except Exception:
+        pass
     in_thread = bool(task.channel_id and task.thread_ts)
     if in_thread:
         try:
@@ -56,13 +63,26 @@ def bootstrap_slack_board_create(
                 limit=50,
                 bot_user_id=_bot_user_id(client),
             )
-            description = build_thread_description(messages_to_text(messages))
+            messages_text = messages_to_text(messages) or ""
+            description = build_board_task_details(
+                messages_text=messages_text,
+                channel_id=task.channel_id or "",
+                thread_ts=task.thread_ts or "",
+                team_id=team_id,
+                task_title=title,
+                bot_user_id=_bot_user_id(client),
+            )
         except Exception as exc:
             logger.warning("Thread fetch for board create failed: %s", exc)
             description = f"Thread context unavailable: {exc}"
 
     if not description.strip():
-        description = "Created from Slack conversation."
+        description = build_board_task_details(
+            channel_id=task.channel_id or "",
+            thread_ts=task.thread_ts or "",
+            team_id=team_id,
+            task_title=title,
+        )
 
     try:
         result = create_board_task(

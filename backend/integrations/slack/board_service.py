@@ -79,6 +79,27 @@ def _column_by_name(schema: list[dict[str, Any]], label: str) -> dict[str, Any] 
     return None
 
 
+def _resolve_severity_column(
+    schema: list[dict[str, Any]],
+    cols: Any,
+) -> dict[str, Any] | None:
+    for label in (
+        getattr(cols, "severity", None) or "Severity",
+        "Priority",
+        "Severity",
+    ):
+        col = _column_by_name(schema, str(label))
+        if col:
+            return col
+    return None
+
+
+def _normalize_severity_for_list(value: str) -> str:
+    from backend.routing.slack_board_intent import normalize_board_severity
+
+    return normalize_board_severity(value)
+
+
 def _primary_column(schema: list[dict[str, Any]]) -> dict[str, Any] | None:
     for col in schema:
         if isinstance(col, dict) and col.get("is_primary_column"):
@@ -345,8 +366,10 @@ def create_board_task(
     _append_field(initial_fields, details_col, description.strip())
 
     if severity.strip():
-        sev_col = _column_by_name(schema, cols.severity or "Severity")
-        _append_field(initial_fields, sev_col, severity.strip())
+        sev_col = _resolve_severity_column(schema, cols)
+        normalized = _normalize_severity_for_list(severity)
+        if sev_col and normalized:
+            _append_field(initial_fields, sev_col, normalized)
 
     if merchant.strip():
         merch_col = _column_by_name(schema, cols.merchant or "Merchant Name")
@@ -489,8 +512,9 @@ def update_board_task(
             cells_list.append({"row_id": record_id, **field})
 
     if severity.strip():
-        col = _column_by_name(schema, board.columns.severity or "Severity")
-        field = _field_payload(col, severity.strip()) if col else None
+        col = _resolve_severity_column(schema, board.columns)
+        normalized = _normalize_severity_for_list(severity)
+        field = _field_payload(col, normalized) if col and normalized else None
         if field:
             cells_list.append({"row_id": record_id, **field})
 
