@@ -125,7 +125,7 @@ def test_extract_board_create_fields_severity_and_title():
     )
     fields = extract_board_create_fields(task)
     assert "revamping" in fields["title"].lower()
-        assert fields["severity"] == "High"
+    assert fields["severity"] == "High"
     assert fields["assignee_user_id"] == "U2"
 
 
