@@ -324,6 +324,49 @@ def _resolve_board_record(
     )
 
 
+def _resolve_display_id_column(
+    schema: list[dict[str, Any]],
+    cols: Any,
+) -> dict[str, Any] | None:
+    for label in (
+        getattr(cols, "display_id", None) or "",
+        "Display ID",
+        "display_id",
+    ):
+        if not (label or "").strip():
+            continue
+        col = _column_by_name(schema, str(label))
+        if col:
+            return col
+    for col in schema:
+        if not isinstance(col, dict):
+            continue
+        name = str(col.get("name") or "").lower()
+        key = str(col.get("key") or "").lower()
+        if "display" in name and "id" in name:
+            return col
+        if key == "display_id":
+            return col
+    return None
+
+
+def _repair_binding_column_map(data_dir: Path | None, channel_id: str) -> None:
+    """Ensure linked channels have Display ID and other column labels in the binding."""
+    if not data_dir or not channel_id:
+        return
+    from backend.db.slack_workflows_db import db_get_board_binding_for_channel, db_update_board_binding
+    from backend.integrations.slack.lists_client import ALFRED_BOARD_COLUMN_MAP
+
+    binding = db_get_board_binding_for_channel(data_dir, channel_id)
+    if not binding:
+        return
+    existing = dict(binding.get("columns") or {})
+    merged = dict(ALFRED_BOARD_COLUMN_MAP)
+    merged.update({k: v for k, v in existing.items() if v})
+    if merged != existing:
+        db_update_board_binding(data_dir, str(binding["id"]), columns=merged)
+
+
 def create_board_task(
     client: Any,
     config: AlfredConfig,
@@ -345,6 +388,10 @@ def create_board_task(
     channel = (channel_id or (board.channel_ids[0] if board.channel_ids else "")).strip()
     grant_list_access(client, list_id, channel_id=channel)
     store.clear_schema_cache(list_id)
+    _repair_binding_column_map(
+        store._path.parent if hasattr(store, "_path") else None,
+        channel,
+    )
 
     try:
         schema = list_columns(client, list_id)
@@ -382,17 +429,22 @@ def create_board_task(
     _append_field(initial_fields, status_col, board.default_status or "Not picked")
 
     display_id = ""
-    display_col = None
-    if cols.display_id:
-        display_col = _column_by_name(schema, cols.display_id)
-        if display_col:
-            if not channel:
-                raise RuntimeError("Cannot allocate display id without a channel binding.")
-            display_id = store.peek_display_id(
-                channel_id=channel,
-                prefix=board.display_id_prefix or "TS",
-            )
+    display_col = _resolve_display_id_column(schema, cols)
+    if display_col:
+        if not channel:
+            raise RuntimeError("Cannot allocate display id without a channel binding.")
+        prefix = (board.display_id_prefix or "TS").strip()
+        display_id = store.peek_display_id(channel_id=channel, prefix=prefix)
+        if display_id:
             _append_field(initial_fields, display_col, display_id)
+            logger.info(
+                "Allocated display id %s for channel %s (prefix %s)",
+                display_id,
+                channel,
+                prefix,
+            )
+        else:
+            logger.warning("Could not peek display id for channel %s prefix %s", channel, prefix)
 
     if assignee_user_id.strip():
         assign_col = _column_by_name(schema, cols.assignee or "Assignee")

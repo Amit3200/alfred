@@ -51,7 +51,7 @@ def binding_to_profile(binding: dict[str, Any]) -> SlackBoardProfile:
             merchant=str(cols.get("merchant") or "Merchant Name"),
             merchant_domain=str(cols.get("merchant_domain") or "Merchant Domain"),
             details=str(cols.get("details") or "Ticket Details"),
-            display_id=str(cols.get("display_id") or ""),
+            display_id=str(cols.get("display_id") or "Display ID"),
         ),
     )
 

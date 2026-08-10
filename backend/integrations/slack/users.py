@@ -97,6 +97,27 @@ def substitute_slack_user_ids(text: str, user_names: dict[str, str]) -> str:
     return _SLACK_USER_ID_RE.sub(id_repl, text)
 
 
+def substitute_slack_user_ids_as_mentions(text: str, user_names: dict[str, str]) -> str:
+    """Replace Slack user ids with @DisplayName for human-readable ticket details."""
+    if not text or not user_names:
+        return text
+
+    def as_mention(user_id: str) -> str:
+        name = (user_names.get(user_id) or "").strip()
+        if not name or name == user_id:
+            return user_id
+        return f"@{name}"
+
+    def mention_repl(match: re.Match[str]) -> str:
+        return as_mention(match.group(1))
+
+    def id_repl(match: re.Match[str]) -> str:
+        return as_mention(match.group(1))
+
+    text = _SLACK_MENTION_RE.sub(mention_repl, text)
+    return _SLACK_USER_ID_RE.sub(id_repl, text)
+
+
 def resolve_user_ids_in_text(text: str, resolver: SlackUserResolver) -> str:
     if not text:
         return text

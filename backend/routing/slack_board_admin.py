@@ -445,12 +445,15 @@ def try_slack_board_admin_command(
             board_key = str(existing["board_key"])
         else:
             board_key = derive_board_key(channel_name=channel_name, channel_id=channel_id)
+        from backend.integrations.slack.lists_client import ALFRED_BOARD_COLUMN_MAP
+
         binding = _upsert_channel_board_binding(
             data_dir,
             channel_id=channel_id,
             list_id=list_id,
             board_key=board_key,
             channel_name=channel_name,
+            columns=ALFRED_BOARD_COLUMN_MAP,
         )
         if not binding:
             return AssistantResponse.from_text(

@@ -24,7 +24,7 @@ _DEFAULT_COLUMNS: dict[str, str] = {
     "merchant": "Merchant Name",
     "merchant_domain": "Merchant Domain",
     "details": "Ticket Details",
-    "display_id": "",
+    "display_id": "Display ID",
 }
 
 

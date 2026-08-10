@@ -19,15 +19,19 @@ from backend.models.task import Task
 from backend.routing.slack_board_intent import (
     build_board_task_details,
     build_thread_description,
+    build_board_mention_map,
     extract_board_create_assignee,
     extract_board_title_followup,
+    extract_title_from_summary,
     finalize_board_create_fields,
+    humanize_board_task_text,
     extract_list_id_override,
     extract_severity_target,
     extract_status_target,
     extract_task_title,
     extract_ticket_ref,
     is_placeholder_list_id,
+    infer_thread_action_assignee,
     is_weak_board_task_title,
     looks_like_board_create_title_followup,
     looks_like_board_where_question,
@@ -82,12 +86,11 @@ def extract_board_create_fields(task: Task, *, bot_user_id: str = "") -> dict[st
             user_ids = [uid for uid in user_ids if uid and uid != bot_user_id]
             if user_ids:
                 assignee_user_id = user_ids[-1]
-    return finalize_board_create_fields(
-        severity=severity,
-        assignee_user_id=assignee_user_id,
-        requester_user_id=task.user_id or "",
-        bot_user_id=bot_user_id,
-    ) | {"title": title[:200]}
+    return {
+        "title": title[:200],
+        "severity": severity,
+        "assignee_user_id": assignee_user_id,
+    }
 
 
 def format_board_task_created(result: dict[str, Any], *, severity: str = "", assignee_user_id: str = "") -> str:
@@ -291,6 +294,9 @@ def try_slack_board_create_direct(
     description = "Created from Slack conversation."
     team_id = ""
     messages_text = ""
+    messages: list[dict] = []
+    mention_labels: dict[str, str] = {}
+    in_slack_thread = bool(task.channel_id and task.thread_ts and not title_followup)
     try:
         auth = client.auth_test()
         team_id = str(auth.get("team_id") or "")
@@ -301,7 +307,7 @@ def try_slack_board_create_direct(
         thread_ts=task.thread_ts or "",
         team_id=team_id,
     )
-    if task.channel_id and task.thread_ts and not title_followup:
+    if in_slack_thread:
         try:
             messages = fetch_thread_messages(
                 client,
@@ -310,11 +316,25 @@ def try_slack_board_create_direct(
                 bot_user_id=_bot_user_id(client),
             )
             if messages:
-                messages_text = messages_to_text(messages) or ""
+                mention_labels = build_board_mention_map(client, task, messages)
+                messages_text = (
+                    messages_to_text(messages, user_names=mention_labels) or ""
+                )
         except Exception as exc:
             logger.warning("Thread fetch for direct board create failed: %s", exc)
 
-    if messages_text and not title_followup:
+    if in_slack_thread and references_thread_context(intent):
+        title = ""
+
+    if messages_text and in_slack_thread:
+        thread_assignee = infer_thread_action_assignee(
+            messages_text,
+            task.raw_text or "",
+            bot_user_id=_bot_user_id(client),
+        )
+        if thread_assignee and not assignee_user_id:
+            assignee_user_id = thread_assignee
+
         from backend.routing.slack_board_task_draft import draft_board_task_from_thread
 
         draft = draft_board_task_from_thread(
@@ -325,12 +345,16 @@ def try_slack_board_create_direct(
             thread_url=thread_url,
             hint_assignee_user_id=assignee_user_id,
             hint_title=title,
-            mention_labels=extract_slack_mention_labels(task.raw_text or ""),
+            mention_labels=mention_labels,
             data_dir=data_dir,
         )
-        if draft and draft.confidence >= 0.55:
-            if draft.title and (not title or is_weak_board_task_title(title)):
+        if draft:
+            if draft.title and not is_weak_board_task_title(draft.title):
                 title = draft.title[:200]
+            elif draft.description:
+                summary_title = extract_title_from_summary(draft.description)
+                if summary_title:
+                    title = summary_title
             if draft.description:
                 description = draft.description
             if draft.assignee_user_id:
@@ -338,14 +362,48 @@ def try_slack_board_create_direct(
             if draft.severity:
                 severity = draft.severity
 
+    if not title and description:
+        summary_title = extract_title_from_summary(description)
+        if summary_title:
+            title = summary_title
+
     finalized = finalize_board_create_fields(
         severity=severity,
         assignee_user_id=assignee_user_id,
         requester_user_id=task.user_id or "",
         bot_user_id=_bot_user_id(client),
+        default_assignee_to_requester=not bool(messages_text),
     )
     severity = finalized["severity"]
     assignee_user_id = finalized["assignee_user_id"]
+
+    if description == "Created from Slack conversation.":
+        if messages_text:
+            description = build_board_task_details(
+                messages_text=messages_text,
+                channel_id=task.channel_id or "",
+                thread_ts=task.thread_ts or "",
+                team_id=team_id,
+                task_title="" if is_weak_board_task_title(title) else title,
+                bot_user_id=_bot_user_id(client),
+                requester_user_id=task.user_id or "",
+                mention_labels=mention_labels,
+            )
+        elif thread_url:
+            description = build_board_task_details(
+                channel_id=task.channel_id or "",
+                thread_ts=task.thread_ts or "",
+                team_id=team_id,
+                task_title="" if is_weak_board_task_title(title) else title,
+                requester_user_id=task.user_id or "",
+                mention_labels=mention_labels,
+            )
+        description = humanize_board_task_text(description, mention_labels)
+
+    if not title or is_weak_board_task_title(title):
+        summary_title = extract_title_from_summary(description)
+        if summary_title:
+            title = summary_title
 
     if not title:
         return (
@@ -355,24 +413,6 @@ def try_slack_board_create_direct(
             ),
             {"pending_board_create": True},
         )
-
-    if description == "Created from Slack conversation.":
-        if messages_text:
-            description = build_board_task_details(
-                messages_text=messages_text,
-                channel_id=task.channel_id or "",
-                thread_ts=task.thread_ts or "",
-                team_id=team_id,
-                task_title=title,
-                bot_user_id=_bot_user_id(client),
-            )
-        elif thread_url:
-            description = build_board_task_details(
-                channel_id=task.channel_id or "",
-                thread_ts=task.thread_ts or "",
-                team_id=team_id,
-                task_title=title,
-            )
 
     try:
         result = create_board_task(

@@ -94,6 +94,7 @@ def register_slack_board_tools(
                 assignee_user_id=assignee_user_id,
                 requester_user_id=current.user_id or "",
                 bot_user_id=_bot_user_id(client),
+                default_assignee_to_requester=not bool(current and current.thread_ts),
             )
             severity = finalized["severity"]
             assignee_user_id = finalized["assignee_user_id"]

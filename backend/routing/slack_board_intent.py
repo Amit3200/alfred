@@ -5,6 +5,8 @@ from __future__ import annotations
 import re
 from typing import Any
 
+from backend.models.task import Task
+
 _CREATE_TASK_RE = re.compile(
     r"\b(?:create|add|open|file|raise|log)\b.{0,20}\b(?:task|ticket|item|bug)\b",
     re.I,
@@ -156,8 +158,14 @@ _WEAK_TITLE_PHRASES = frozenset(
         "for above",
         "above",
         "for the above",
+        "the above",
+        "the above?",
         "needful",
     }
+)
+_THREAD_ACTION_ASSIGNEE_RE = re.compile(
+    r"<@([A-Z0-9]+)(?:\|[^>]+)?>\s*(?:please|kindly|pls\.?|can you|could you|need to|needs to)\b",
+    re.I,
 )
 _BOARD_TITLE_PROMPT_MARKERS = (
     "what should the task be called",
@@ -313,15 +321,40 @@ def resolve_ticket_ref(intent: str, *, session_metadata: dict[str, Any] | None =
 def is_weak_board_task_title(title: str) -> bool:
     """True when a parsed title is a command fragment, not real work."""
     cleaned = re.sub(r"\s+", " ", (title or "").strip().lower())
+    cleaned = cleaned.strip("?!.")
     if not cleaned or len(cleaned) < 4:
         return True
     if cleaned in _WEAK_TITLE_PHRASES:
+        return True
+    if cleaned in ("above", "the above", "for above", "for the above"):
         return True
     if cleaned.startswith("to ") and len(cleaned.split()) <= 4:
         return True
     if re.fullmatch(r"(?:for|on|to)\s+\w+(?:\s+\w+){0,2}", cleaned):
         return True
     return False
+
+
+def infer_thread_action_assignee(
+    *texts: str,
+    bot_user_id: str = "",
+) -> str:
+    """Assignee from thread root — person @mentioned before please/share/do (e.g. '@Riya please share')."""
+    combined = "\n".join(t for t in texts if (t or "").strip())
+    if not combined:
+        return ""
+    bot = (bot_user_id or "").strip()
+    for line in combined.splitlines():
+        line = line.strip()
+        if not line:
+            continue
+        match = _THREAD_ACTION_ASSIGNEE_RE.search(line)
+        if not match:
+            continue
+        uid = match.group(1).strip()
+        if uid and uid != bot:
+            return uid
+    return ""
 
 
 def extract_board_create_assignee(
@@ -376,8 +409,8 @@ def extract_task_title(intent: str) -> str:
     text = strip_list_id_override((intent or "").strip())
 
     def _clean_title(raw: str) -> str:
-        title = raw.strip(" .,:;\"'")
-        title = re.sub(r"\s+for\s+(the\s+)?above\s*$", "", title, flags=re.I).strip()
+        title = raw.strip(" .,:;\"'?!")
+        title = re.sub(r"\s+for\s+(the\s+)?above\s*$", "", title, flags=re.I).strip(" ?!")
         title = re.sub(r"\s+for\s+(the\s+)?same\s*$", "", title, flags=re.I).strip()
         title = strip_list_id_override(title)
         if is_weak_board_task_title(title):
@@ -413,7 +446,9 @@ def extract_task_title(intent: str) -> str:
         re.I,
     )
     if for_match:
-        return for_match.group(1).strip(" .,:;")[:200]
+        title = _clean_title(for_match.group(1))
+        if title:
+            return title
     return ""
 
 
@@ -479,13 +514,19 @@ def finalize_board_create_fields(
     assignee_user_id: str = "",
     requester_user_id: str = "",
     bot_user_id: str = "",
+    default_assignee_to_requester: bool = True,
 ) -> dict[str, str]:
-    """Apply create defaults: Medium severity; requester as assignee when none was parsed."""
+    """Apply create defaults: Medium severity; optional requester assignee when none was parsed."""
     sev = normalize_board_severity(severity) or DEFAULT_BOARD_SEVERITY
     assignee = (assignee_user_id or "").strip()
     requester = (requester_user_id or "").strip()
     bot = (bot_user_id or "").strip()
-    if not assignee and requester and requester != bot:
+    if (
+        not assignee
+        and default_assignee_to_requester
+        and requester
+        and requester != bot
+    ):
         assignee = requester
     return {"severity": sev, "assignee_user_id": assignee}
 
@@ -531,6 +572,46 @@ def _line_message_body(line: str) -> str:
     return (match.group(1) if match else stripped).strip()
 
 
+def extract_title_from_summary(description: str) -> str:
+    """Use Summary: line from structured ticket details as a task title fallback."""
+    for line in (description or "").splitlines():
+        match = re.match(r"^Summary:\s*(.+)$", line.strip(), re.I)
+        if match:
+            title = match.group(1).strip()[:200]
+            if title and not is_weak_board_task_title(title):
+                return title
+    return ""
+
+
+def build_board_mention_map(
+    client: Any,
+    task: Task,
+    messages: list[dict],
+) -> dict[str, str]:
+    """Resolve Slack user ids to display names for board task drafting."""
+    from backend.integrations.slack.sanitize import extract_slack_mention_labels, extract_slack_user_ids
+    from backend.integrations.slack.users import SlackUserResolver, collect_message_user_ids
+
+    user_ids = collect_message_user_ids(messages)
+    user_ids.update(extract_slack_user_ids(task.raw_text or ""))
+    if task.user_id:
+        user_ids.add(task.user_id)
+    labels: dict[str, str] = {}
+    if client and user_ids:
+        labels.update(SlackUserResolver(client).resolve_many(user_ids))
+    for msg in messages:
+        labels.update(extract_slack_mention_labels(str(msg.get("text") or "")))
+    labels.update(extract_slack_mention_labels(task.raw_text or ""))
+    return labels
+
+
+def humanize_board_task_text(text: str, mention_labels: dict[str, str]) -> str:
+    """Use @DisplayName instead of raw U… ids in ticket details."""
+    from backend.integrations.slack.users import substitute_slack_user_ids_as_mentions
+
+    return substitute_slack_user_ids_as_mentions(text, mention_labels)
+
+
 def build_board_task_details(
     *,
     messages_text: str = "",
@@ -539,6 +620,8 @@ def build_board_task_details(
     team_id: str = "",
     task_title: str = "",
     bot_user_id: str = "",
+    requester_user_id: str = "",
+    mention_labels: dict[str, str] | None = None,
     max_chars: int = 2000,
 ) -> str:
     """Structured ticket details: short summary, Slack thread link, key points — not raw logs."""
@@ -558,6 +641,8 @@ def build_board_task_details(
             user_points.append(body[:400])
 
     summary = (task_title or "").strip()
+    if is_weak_board_task_title(summary):
+        summary = ""
     if not summary and user_points:
         summary = user_points[0][:200]
     if not summary:
@@ -568,10 +653,16 @@ def build_board_task_details(
         parts.append(f"Slack thread: {thread_url}")
     extra = [p for p in user_points if p != summary][:3]
     if extra:
-        parts.append("Key points:")
+        parts.append("Context:")
         parts.extend(f"• {point[:240]}" for point in extra)
+    requester = (requester_user_id or "").strip()
+    if requester:
+        labels = mention_labels or {}
+        name = labels.get(requester, "").strip()
+        parts.append(f"Requested by: @{name}" if name else f"Requested by: {requester}")
 
     body = "\n".join(parts)
+    body = humanize_board_task_text(body, mention_labels or {})
     if len(body) > max_chars:
         return body[: max_chars - 20] + "\n… (truncated)"
     return body
