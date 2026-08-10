@@ -12,13 +12,14 @@ from backend.integrations.slack.workflow_registry import (
     binding_to_profile,
     fresh_board_binding_for_channel,
 )
-from backend.integrations.slack.sanitize import extract_slack_user_ids
+from backend.integrations.slack.sanitize import extract_slack_mention_labels, extract_slack_user_ids
 from backend.models.config import AlfredConfig
 from backend.models.response import AssistantResponse
 from backend.models.task import Task
 from backend.routing.slack_board_intent import (
     build_board_task_details,
     build_thread_description,
+    extract_board_create_assignee,
     extract_board_title_followup,
     extract_list_id_override,
     extract_severity_target,
@@ -26,6 +27,7 @@ from backend.routing.slack_board_intent import (
     extract_task_title,
     extract_ticket_ref,
     is_placeholder_list_id,
+    is_weak_board_task_title,
     looks_like_board_create_title_followup,
     looks_like_board_where_question,
     looks_like_slack_board_create,
@@ -34,6 +36,7 @@ from backend.routing.slack_board_intent import (
     normalize_board_severity,
     references_thread_context,
     resolve_ticket_ref,
+    slack_thread_permalink,
 )
 
 logger = logging.getLogger(__name__)
@@ -67,10 +70,17 @@ def extract_board_create_fields(task: Task, *, bot_user_id: str = "") -> dict[st
     if _ASSIGN_ME_RE.search(intent) and task.user_id:
         assignee_user_id = task.user_id
     else:
-        user_ids = extract_slack_user_ids(task.raw_text or intent)
-        user_ids = [uid for uid in user_ids if uid and uid != bot_user_id]
-        if user_ids:
-            assignee_user_id = user_ids[-1]
+        assignee_user_id = extract_board_create_assignee(
+            task.raw_text or "",
+            intent,
+            bot_user_id=bot_user_id,
+            requester_user_id=task.user_id or "",
+        )
+        if not assignee_user_id:
+            user_ids = extract_slack_user_ids(task.raw_text or intent)
+            user_ids = [uid for uid in user_ids if uid and uid != bot_user_id]
+            if user_ids:
+                assignee_user_id = user_ids[-1]
     return {
         "title": title[:200],
         "severity": severity,
@@ -275,25 +285,21 @@ def try_slack_board_create_direct(
         title = fields["title"]
         severity = fields["severity"]
         assignee_user_id = fields["assignee_user_id"]
-    if not title and references_thread_context(intent):
-        title = (task.cleaned_intent or "Slack thread task")[:120].strip()
-    if not title:
-        return (
-            AssistantResponse.from_text(
-                "What should the task be called? Reply with the title, for example: "
-                "**Talk to CottonThreads** or `@alfred create task for payment delay`."
-            ),
-            {"pending_board_create": True},
-        )
 
     description = "Created from Slack conversation."
     team_id = ""
+    messages_text = ""
     try:
         auth = client.auth_test()
         team_id = str(auth.get("team_id") or "")
     except Exception:
         pass
-    if task.channel_id and task.thread_ts:
+    thread_url = slack_thread_permalink(
+        channel_id=task.channel_id or "",
+        thread_ts=task.thread_ts or "",
+        team_id=team_id,
+    )
+    if task.channel_id and task.thread_ts and not title_followup:
         try:
             messages = fetch_thread_messages(
                 client,
@@ -303,23 +309,59 @@ def try_slack_board_create_direct(
             )
             if messages:
                 messages_text = messages_to_text(messages) or ""
-                description = build_board_task_details(
-                    messages_text=messages_text,
-                    channel_id=task.channel_id or "",
-                    thread_ts=task.thread_ts or "",
-                    team_id=team_id,
-                    task_title=title,
-                    bot_user_id=_bot_user_id(client),
-                )
         except Exception as exc:
             logger.warning("Thread fetch for direct board create failed: %s", exc)
-    elif task.channel_id and task.thread_ts and title:
-        description = build_board_task_details(
-            channel_id=task.channel_id or "",
-            thread_ts=task.thread_ts or "",
-            team_id=team_id,
-            task_title=title,
+
+    if messages_text and not title_followup:
+        from backend.routing.slack_board_task_draft import draft_board_task_from_thread
+
+        draft = draft_board_task_from_thread(
+            config=config,
+            task=task,
+            messages_text=messages_text,
+            request_text=intent,
+            thread_url=thread_url,
+            hint_assignee_user_id=assignee_user_id,
+            hint_title=title,
+            mention_labels=extract_slack_mention_labels(task.raw_text or ""),
+            data_dir=data_dir,
         )
+        if draft and draft.confidence >= 0.55:
+            if draft.title and (not title or is_weak_board_task_title(title)):
+                title = draft.title[:200]
+            if draft.description:
+                description = draft.description
+            if draft.assignee_user_id:
+                assignee_user_id = draft.assignee_user_id
+            if draft.severity and not severity:
+                severity = draft.severity
+
+    if not title:
+        return (
+            AssistantResponse.from_text(
+                "What should the task be called? Reply with the title, for example: "
+                "**Talk to CottonThreads** or `@alfred create task for payment delay`."
+            ),
+            {"pending_board_create": True},
+        )
+
+    if description == "Created from Slack conversation.":
+        if messages_text:
+            description = build_board_task_details(
+                messages_text=messages_text,
+                channel_id=task.channel_id or "",
+                thread_ts=task.thread_ts or "",
+                team_id=team_id,
+                task_title=title,
+                bot_user_id=_bot_user_id(client),
+            )
+        elif thread_url:
+            description = build_board_task_details(
+                channel_id=task.channel_id or "",
+                thread_ts=task.thread_ts or "",
+                team_id=team_id,
+                task_title=title,
+            )
 
     try:
         result = create_board_task(

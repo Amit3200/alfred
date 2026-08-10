@@ -129,6 +129,36 @@ _TITLE_SEP_RE = re.compile(
     r"(.+?)(?:\s+and\s+assign\b|\s*$)",
     re.I,
 )
+_CREATE_CMD_RE = re.compile(
+    r"\b(?:create|add|open|file)\b.{0,20}\b(?:a\s+)?(?:task|ticket)\b",
+    re.I,
+)
+_CREATE_ASSIGNEE_RE = re.compile(
+    r"\b(?:create|add|open|file)\b.{0,40}\b(?:a\s+)?(?:task|ticket)\b.{0,40}\b(?:on|for|to)\s+<@([A-Z0-9]+)",
+    re.I,
+)
+_ASSIGN_TO_RE = re.compile(
+    r"\bassign\b.{0,24}\b(?:it\s+)?(?:to\s+)?<@([A-Z0-9]+)",
+    re.I,
+)
+_WEAK_TITLE_PHRASES = frozenset(
+    {
+        "the same",
+        "for the same",
+        "same",
+        "it",
+        "this",
+        "that",
+        "to call me",
+        "call me",
+        "do the needful",
+        "the needful",
+        "for above",
+        "above",
+        "for the above",
+        "needful",
+    }
+)
 _BOARD_TITLE_PROMPT_MARKERS = (
     "what should the task be called",
     "what should the task be named",
@@ -280,6 +310,59 @@ def resolve_ticket_ref(intent: str, *, session_metadata: dict[str, Any] | None =
     return str(last.get("display_id") or last.get("record_id") or "")
 
 
+def is_weak_board_task_title(title: str) -> bool:
+    """True when a parsed title is a command fragment, not real work."""
+    cleaned = re.sub(r"\s+", " ", (title or "").strip().lower())
+    if not cleaned or len(cleaned) < 4:
+        return True
+    if cleaned in _WEAK_TITLE_PHRASES:
+        return True
+    if cleaned.startswith("to ") and len(cleaned.split()) <= 4:
+        return True
+    if re.fullmatch(r"(?:for|on|to)\s+\w+(?:\s+\w+){0,2}", cleaned):
+        return True
+    return False
+
+
+def extract_board_create_assignee(
+    raw_text: str,
+    intent: str = "",
+    *,
+    bot_user_id: str = "",
+    requester_user_id: str = "",
+) -> str:
+    """Assignee from create command — prefer explicit mention, then cc fallback."""
+    raw = raw_text or ""
+    for pattern in (_CREATE_ASSIGNEE_RE, _ASSIGN_TO_RE):
+        match = pattern.search(raw)
+        if match:
+            uid = match.group(1).strip()
+            if uid and uid != bot_user_id:
+                return uid
+
+    from backend.integrations.slack.sanitize import extract_slack_user_ids
+
+    def _filter_ids(text: str) -> list[str]:
+        return [
+            uid
+            for uid in extract_slack_user_ids(text)
+            if uid and uid != bot_user_id and uid != requester_user_id
+        ]
+
+    # Fallback: cc'd people when no explicit assignee in the create command.
+    cc_split = re.split(r"\bcc\s*:\s*", raw, maxsplit=1, flags=re.I)
+    if len(cc_split) > 1:
+        cc_part = cc_split[1]
+        create_match = _CREATE_CMD_RE.search(cc_part)
+        cc_scope = cc_part[: create_match.start()] if create_match else cc_part
+        cc_ids = _filter_ids(cc_scope)
+        if cc_ids:
+            return cc_ids[-1]
+
+    user_ids = _filter_ids(raw)
+    return user_ids[-1] if user_ids else ""
+
+
 def references_thread_context(intent: str) -> bool:
     return bool(_ABOVE_RE.search(intent or ""))
 
@@ -295,7 +378,10 @@ def extract_task_title(intent: str) -> str:
     def _clean_title(raw: str) -> str:
         title = raw.strip(" .,:;\"'")
         title = re.sub(r"\s+for\s+(the\s+)?above\s*$", "", title, flags=re.I).strip()
+        title = re.sub(r"\s+for\s+(the\s+)?same\s*$", "", title, flags=re.I).strip()
         title = strip_list_id_override(title)
+        if is_weak_board_task_title(title):
+            return ""
         return title[:200]
 
     match = _TITLE_FOR_RE.search(text)
