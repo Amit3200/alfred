@@ -84,8 +84,20 @@ def register_slack_board_tools(
         title = str(args.get("title") or "").strip()
         if not title:
             return ToolResult.error("title is required.")
-        description = str(args.get("description") or "").strip()
         severity = normalize_board_severity(str(args.get("severity") or ""))
+        assignee_user_id = str(args.get("assignee_user_id") or "").strip()
+        if current:
+            from backend.routing.slack_board_intent import finalize_board_create_fields
+
+            finalized = finalize_board_create_fields(
+                severity=severity,
+                assignee_user_id=assignee_user_id,
+                requester_user_id=current.user_id or "",
+                bot_user_id=_bot_user_id(client),
+            )
+            severity = finalized["severity"]
+            assignee_user_id = finalized["assignee_user_id"]
+        description = str(args.get("description") or "").strip()
         team_id = ""
         try:
             auth = client.auth_test()

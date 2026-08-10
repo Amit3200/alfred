@@ -470,6 +470,26 @@ def normalize_board_severity(raw: str) -> str:
     return titled if titled in ("High", "Medium", "Low") else ""
 
 
+DEFAULT_BOARD_SEVERITY = "Medium"
+
+
+def finalize_board_create_fields(
+    *,
+    severity: str = "",
+    assignee_user_id: str = "",
+    requester_user_id: str = "",
+    bot_user_id: str = "",
+) -> dict[str, str]:
+    """Apply create defaults: Medium severity; requester as assignee when none was parsed."""
+    sev = normalize_board_severity(severity) or DEFAULT_BOARD_SEVERITY
+    assignee = (assignee_user_id or "").strip()
+    requester = (requester_user_id or "").strip()
+    bot = (bot_user_id or "").strip()
+    if not assignee and requester and requester != bot:
+        assignee = requester
+    return {"severity": sev, "assignee_user_id": assignee}
+
+
 def slack_thread_permalink(
     *,
     channel_id: str,

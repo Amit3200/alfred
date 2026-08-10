@@ -42,6 +42,32 @@ def test_create_assignee_falls_back_to_cc():
     assert assignee == "USULTAN"
 
 
+def test_finalize_board_create_defaults():
+    from backend.routing.slack_board_intent import finalize_board_create_fields
+
+    fields = finalize_board_create_fields(
+        severity="",
+        assignee_user_id="",
+        requester_user_id="UREQUESTER",
+        bot_user_id="UBOT",
+    )
+    assert fields["severity"] == "Medium"
+    assert fields["assignee_user_id"] == "UREQUESTER"
+
+
+def test_finalize_board_create_keeps_explicit_assignee_and_severity():
+    from backend.routing.slack_board_intent import finalize_board_create_fields
+
+    fields = finalize_board_create_fields(
+        severity="p0",
+        assignee_user_id="UARNOLD",
+        requester_user_id="UREQUESTER",
+        bot_user_id="UBOT",
+    )
+    assert fields["severity"] == "High"
+    assert fields["assignee_user_id"] == "UARNOLD"
+
+
 def test_create_on_to_call_me_title_empty():
     cleaned = "create a task on  to call me"
     assert extract_task_title(cleaned) == ""

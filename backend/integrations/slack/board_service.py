@@ -365,11 +365,14 @@ def create_board_task(
     details_col = _column_by_name(schema, cols.details or "Ticket Details")
     _append_field(initial_fields, details_col, description.strip())
 
-    if severity.strip():
-        sev_col = _resolve_severity_column(schema, cols)
-        normalized = _normalize_severity_for_list(severity)
-        if sev_col and normalized:
-            _append_field(initial_fields, sev_col, normalized)
+    from backend.routing.slack_board_intent import DEFAULT_BOARD_SEVERITY
+
+    sev_col = _resolve_severity_column(schema, cols)
+    normalized_severity = (
+        _normalize_severity_for_list(severity) if severity.strip() else DEFAULT_BOARD_SEVERITY
+    )
+    if sev_col and normalized_severity:
+        _append_field(initial_fields, sev_col, normalized_severity)
 
     if merchant.strip():
         merch_col = _column_by_name(schema, cols.merchant or "Merchant Name")

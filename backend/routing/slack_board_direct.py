@@ -21,6 +21,7 @@ from backend.routing.slack_board_intent import (
     build_thread_description,
     extract_board_create_assignee,
     extract_board_title_followup,
+    finalize_board_create_fields,
     extract_list_id_override,
     extract_severity_target,
     extract_status_target,
@@ -81,11 +82,12 @@ def extract_board_create_fields(task: Task, *, bot_user_id: str = "") -> dict[st
             user_ids = [uid for uid in user_ids if uid and uid != bot_user_id]
             if user_ids:
                 assignee_user_id = user_ids[-1]
-    return {
-        "title": title[:200],
-        "severity": severity,
-        "assignee_user_id": assignee_user_id,
-    }
+    return finalize_board_create_fields(
+        severity=severity,
+        assignee_user_id=assignee_user_id,
+        requester_user_id=task.user_id or "",
+        bot_user_id=bot_user_id,
+    ) | {"title": title[:200]}
 
 
 def format_board_task_created(result: dict[str, Any], *, severity: str = "", assignee_user_id: str = "") -> str:
@@ -333,8 +335,17 @@ def try_slack_board_create_direct(
                 description = draft.description
             if draft.assignee_user_id:
                 assignee_user_id = draft.assignee_user_id
-            if draft.severity and not severity:
+            if draft.severity:
                 severity = draft.severity
+
+    finalized = finalize_board_create_fields(
+        severity=severity,
+        assignee_user_id=assignee_user_id,
+        requester_user_id=task.user_id or "",
+        bot_user_id=_bot_user_id(client),
+    )
+    severity = finalized["severity"]
+    assignee_user_id = finalized["assignee_user_id"]
 
     if not title:
         return (

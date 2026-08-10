@@ -19,6 +19,7 @@ from backend.routing.slack_board_intent import (
     build_thread_description,
     extract_task_title,
 )
+from backend.routing.slack_board_direct import extract_board_create_fields
 
 logger = logging.getLogger(__name__)
 
@@ -85,6 +86,7 @@ def bootstrap_slack_board_create(
         )
 
     try:
+        create_fields = extract_board_create_fields(task, bot_user_id=_bot_user_id(client))
         result = create_board_task(
             client,
             config,
@@ -92,6 +94,8 @@ def bootstrap_slack_board_create(
             board,
             title=title,
             description=description,
+            severity=create_fields["severity"],
+            assignee_user_id=create_fields["assignee_user_id"],
             channel_id=task.channel_id or "",
             thread_ts=task.thread_ts or "",
         )

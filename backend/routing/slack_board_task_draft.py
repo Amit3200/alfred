@@ -13,6 +13,7 @@ from backend.ai.registry import LLMRouter
 from backend.models.config import AlfredConfig
 from backend.models.task import Task
 from backend.routing.slack_board_intent import (
+    DEFAULT_BOARD_SEVERITY,
     build_board_task_details,
     is_weak_board_task_title,
     normalize_board_severity,
@@ -58,8 +59,9 @@ Context:
 Requested by: <requester label if known>
 
 Rules for severity:
-- Return High, Medium, or Low only when priority/severity is clear (P0/P1→High, P2→Medium, P3→Low).
-- Otherwise return "".
+- Default to **Medium** when priority is unclear.
+- Return High, Medium, or Low when priority/severity is clear (P0/P1→High, P2→Medium, P3→Low).
+- Only return "" when the column should be omitted (rare); prefer Medium.
 
 confidence: 0.0–1.0 for how well you understood the thread + assignee."""
 
@@ -169,6 +171,8 @@ def draft_board_task_from_thread(
         assignee = ""
 
     severity = normalize_board_severity(str(parsed.get("severity") or ""))
+    if not severity:
+        severity = DEFAULT_BOARD_SEVERITY
     try:
         confidence = float(parsed.get("confidence") or 0.0)
     except (TypeError, ValueError):
