@@ -20,6 +20,8 @@ from backend.routing.slack_board_intent import (
     build_board_task_details,
     build_thread_description,
     build_board_mention_map,
+    format_board_thread_messages,
+    infer_thread_action_assignee_from_messages,
     extract_board_create_assignee,
     extract_board_title_followup,
     extract_title_from_summary,
@@ -252,7 +254,7 @@ def try_slack_board_create_direct(
     from slack_sdk import WebClient
 
     from backend.db.slack_board_store import SlackBoardStore
-    from backend.integrations.slack.context import fetch_thread_messages, messages_to_text
+    from backend.integrations.slack.context import fetch_thread_messages
     from backend.routing.slack_board_bootstrap import _bot_user_id
 
     client = WebClient(token=token)
@@ -317,8 +319,9 @@ def try_slack_board_create_direct(
             )
             if messages:
                 mention_labels = build_board_mention_map(client, task, messages)
-                messages_text = (
-                    messages_to_text(messages, user_names=mention_labels) or ""
+                messages_text = format_board_thread_messages(
+                    messages,
+                    mention_labels=mention_labels,
                 )
         except Exception as exc:
             logger.warning("Thread fetch for direct board create failed: %s", exc)
@@ -327,12 +330,18 @@ def try_slack_board_create_direct(
         title = ""
 
     if messages_text and in_slack_thread:
-        thread_assignee = infer_thread_action_assignee(
-            messages_text,
-            task.raw_text or "",
-            bot_user_id=_bot_user_id(client),
-        )
-        if thread_assignee and not assignee_user_id:
+        thread_assignee = ""
+        if messages:
+            thread_assignee = infer_thread_action_assignee_from_messages(
+                messages,
+                bot_user_id=_bot_user_id(client),
+            )
+        if not thread_assignee:
+            thread_assignee = infer_thread_action_assignee(
+                task.raw_text or "",
+                bot_user_id=_bot_user_id(client),
+            )
+        if thread_assignee:
             assignee_user_id = thread_assignee
 
         from backend.routing.slack_board_task_draft import draft_board_task_from_thread
@@ -357,7 +366,7 @@ def try_slack_board_create_direct(
                     title = summary_title
             if draft.description:
                 description = draft.description
-            if draft.assignee_user_id:
+            if draft.assignee_user_id and not thread_assignee:
                 assignee_user_id = draft.assignee_user_id
             if draft.severity:
                 severity = draft.severity

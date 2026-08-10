@@ -33,6 +33,41 @@ def test_infer_thread_action_assignee():
     assert infer_thread_action_assignee(thread, bot_user_id="UBOT") == "URIYA"
 
 
+def test_infer_thread_action_assignee_from_messages():
+    from backend.routing.slack_board_intent import infer_thread_action_assignee_from_messages
+
+    messages = [
+        {
+            "user": "UARNOLD",
+            "text": (
+                "<@URIYA|Riya Verma> please share the partnership sheet with "
+                "<@UADITYA|Aditya Shaiwal> where he can check all the client names"
+            ),
+        }
+    ]
+    assert infer_thread_action_assignee_from_messages(messages, bot_user_id="UBOT") == "URIYA"
+
+
+def test_format_board_thread_messages_keeps_mentions():
+    from backend.routing.slack_board_intent import format_board_thread_messages
+
+    messages = [
+        {
+            "user": "UARNOLD",
+            "ts": "1733934420.000100",
+            "text": (
+                "<@URIYA|Riya Verma> please share the partnership sheet with "
+                "<@UADITYA|Aditya Shaiwal>"
+            ),
+        }
+    ]
+    labels = {"UARNOLD": "Arnold", "URIYA": "Riya Verma", "UADITYA": "Aditya Shaiwal"}
+    text = format_board_thread_messages(messages, mention_labels=labels)
+    assert "@Riya Verma please share" in text
+    assert "@Aditya Shaiwal" in text
+    assert "<@URIYA" not in text
+
+
 def test_finalize_skips_requester_when_thread_context():
     from backend.routing.slack_board_intent import finalize_board_create_fields
 

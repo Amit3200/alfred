@@ -335,6 +335,63 @@ def is_weak_board_task_title(title: str) -> bool:
     return False
 
 
+def humanize_slack_mentions_in_text(text: str, mention_labels: dict[str, str] | None = None) -> str:
+    """Replace `<@U123|Name>` with `@Name` so thread context keeps who was tagged."""
+    from backend.integrations.slack.sanitize import _MENTION_RE
+
+    labels = mention_labels or {}
+
+    def _repl(match: re.Match[str]) -> str:
+        uid = match.group(1)
+        name = (match.group(2) or labels.get(uid) or uid).strip()
+        return f"@{name} "
+
+    return _MENTION_RE.sub(_repl, text or "")
+
+
+def format_board_thread_messages(
+    messages: list[dict],
+    *,
+    mention_labels: dict[str, str] | None = None,
+) -> str:
+    """Thread text for board drafting — preserve @mentions instead of stripping them."""
+    from backend.formatting.slack_messages import format_slack_ts, _message_author
+    from backend.integrations.slack.sanitize import extract_slack_mention_labels
+
+    labels = dict(mention_labels or {})
+    lines: list[str] = []
+    for index, message in enumerate(messages, start=1):
+        raw = str(message.get("text") or "").strip()
+        if not raw:
+            continue
+        labels.update(extract_slack_mention_labels(raw))
+        body = humanize_slack_mentions_in_text(raw, labels).strip()
+        if not body:
+            continue
+        author = _message_author(message, user_names=labels)
+        when = format_slack_ts(message.get("ts") or "")
+        lines.append(f"[{index}] {when} | {author}: {body}")
+    return "\n".join(lines)
+
+
+def infer_thread_action_assignee_from_messages(
+    messages: list[dict],
+    *,
+    bot_user_id: str = "",
+) -> str:
+    """Assignee from raw Slack messages — `<@Riya> please share …`."""
+    bot = (bot_user_id or "").strip()
+    for message in messages:
+        text = str(message.get("text") or "")
+        match = _THREAD_ACTION_ASSIGNEE_RE.search(text)
+        if not match:
+            continue
+        uid = match.group(1).strip()
+        if uid and uid != bot:
+            return uid
+    return ""
+
+
 def infer_thread_action_assignee(
     *texts: str,
     bot_user_id: str = "",
