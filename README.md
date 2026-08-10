@@ -375,6 +375,7 @@ List shortcodes: `alfred slack emojis` (requires `emoji:read` scope). Custom + b
 | `alfred serve` | API + admin UI + Slack listener |
 | `alfred serve --reload` | Dev auto-reload |
 | `alfred up` | Background: API + Slack (+ Vite UI, + Ollama if default) |
+| `alfred restart` | Stop then start (`alfred down && alfred up`) |
 | `alfred stop` / `alfred down` | Stop background processes |
 | `alfred status` | Data dir, init state, Slack readiness |
 | `alfred token` | Print admin username, password, and token |

@@ -824,3 +824,48 @@ def down_cmd(data_dir: Path | None, with_ollama: bool, with_frontend: bool) -> N
         with_ollama=with_ollama,
         with_frontend=with_frontend,
     )
+
+
+@main.command("restart")
+@click.option("--data-dir", type=click.Path(path_type=Path), default=None)
+@click.option("--host", default=None, help="Bind host (overrides config).")
+@click.option("--port", default=None, type=int, help="Bind port (overrides config).")
+@click.option(
+    "--with-ollama/--no-ollama",
+    default=None,
+    help="Start local Ollama (default: on when default AI provider is ollama).",
+)
+@click.option("--model", default=None, help="Ollama model name for readiness checks.")
+@click.option(
+    "--with-frontend/--no-frontend",
+    default=True,
+    help="Start Vite dev server for hot-reload UI (default: on).",
+)
+@click.option("--frontend-port", default=None, type=int, help="Vite dev port (default: 5173).")
+def restart_cmd(
+    data_dir: Path | None,
+    host: str | None,
+    port: int | None,
+    with_ollama: bool | None,
+    model: str | None,
+    with_frontend: bool,
+    frontend_port: int | None,
+) -> None:
+    """Stop then start Alfred (`alfred down && alfred up`)."""
+    ctx = click.get_current_context()
+    ctx.invoke(
+        stop_cmd,
+        data_dir=data_dir,
+        with_ollama=True,
+        with_frontend=True,
+    )
+    ctx.invoke(
+        up,
+        data_dir=data_dir,
+        host=host,
+        port=port,
+        with_ollama=with_ollama,
+        model=model,
+        with_frontend=with_frontend,
+        frontend_port=frontend_port,
+    )
