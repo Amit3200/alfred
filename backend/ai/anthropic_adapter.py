@@ -35,6 +35,7 @@ class AnthropicProvider(LLMProvider):
         messages: list[Message],
         tools: list[ToolSchema] | None = None,
         model: str | None = None,
+        max_tokens: int | None = None,
     ) -> LLMResponse:
         client = self._get_client()
         model_name = model or self.config.model
@@ -42,7 +43,7 @@ class AnthropicProvider(LLMProvider):
         api_messages = _anthropic_messages(messages)
         kwargs: dict[str, Any] = {
             "model": model_name,
-            "max_tokens": 4096,
+            "max_tokens": max_tokens or 4096,
             "messages": api_messages,
         }
         if system:

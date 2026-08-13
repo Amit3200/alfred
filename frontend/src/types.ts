@@ -8,6 +8,7 @@ export type SettingsPage =
   | "repos"
   | "playbooks"
   | "scripts"
+  | "artifacts"
   | "tools"
   | "routing"
   | "health"

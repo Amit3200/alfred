@@ -320,6 +320,9 @@ class TaskProcessor:
             except Exception:
                 logger.exception("Failed to fetch Slack context for task %s", task.id)
 
+        if slack_user_names:
+            task.metadata["slack_user_names"] = slack_user_names
+
         include_context = bool(
             slack_context
             and (
@@ -403,11 +406,27 @@ class TaskProcessor:
 
         investigation = self._resolve_investigation_skill(route_context, task, session=session)
         if investigation is None and chat_persona:
-            forced = persona_skill_name(chat_persona)
-            if forced:
-                investigation = self._playbooks.get_by_name(forced)
+            from backend.routing.html_slides_delivery import (
+                looks_like_html_slides_followup,
+                looks_like_html_slides_publish_continuation,
+                looks_like_html_slides_request,
+            )
+
+            slide_text = f"{task.cleaned_intent}\n{task.raw_text}".strip()
+            if (
+                looks_like_html_slides_request(slide_text)
+                or looks_like_html_slides_followup(task, session)
+                or looks_like_html_slides_publish_continuation(task, session)
+            ):
+                investigation = self._playbooks.get_by_name("html_slides")
                 if investigation:
-                    logger.info("Persona %s → skill %s", chat_persona, forced)
+                    logger.info("Persona override → html_slides for slide request")
+            if investigation is None:
+                forced = persona_skill_name(chat_persona)
+                if forced:
+                    investigation = self._playbooks.get_by_name(forced)
+                    if investigation:
+                        logger.info("Persona %s → skill %s", chat_persona, forced)
 
         legacy_routing = self.config.routing.planner_strategy == "rules_first"
         if investigation is None and ticket_target != "jira":
@@ -548,6 +567,13 @@ class TaskProcessor:
 
         tool_plan = None
         scoped_binding = None
+        session_meta_patch: dict[str, Any] | None = None
+        if active_skill and active_skill.name == "html_slides":
+            from backend.routing.html_slides_delivery import publish_session_metadata_patch
+
+            session_meta_patch = publish_session_metadata_patch(task)
+            session_meta_patch.setdefault("last_skill_name", "html_slides")
+            session_meta_patch.setdefault("last_intent_class", "html_slides")
         if active_skill and active_skill.mode in ("investigation", "workflow"):
             scoped_binding = self._resolve_scoped_tools(
                 task,
@@ -857,7 +883,12 @@ class TaskProcessor:
             response,
             tool_plan=tool_plan,
             skill=active_skill,
-            metadata_patch=metadata_patch,
+            metadata_patch={
+                **(metadata_patch or {}),
+                **(session_meta_patch or {}),
+            }
+            if metadata_patch or session_meta_patch
+            else None,
         )
 
         if session_key and self.session_store:
@@ -875,7 +906,12 @@ class TaskProcessor:
                 assistant_content=rendered,
                 assistant_payload=response.payload,
                 context_snapshot=slack_context if include_context else None,
-                metadata_patch=metadata_patch,
+                metadata_patch={
+                    **(metadata_patch or {}),
+                    **(session_meta_patch or {}),
+                }
+                if metadata_patch or session_meta_patch
+                else None,
             )
             logger.info("Session updated: %s", session_key)
 
@@ -1023,7 +1059,23 @@ class TaskProcessor:
         from backend.observability.context import set_call_kind
         from backend.orchestrator.graph.skill_policy import resolve_policy_skill
         from backend.routing.chat_persona import normalize_persona, resolve_effective_persona
+        from backend.routing.html_slides_delivery import (
+            looks_like_html_slides_followup,
+            looks_like_html_slides_publish_continuation,
+            looks_like_html_slides_request,
+        )
         from backend.routing.tool_planner import planner_llm_enabled, resolve_tool_plan
+
+        slide_text = f"{task.cleaned_intent}\n{task.raw_text}".strip()
+        if (
+            looks_like_html_slides_request(slide_text)
+            or looks_like_html_slides_followup(task, session)
+            or looks_like_html_slides_publish_continuation(task, session)
+        ):
+            slides_skill = self._playbooks.get_by_name("html_slides")
+            if slides_skill is not None:
+                logger.info("HTML slides intent → skill html_slides")
+                return slides_skill
 
         if session:
             forced_skill = str(session.metadata.get("force_investigation_skill") or "").strip()
@@ -1035,9 +1087,13 @@ class TaskProcessor:
 
         persona = resolve_effective_persona(task, session) if task.source == "ui" else "all"
         if normalize_persona(persona) == "support":
-            skill = self._playbooks.get_by_name("repo_knowledge")
-            if skill is not None:
-                return skill
+            if not (
+                looks_like_html_slides_request(slide_text)
+                or looks_like_html_slides_followup(task, session)
+            ):
+                skill = self._playbooks.get_by_name("repo_knowledge")
+                if skill is not None:
+                    return skill
 
         routing = self.config.routing
         if routing.plan_first_routing and routing.tool_planner_enabled:
@@ -1277,6 +1333,24 @@ class TaskProcessor:
         if plan.intent_class == "repo.docs.qa" and tool_name == "search_repo_docs":
             # Doc Q&A uses LangGraph worker (search → read → grounded answer), not the BM25 fast path.
             return None, None
+
+        if tool_name == "save_html_deck":
+            # Slides require the LLM to synthesize HTML before calling the tool.
+            return None, None
+
+        if tool_name == "publish_html_artifact":
+            from backend.routing.html_slides_delivery import (
+                publish_args_complete,
+                resolve_publish_html_args,
+            )
+
+            tool_args = resolve_publish_html_args(
+                tool_args,
+                task=task,
+                session_metadata=dict(session.metadata if session else {}),
+            )
+            if not publish_args_complete(tool_args):
+                return None, None
 
         from backend.routing.slack_board_agent import SLACK_BOARD_WRITE_TOOLS
 
@@ -1745,6 +1819,7 @@ class TaskProcessor:
         )
         registry.clear_trace()
         registry.current_task = task
+        registry.session_metadata = dict(session.metadata if session else {})
         self._attach_governance(registry, task, session=session, skill_name=skill.name)
 
         runner = self.config.orchestrator.agent_runner
@@ -1802,6 +1877,20 @@ class TaskProcessor:
                     auto_create=False,
                 )
 
+        if skill.name == "html_slides":
+            from backend.ai.base import Message
+            from backend.routing.html_slides_delivery import (
+                html_slides_system_addendum,
+                inject_html_slides_bootstrap_message,
+            )
+
+            if messages and messages[0].role == "system":
+                messages[0] = Message(
+                    role="system",
+                    content=f"{messages[0].content.rstrip()}{html_slides_system_addendum(task, session=session, config=self.config, data_dir=self._data_dir_path())}",
+                )
+            messages = inject_html_slides_bootstrap_message(messages, task, session=session)
+
         if skill.mode in ("investigation", "workflow") and skill.name != "plan_task":
             from backend.orchestrator.planning import generate_initial_plan, plan_exists_for_task
 
@@ -1857,6 +1946,52 @@ class TaskProcessor:
                 if prose:
                     return AssistantResponse.from_text(prose), patch
                 return structured, patch
+
+        if skill.name == "html_slides":
+            from backend.routing.html_slides_delivery import (
+                format_artifact_tool_reply,
+                html_deck_session_metadata_patch,
+                resolve_html_slides_reply,
+                salvage_html_deck_from_prose,
+            )
+
+            public_base = (self.config.artifacts.public_base_url or "").strip()
+            artifact_reply, _, artifact_patch = resolve_html_slides_reply(
+                registry,
+                task=task,
+                public_base_url=public_base,
+            )
+            if artifact_reply:
+                merged_patch = {**(patch or {}), **(artifact_patch or {})}
+                return AssistantResponse.from_text(artifact_reply), merged_patch or None
+
+            if prose:
+                salvaged = salvage_html_deck_from_prose(
+                    prose,
+                    registry,
+                    allowed_tools=allowed_tools,
+                )
+                if salvaged and salvaged.kind in ("html_deck_saved", "html_artifact_published"):
+                    salvaged_reply = format_artifact_tool_reply(
+                        salvaged,
+                        task=task,
+                        public_base_url=public_base,
+                    )
+                    salvaged_patch = (
+                        html_deck_session_metadata_patch(salvaged.data)
+                        if salvaged.kind == "html_deck_saved"
+                        else {
+                            "pending_publish": False,
+                            "last_published_slug": str(salvaged.data.get("slug") or ""),
+                            "last_published_url": str(
+                                salvaged.data.get("share_url") or salvaged.data.get("slug_url") or ""
+                            ),
+                        }
+                    )
+                    return (
+                        AssistantResponse.from_text(salvaged_reply),
+                        {**(patch or {}), **salvaged_patch},
+                    )
 
         if prose:
             from backend.routing.grounding_gate import ToolTraceEntry, validate_agent_result
@@ -2049,6 +2184,17 @@ def _tool_result_to_response(result: ToolResult) -> AssistantResponse | None:
         return AssistantResponse.from_text("\n".join(lines))
     if result.kind == "slack_board_comment":
         return AssistantResponse.from_text("Posted comment on the board task thread.")
+    if result.kind == "html_artifact_published":
+        from backend.artifacts.formatting import format_published_artifact_slack
+
+        public_base = ""
+        return AssistantResponse.from_text(
+            format_published_artifact_slack(result.data, public_base_url=public_base)
+        )
+    if result.kind == "html_deck_saved":
+        from backend.artifacts.formatting import format_saved_html_deck_slack
+
+        return AssistantResponse.from_text(format_saved_html_deck_slack(result.data))
     if result.kind in STRUCTURED_TOOL_KINDS:
         return AssistantResponse.structured(result.kind, result.data)
     if result.kind == "error":
@@ -2090,5 +2236,21 @@ def _unified_metadata_patch(
     # Git tools patch
     from backend.routing.git_context import metadata_patch_for_tool_result
     git_patch = metadata_patch_for_tool_result(tool_name, args, result) or {}
+
+    if tool_name == "save_html_deck" and getattr(result, "kind", "") == "html_deck_saved":
+        from backend.routing.html_slides_delivery import html_deck_session_metadata_patch
+
+        deck_patch = html_deck_session_metadata_patch(getattr(result, "data", {}) or {})
+        return {**jira_patch, **git_patch, **deck_patch}
+
+    if tool_name == "publish_html_artifact" and getattr(result, "kind", "") == "html_artifact_published":
+        data = getattr(result, "data", {}) or {}
+        return {
+            **jira_patch,
+            **git_patch,
+            "pending_publish": False,
+            "last_published_slug": str(data.get("slug") or ""),
+            "last_published_url": str(data.get("share_url") or data.get("slug_url") or ""),
+        }
 
     return {**jira_patch, **git_patch}

@@ -67,6 +67,7 @@ ui_format_rules: |
   - Do not mention Slack channel history, cipher/code repositories, or team channels unless the user explicitly asked about them.
   - If indexed documentation has no match, say so plainly — do not invent checkout upsells, integrations, or configuration steps.
   - Cite doc paths from tool results (e.g. `features/upselling.mdx`).
+  - For slides/presentations/decks: build HTML, then **call `save_html_deck`** — never claim the deck is ready without that tool.
 
 github_comment_rules: |
   ## GitHub PR comment format

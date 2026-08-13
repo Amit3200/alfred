@@ -154,6 +154,13 @@ SCHEDULE_TOOLS = frozenset(
     }
 )
 
+ARTIFACT_TOOLS = frozenset(
+    {
+        "save_html_deck",
+        "publish_html_artifact",
+    }
+)
+
 ALL_KNOWN_TOOLS = (
     GIT_TOOLS
     | REPO_DOC_TOOLS
@@ -164,6 +171,7 @@ ALL_KNOWN_TOOLS = (
     | WEB_TOOLS
     | COMPANY_SCRIPT_TOOLS
     | SCHEDULE_TOOLS
+    | ARTIFACT_TOOLS
 )
 
 # Per-tool domain for logging and observability (finer than category).
@@ -180,6 +188,7 @@ TOOL_DOMAINS: dict[str, str] = {
     **{name: "web" for name in WEB_TOOLS},
     **{name: "script" for name in COMPANY_SCRIPT_TOOLS},
     **{name: "schedule" for name in SCHEDULE_TOOLS},
+    **{name: "artifact" for name in ARTIFACT_TOOLS},
 }
 
 

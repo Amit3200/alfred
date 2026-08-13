@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 from backend.tools.catalog import (
+    ARTIFACT_TOOLS,
     AWS_TOOLS,
     COMPANY_SCRIPT_TOOLS,
     GIT_API_TOOLS,
@@ -120,6 +121,7 @@ def build_git_tool_registry(
     registry.git_config = config.git
     registry.workspace_id = workspace_id
     registry.data_dir = data_dir
+    registry.alfred_config = config
 
     allowed = registry._registration_filter
 
@@ -237,6 +239,11 @@ def build_git_tool_registry(
         from backend.tools.company_script_tool import register_company_script_tools
 
         register_company_script_tools(registry, config=config, data_dir=data_dir)
+
+    if wants_module(ARTIFACT_TOOLS, allowed):
+        from backend.tools.artifacts_tool import register_artifact_tools
+
+        register_artifact_tools(registry, config=config, data_dir=data_dir)
 
     if config.repo_knowledge.enabled and config.git.enabled and data_dir is not None:
         from backend.tools.catalog import REPO_DOC_TOOLS

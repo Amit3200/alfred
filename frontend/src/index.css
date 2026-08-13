@@ -1115,6 +1115,33 @@ body,
   vertical-align: top;
 }
 
+.alfred-artifacts-table {
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.alfred-artifacts-table .ant-table {
+  background: var(--alfred-surface) !important;
+}
+
+.alfred-artifacts-table .ant-table-thead > tr > th {
+  background: var(--alfred-surface-muted) !important;
+  border-bottom: 1px solid var(--alfred-border) !important;
+}
+
+.alfred-artifacts-table .ant-table-tbody > tr > td {
+  background: var(--alfred-surface) !important;
+  border-bottom: 1px solid var(--alfred-border-subtle) !important;
+}
+
+.alfred-artifacts-table .ant-table-tbody > tr.ant-table-row:hover > td {
+  background: var(--alfred-hover) !important;
+}
+
+.alfred-artifacts-table .ant-table-tbody > tr:last-child > td {
+  border-bottom: none !important;
+}
+
 .alfred-health-service {
   font-weight: 600;
   color: var(--alfred-text-strong);

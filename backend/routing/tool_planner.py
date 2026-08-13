@@ -104,6 +104,16 @@ def plan_tools_rules(
     def _ok(name: str) -> bool:
         return not allowed or name in allowed
 
+    from backend.routing.html_slides_delivery import (
+        build_html_slides_tool_plan,
+        looks_like_html_slides_request,
+    )
+
+    if looks_like_html_slides_request(text) and _ok("save_html_deck"):
+        plan = build_html_slides_tool_plan(task, skill_allowed=list(allowed) if allowed else None)
+        if plan is not None:
+            return plan
+
     # Single issue key → get
     if entities.issue_keys and len(entities.issue_keys) == 1 and len(text.split()) <= 8:
         key = entities.issue_keys[0]
@@ -462,7 +472,10 @@ Rules:
    Include args_hint on steps: title for create; ticket_ref/display_id, status, assignee_user_id, severity for update.
    For follow-ups like "assign it to @user", use last board task from session context as ticket_ref when no id in message.
 8. If impossible with catalog, set tools_needed=[] and list missing_capabilities.
-9. Max 6 tools in tools_needed."""
+9. Max 6 tools in tools_needed.
+10. Slides/presentation/deck requests (HTML deck from data, metrics, tables) MUST use save_html_deck with intent_class html_slides.
+    Add publish_html_artifact only when the user explicitly asks to publish/host/share a URL.
+    Do NOT use search_repo_docs or google_create_sheet for slide generation when save_html_deck is in the catalog."""
 
     try:
         response = provider.chat(
@@ -519,6 +532,24 @@ def resolve_tool_plan(
     llm_first = config.routing.planner_strategy == "llm_first"
     entity_direct_only = llm_first
 
+    from backend.routing.html_slides_delivery import (
+        build_html_slides_tool_plan,
+        looks_like_html_slides_request,
+    )
+
+    slides_plan = build_html_slides_tool_plan(
+        task,
+        skill_allowed=skill_allowed,
+        session_metadata=session_metadata,
+    )
+    if slides_plan is not None:
+        logger.info(
+            "HTML slides plan (deterministic): tools=%s intent=%s",
+            slides_plan.tools_needed,
+            slides_plan.intent_class,
+        )
+        return slides_plan
+
     if task.source == "ui":
         from backend.routing.chat_persona import (
             build_support_doc_plan,
@@ -529,7 +560,9 @@ def resolve_tool_plan(
         persona = str(task.metadata.get("chat_persona_effective") or "")
         if not persona:
             persona = resolve_effective_persona(task, None)
-        if normalize_persona(persona) == "support":
+        if normalize_persona(persona) == "support" and not looks_like_html_slides_request(
+            task.cleaned_intent
+        ):
             qa_plan = build_support_doc_plan(task)
             if skill_allowed:
                 allowed = set(skill_allowed)

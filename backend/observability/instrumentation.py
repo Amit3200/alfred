@@ -30,9 +30,20 @@ class InstrumentedLLMProvider(LLMProvider):
         messages: list[Message],
         tools: list[ToolSchema] | None = None,
         model: str | None = None,
+        max_tokens: int | None = None,
+        **kwargs: object,
     ) -> LLMResponse:
         started = time.perf_counter()
-        response = self._inner.chat(messages, tools=tools, model=model)
+        call_kwargs: dict[str, object] = {}
+        if max_tokens is not None:
+            call_kwargs["max_tokens"] = max_tokens
+        call_kwargs.update(kwargs)
+        response = self._inner.chat(
+            messages,
+            tools=tools,
+            model=model,
+            **call_kwargs,
+        )
         duration_ms = int((time.perf_counter() - started) * 1000)
         if not response.provider:
             response.provider = self.provider_name
@@ -44,5 +55,16 @@ class InstrumentedLLMProvider(LLMProvider):
         messages: list[Message],
         tools: list[ToolSchema] | None = None,
         model: str | None = None,
+        max_tokens: int | None = None,
+        **kwargs: object,
     ) -> Iterator[LLMChunk]:
-        return self._inner.stream(messages, tools=tools, model=model)
+        call_kwargs: dict[str, object] = {}
+        if max_tokens is not None:
+            call_kwargs["max_tokens"] = max_tokens
+        call_kwargs.update(kwargs)
+        return self._inner.stream(
+            messages,
+            tools=tools,
+            model=model,
+            **call_kwargs,
+        )

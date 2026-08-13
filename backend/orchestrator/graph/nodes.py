@@ -225,6 +225,7 @@ def run_worker_node(state: AlfredGraphState, config: RunnableConfig) -> dict[str
     )
     registry.clear_trace()
     registry.current_task = runtime.task
+    registry.session_metadata = dict(getattr(runtime.session, "metadata", None) or {})
     processor._attach_governance(registry, runtime.task, session=runtime.session, skill_name=skill.name)
 
     messages = list(runtime.messages)
@@ -248,6 +249,18 @@ def run_worker_node(state: AlfredGraphState, config: RunnableConfig) -> dict[str
 
     if not allowed:
         allowed = list(registry._tools.keys())
+
+    if skill.name == "html_slides" and messages and messages[0].role == "system":
+        from backend.routing.html_slides_delivery import (
+            html_slides_system_addendum,
+            inject_html_slides_bootstrap_message,
+        )
+
+        messages[0] = Message(
+            role="system",
+            content=f"{messages[0].content.rstrip()}{html_slides_system_addendum(runtime.task, session=runtime.session, config=processor.config, data_dir=processor._data_dir_path())}",
+        )
+        messages = inject_html_slides_bootstrap_message(messages, runtime.task, session=runtime.session)
 
     runner = processor.config.orchestrator.agent_runner
 
@@ -386,6 +399,63 @@ def run_worker_node(state: AlfredGraphState, config: RunnableConfig) -> dict[str
                 "metadata_patch": patch,
                 "route": "done",
             }
+
+    if skill.name == "html_slides":
+        from backend.routing.html_slides_delivery import (
+            format_artifact_tool_reply,
+            html_deck_session_metadata_patch,
+            resolve_html_slides_reply,
+            salvage_html_deck_from_prose,
+        )
+
+        public_base = (processor.config.artifacts.public_base_url or "").strip()
+        artifact_reply, _, artifact_patch = resolve_html_slides_reply(
+            registry,
+            task=runtime.task,
+            public_base_url=public_base,
+        )
+        if artifact_reply:
+            merged_patch = {**(patch or {}), **(artifact_patch or {})}
+            return {
+                "raw_reply": artifact_reply,
+                "response_kind": "text",
+                "response_data": {"text": artifact_reply},
+                "tool_trace": list(registry.tool_trace),
+                "metadata_patch": merged_patch or None,
+                "route": "done",
+            }
+
+        if prose:
+            salvaged = salvage_html_deck_from_prose(
+                prose,
+                registry,
+                allowed_tools=allowed,
+            )
+            if salvaged and salvaged.kind in ("html_deck_saved", "html_artifact_published"):
+                salvaged_reply = format_artifact_tool_reply(
+                    salvaged,
+                    task=runtime.task,
+                    public_base_url=public_base,
+                )
+                salvaged_patch = (
+                    html_deck_session_metadata_patch(salvaged.data)
+                    if salvaged.kind == "html_deck_saved"
+                    else {
+                        "pending_publish": False,
+                        "last_published_slug": str(salvaged.data.get("slug") or ""),
+                        "last_published_url": str(
+                            salvaged.data.get("share_url") or salvaged.data.get("slug_url") or ""
+                        ),
+                    }
+                )
+                return {
+                    "raw_reply": salvaged_reply,
+                    "response_kind": "text",
+                    "response_data": {"text": salvaged_reply},
+                    "tool_trace": list(registry.tool_trace),
+                    "metadata_patch": {**(patch or {}), **salvaged_patch},
+                    "route": "done",
+                }
 
     return {
         "raw_reply": prose or raw_stripped,

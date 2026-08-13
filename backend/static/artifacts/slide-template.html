@@ -1,0 +1,359 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Presentation Title</title>
+  <style>
+    /* Terminal deck — sharp layout, company accent from Alfred branding config. */
+    :root {
+      --bg: #0a0a0a;
+      --bg-elevated: #111111;
+      --bg-panel: #141414;
+      --border: rgba(255, 255, 255, 0.1);
+      --border-strong: rgba(255, 255, 255, 0.16);
+      --text: #f5f5f5;
+      --text-muted: #a3a3a3;
+      --text-dim: #737373;
+      --accent: #818cf8;
+      --accent-soft: rgba(129, 140, 248, 0.12);
+      --accent-secondary: #a5b4fc;
+      --glow: rgba(129, 140, 248, 0.08);
+      --font-sans: "Inter", "Geist", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      --font-mono: "JetBrains Mono", "SF Mono", ui-monospace, Menlo, monospace;
+      --ease: cubic-bezier(0.22, 1, 0.36, 1);
+      --radius: 2px;
+    }
+
+    body.paper-mode {
+      --bg: #fafafa;
+      --bg-elevated: #ffffff;
+      --bg-panel: #ffffff;
+      --border: rgba(0, 0, 0, 0.1);
+      --border-strong: rgba(0, 0, 0, 0.16);
+      --text: #171717;
+      --text-muted: #525252;
+      --text-dim: #737373;
+      --accent: #4f46e5;
+      --accent-soft: rgba(79, 70, 229, 0.08);
+      --glow: rgba(79, 70, 229, 0.05);
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    html, body {
+      width: 100%; height: 100%; overflow: hidden;
+      background: var(--bg); color: var(--text);
+      font-family: var(--font-sans);
+      font-feature-settings: "ss01" on;
+      transition: background 0.35s var(--ease), color 0.35s var(--ease);
+    }
+
+    .grid-bg {
+      position: fixed; inset: 0; pointer-events: none; z-index: 0;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+      background-size: 40px 40px;
+    }
+    body.paper-mode .grid-bg {
+      background-image:
+        linear-gradient(rgba(0,0,0,0.04) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(0,0,0,0.04) 1px, transparent 1px);
+    }
+
+    .deck { position: relative; z-index: 1; height: 100%; display: flex; flex-direction: column; }
+
+    header.topbar {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.65rem 1.25rem; border-bottom: 1px solid var(--border);
+      background: var(--bg);
+    }
+    .topbar-title {
+      display: flex; align-items: baseline; gap: 0.45rem;
+      font-size: 0.8rem; color: var(--text-muted);
+    }
+    .brand-name {
+      font-family: var(--font-sans); font-weight: 650; letter-spacing: -0.02em;
+      color: var(--text); text-transform: none;
+    }
+    .brand-logo {
+      height: 0.95rem; width: auto; vertical-align: middle; margin-right: 0.35rem;
+    }
+    .topbar-sep { color: var(--text-dim); font-family: var(--font-mono); }
+    .deck-name {
+      font-family: var(--font-mono); font-size: 0.74rem; letter-spacing: 0.03em;
+      color: var(--text-muted);
+    }
+    .topbar-actions { display: flex; align-items: center; gap: 0.75rem; }
+    .slide-counter {
+      font-family: var(--font-mono); font-size: 0.72rem; color: var(--text-dim);
+      font-variant-numeric: tabular-nums;
+    }
+    .theme-btn {
+      font-family: var(--font-mono); font-size: 0.68rem; cursor: pointer;
+      border: 1px solid var(--border); background: transparent; color: var(--text-muted);
+      border-radius: var(--radius); padding: 0.28rem 0.5rem; letter-spacing: 0.04em;
+    }
+    .theme-btn:hover { border-color: var(--accent); color: var(--text); }
+
+    .progress-track { height: 1px; background: var(--border); }
+    .progress-fill {
+      height: 100%; width: 0%; background: var(--accent);
+      transition: width 0.4s var(--ease);
+    }
+
+    main.stage { flex: 1; position: relative; overflow: hidden; }
+
+    .slide {
+      position: absolute; inset: 0;
+      padding: clamp(1.25rem, 3.5vw, 2.75rem) clamp(1.25rem, 4vw, 3rem);
+      display: flex; flex-direction: column; justify-content: center;
+      opacity: 0; transform: translateY(10px);
+      pointer-events: none;
+      transition: opacity 0.4s var(--ease), transform 0.4s var(--ease);
+    }
+    .slide.active { opacity: 1; transform: translateY(0); pointer-events: auto; }
+
+    .slide-label {
+      font-family: var(--font-mono); font-size: 0.65rem;
+      letter-spacing: 0.14em; text-transform: uppercase;
+      color: var(--accent); margin-bottom: 0.65rem;
+    }
+    h1 {
+      font-size: clamp(1.85rem, 4.2vw, 3rem);
+      line-height: 1.05; letter-spacing: -0.04em; font-weight: 650;
+      max-width: 16ch; margin-bottom: 0.75rem;
+    }
+    h1 em, h1 .hl, h2 em, h2 .hl {
+      font-style: normal; color: var(--accent); font-weight: 650;
+    }
+    h2 {
+      font-size: clamp(1.25rem, 2.5vw, 1.85rem);
+      letter-spacing: -0.03em; font-weight: 620; margin-bottom: 0.75rem;
+    }
+    .lead {
+      font-size: clamp(0.95rem, 1.6vw, 1.08rem);
+      color: var(--text-muted); max-width: 54ch; line-height: 1.6;
+    }
+    .rule {
+      width: 40px; height: 1px; background: var(--accent);
+      margin: 0.9rem 0 1.25rem;
+    }
+
+    .stat-row {
+      display: grid; grid-template-columns: repeat(4, minmax(0, 1fr));
+      gap: 0; max-width: 960px; margin-top: 1.25rem;
+      border: 1px solid var(--border);
+    }
+    @media (max-width: 760px) { .stat-row { grid-template-columns: repeat(2, 1fr); } }
+    .stat-item {
+      padding: 0.85rem 1rem; border-right: 1px solid var(--border);
+    }
+    .stat-item:last-child { border-right: none; }
+    .stat-row .stat-item:nth-child(2n) { border-right: none; }
+    @media (min-width: 761px) {
+      .stat-row .stat-item:nth-child(2n) { border-right: 1px solid var(--border); }
+      .stat-row .stat-item:last-child { border-right: none; }
+    }
+    .stat-value {
+      font-size: clamp(1.35rem, 2.5vw, 1.85rem); font-weight: 650;
+      letter-spacing: -0.04em; color: var(--text); line-height: 1;
+      font-variant-numeric: tabular-nums;
+    }
+    .stat-label {
+      margin-top: 0.35rem; font-size: 0.72rem; color: var(--text-muted);
+      font-family: var(--font-mono); letter-spacing: 0.04em; text-transform: uppercase;
+    }
+
+    .feature-row {
+      display: grid; grid-template-columns: 3.5rem 1fr; gap: 1.25rem;
+      align-items: start; max-width: 920px;
+      padding-top: 0.25rem; border-top: 1px solid var(--border);
+    }
+    .feature-index {
+      font-family: var(--font-mono); font-size: 0.72rem;
+      letter-spacing: 0.08em; color: var(--text-dim);
+      padding-top: 0.35rem; font-variant-numeric: tabular-nums;
+    }
+    .feature-body h2 { margin-bottom: 0.45rem; font-size: 1.15rem; }
+    .feature-body .lead { font-size: 0.92rem; max-width: 62ch; }
+
+    .two-col {
+      display: grid; grid-template-columns: 1fr 1fr;
+      gap: 2rem; align-items: start; max-width: 1040px;
+    }
+    @media (max-width: 860px) { .two-col { grid-template-columns: 1fr; } }
+
+    ul.bullets {
+      list-style: none; margin-top: 0.75rem; display: grid; gap: 0.45rem; max-width: 58ch;
+    }
+    ul.bullets li {
+      display: flex; gap: 0.55rem; color: var(--text-muted); line-height: 1.5;
+      font-size: 0.92rem;
+    }
+    ul.bullets li::before {
+      content: "—"; color: var(--accent); font-family: var(--font-mono); flex-shrink: 0;
+    }
+
+    table.data-table {
+      width: 100%; border-collapse: collapse; font-size: 0.84rem;
+      max-width: 960px; margin-top: 0.5rem;
+      font-variant-numeric: tabular-nums;
+    }
+    table.data-table th {
+      text-align: left; font-family: var(--font-mono); font-size: 0.62rem;
+      letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim);
+      padding: 0.5rem 0.75rem 0.5rem 0; border-bottom: 1px solid var(--border-strong);
+      font-weight: 500;
+    }
+    table.data-table td {
+      padding: 0.5rem 0.75rem 0.5rem 0; color: var(--text-muted);
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+    table.data-table tbody tr:last-child td { border-bottom: none; }
+    table.data-table td.metric-cell { color: var(--text); font-weight: 600; }
+    table.data-table td strong { color: var(--text); font-weight: 600; }
+    table.data-table td.accent-cell { color: var(--accent); font-weight: 600; }
+
+    .terminal-panel {
+      border: 1px solid var(--border); border-radius: var(--radius);
+      background: var(--bg-elevated); min-height: 200px;
+      padding: 0.85rem 1rem; font-family: var(--font-mono); font-size: 0.78rem;
+      line-height: 1.6; color: var(--text-muted); text-align: left;
+    }
+    .terminal-panel .prompt { color: var(--accent); }
+
+    footer.deck-footer {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 0.55rem 1.25rem; border-top: 1px solid var(--border);
+      font-size: 0.68rem; color: var(--text-dim);
+    }
+    .confidential {
+      font-family: var(--font-mono); letter-spacing: 0.08em;
+      text-transform: uppercase; color: var(--text-muted); font-size: 0.62rem;
+    }
+    .kbd-hint { font-family: var(--font-mono); font-size: 0.62rem; opacity: 0.8; }
+    .powered strong { color: var(--text-muted); font-weight: 600; }
+
+    ::selection { background: var(--accent-soft); color: var(--text); }
+  </style>
+</head>
+<body>
+  <div class="grid-bg" aria-hidden="true"></div>
+
+  <div class="deck">
+    <header class="topbar">
+      <div class="topbar-title">
+        <span class="brand-name">Company</span>
+        <span class="topbar-sep">·</span>
+        <span class="deck-name">presentation title</span>
+      </div>
+      <div class="topbar-actions">
+        <span class="slide-counter" id="slideCounter">1 / 4</span>
+        <button class="theme-btn" id="themeToggle" type="button">ink / paper</button>
+      </div>
+    </header>
+    <div class="progress-track"><div class="progress-fill" id="topProgress"></div></div>
+
+    <main class="stage">
+      <section class="slide active">
+        <div class="slide-label">overview</div>
+        <h1>Checkout redirect <em>review</em></h1>
+        <div class="rule"></div>
+        <p class="lead">Daily success and failure metrics. One accent word in the headline — no decorative boxes.</p>
+        <div class="stat-row">
+          <div class="stat-item"><div class="stat-value">94.2%</div><div class="stat-label">success rate</div></div>
+          <div class="stat-item"><div class="stat-value">8</div><div class="stat-label">days</div></div>
+          <div class="stat-item"><div class="stat-value">1,240</div><div class="stat-label">avg success</div></div>
+          <div class="stat-item"><div class="stat-value">72</div><div class="stat-label">avg failure</div></div>
+        </div>
+      </section>
+      <section class="slide">
+        <div class="slide-label">data</div>
+        <h2>Daily breakdown</h2>
+        <table class="data-table">
+          <thead>
+            <tr><th>Date</th><th>Success</th><th>Failure</th><th>Rate</th></tr>
+          </thead>
+          <tbody>
+            <tr><td><strong>2026-08-03</strong></td><td class="metric-cell">1,240</td><td>72</td><td class="accent-cell">94.5%</td></tr>
+            <tr><td><strong>2026-08-04</strong></td><td class="metric-cell">1,198</td><td>81</td><td class="accent-cell">93.7%</td></tr>
+            <tr><td><strong>2026-08-05</strong></td><td class="metric-cell">1,305</td><td>65</td><td class="accent-cell">95.2%</td></tr>
+            <tr><td><strong>2026-08-06</strong></td><td class="metric-cell">1,276</td><td>58</td><td class="accent-cell">95.7%</td></tr>
+          </tbody>
+        </table>
+      </section>
+      <section class="slide">
+        <div class="feature-row">
+          <div class="feature-index">01</div>
+          <div class="feature-body">
+            <h2>Success rate held above 93%</h2>
+            <p class="lead">Flat layout — index in mono, title in sans, body in muted gray. No rounded KPI cards.</p>
+            <ul class="bullets">
+              <li>Peak day: Aug 6 at 95.7%</li>
+              <li>Lowest day: Aug 4 at 93.7%</li>
+            </ul>
+          </div>
+        </div>
+      </section>
+      <section class="slide">
+        <div class="two-col">
+          <div>
+            <div class="slide-label">next steps</div>
+            <h2>Actions</h2>
+            <ul class="bullets">
+              <li>Investigate Aug 4 failure spike</li>
+              <li>Monitor redirect latency on checkout</li>
+            </ul>
+          </div>
+          <div class="terminal-panel">
+            <div><span class="prompt">❯</span> summary</div>
+            <div>window: 2026-08-03 → 2026-08-10</div>
+            <div>total redirects: 9,842</div>
+            <div>overall success: 94.2%</div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <footer class="deck-footer">
+      <div>
+        <span class="confidential">Do not distribute without permission</span>
+        <span class="kbd-hint"> · ← → space</span>
+      </div>
+      <div class="powered">Powered by <strong>Alfred</strong></div>
+    </footer>
+  </div>
+
+  <script>
+    let currentSlideIndex = 0;
+    const slides = document.querySelectorAll('.slide');
+    const topProgress = document.getElementById('topProgress');
+    const slideCounter = document.getElementById('slideCounter');
+
+    function updateNavUI() {
+      slides.forEach((s, i) => s.classList.toggle('active', i === currentSlideIndex));
+      const pct = slides.length <= 1 ? 100 : (currentSlideIndex / (slides.length - 1)) * 100;
+      topProgress.style.width = pct + '%';
+      slideCounter.textContent = (currentSlideIndex + 1) + ' / ' + slides.length;
+    }
+    window.nextSlide = () => { if (currentSlideIndex < slides.length - 1) { currentSlideIndex++; updateNavUI(); } };
+    window.prevSlide = () => { if (currentSlideIndex > 0) { currentSlideIndex--; updateNavUI(); } };
+    window.goToSlide = (i) => { if (i >= 0 && i < slides.length) { currentSlideIndex = i; updateNavUI(); } };
+
+    window.addEventListener('keydown', (e) => {
+      if (['ArrowRight','ArrowDown',' ','PageDown'].includes(e.key)) { e.preventDefault(); nextSlide(); }
+      else if (['ArrowLeft','ArrowUp','Backspace','PageUp'].includes(e.key)) { e.preventDefault(); prevSlide(); }
+      else if (e.key === 'Home') { e.preventDefault(); goToSlide(0); }
+      else if (e.key === 'End') { e.preventDefault(); goToSlide(slides.length - 1); }
+    });
+
+    document.getElementById('themeToggle').addEventListener('click', () => {
+      document.body.classList.toggle('paper-mode');
+    });
+    updateNavUI();
+  </script>
+</body>
+</html>

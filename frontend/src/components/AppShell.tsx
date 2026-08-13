@@ -13,6 +13,7 @@ import { IntegrationsPanel } from "./panels/IntegrationsPanel";
 import { RepoMirrorsPanel } from "./panels/RepoMirrorsPanel";
 import { PlaybooksPanel } from "./panels/PlaybooksPanel";
 import { ScriptsPanel } from "./panels/ScriptsPanel";
+import { ArtifactsPanel } from "./panels/ArtifactsPanel";
 import { SecretsPanel } from "./panels/SecretsPanel";
 import { UsagePanel } from "./panels/UsagePanel";
 import { SchedulesPanel } from "./panels/SchedulesPanel";
@@ -44,6 +45,8 @@ function SettingsContent() {
       return <PlaybooksPanel />;
     case "scripts":
       return <ScriptsPanel />;
+    case "artifacts":
+      return <ArtifactsPanel />;
     case "tools":
       return <ToolsPanel />;
     case "routing":

@@ -15,6 +15,18 @@ class ServerConfig(BaseModel):
     admin_password: str | None = None
 
 
+class ArtifactsConfig(BaseModel):
+    """HTML presentation artifact hosting."""
+
+    public_base_url: str = Field(
+        default="",
+        description=(
+            "Public base URL for share links in Slack (e.g. https://alfred.company.com). "
+            "When empty, replies use relative paths like /artifacts/s/{slug}."
+        ),
+    )
+
+
 class SlackListJiraSyncConfig(BaseModel):
     """Auto-create JIRA bugs when Slack List workflow posts eligible tickets."""
 
@@ -597,6 +609,18 @@ class BrandingConfig(BaseModel):
         default="",
         description="Logo file extension when uploaded (png, jpg, webp, svg).",
     )
+    slide_accent: str = Field(
+        default="",
+        description="Company slide accent (ink mode). Overrides default when set in branding config.",
+    )
+    slide_accent_paper: str = Field(
+        default="",
+        description="Company slide accent in paper/light mode. Overrides default when set.",
+    )
+    slide_accent_secondary: str = Field(
+        default="",
+        description="Optional secondary highlight for slides. Empty uses #a5b4fc.",
+    )
     setup_completed: bool = Field(
         default=False,
         description="True after company branding has been configured in admin or init.",
@@ -720,6 +744,7 @@ class AlfredConfig(BaseModel):
     governance: GovernanceConfig = Field(default_factory=GovernanceConfig)
     routing: RoutingConfig = Field(default_factory=RoutingConfig)
     repo_knowledge: RepoKnowledgeConfig = Field(default_factory=RepoKnowledgeConfig)
+    artifacts: ArtifactsConfig = Field(default_factory=ArtifactsConfig)
 
 
 class AlfredSecrets(BaseModel):

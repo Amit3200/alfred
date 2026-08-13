@@ -278,6 +278,29 @@ export function setAdminToken(token: string) {
   localStorage.setItem(TOKEN_KEY, token);
 }
 
+const ACTOR_LABEL_KEY = "alfred_actor_label";
+const ACTOR_KEY_KEY = "alfred_actor_key";
+
+export function setArtifactActor(label: string, key?: string) {
+  const trimmed = label.trim() || "admin";
+  localStorage.setItem(ACTOR_LABEL_KEY, trimmed);
+  localStorage.setItem(ACTOR_KEY_KEY, key || `admin:${trimmed.toLowerCase()}`);
+}
+
+export function getArtifactActorLabel(): string {
+  return localStorage.getItem(ACTOR_LABEL_KEY) || "admin";
+}
+
+export function getArtifactActorHeaders(): Record<string, string> {
+  const label = getArtifactActorLabel();
+  const key =
+    localStorage.getItem(ACTOR_KEY_KEY) || `admin:${label.toLowerCase()}`;
+  return {
+    "X-Alfred-User": label,
+    "X-Alfred-Actor-Key": key,
+  };
+}
+
 async function request<T>(
   path: string,
   options: RequestInit = {},
@@ -852,6 +875,51 @@ export const api = {
       { method: "DELETE" },
       true,
     ),
+
+  listMyArtifacts: (limit = 100) =>
+    request<ArtifactListResponse>(
+      `/api/artifacts/mine?limit=${limit}`,
+      { headers: getArtifactActorHeaders() },
+      true,
+    ),
+
+  getArtifactMeta: (slug: string) =>
+    request<ArtifactVersionResponse>(
+      `/api/artifacts/${encodeURIComponent(slug)}`,
+      { headers: getArtifactActorHeaders() },
+      true,
+    ),
+
+  uploadArtifactHtml: (body: { slug: string; title?: string; html: string }) =>
+    request<{ ok: boolean; artifact: ArtifactSummary }>(
+      "/api/artifacts",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+        headers: getArtifactActorHeaders(),
+      },
+      true,
+    ),
+
+  uploadArtifactFile: async (slug: string, title: string, file: File) => {
+    const form = new FormData();
+    form.append("slug", slug);
+    form.append("title", title);
+    form.append("file", file);
+    const res = await fetch("/api/artifacts/upload", {
+      method: "POST",
+      headers: {
+        "X-Alfred-Token": getAdminToken(),
+        ...getArtifactActorHeaders(),
+      },
+      body: form,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new ApiError(String(body.detail || "Upload failed"), res.status);
+    }
+    return res.json() as Promise<{ ok: boolean; artifact: ArtifactSummary }>;
+  },
 };
 
 export type ChatPersona = "support" | "tech" | "all" | "general";
@@ -1581,6 +1649,33 @@ export type ScriptFileDetail = {
 export type ScriptExampleResponse = {
   package_path: string;
   files: Record<string, string>;
+};
+
+export type ArtifactSummary = {
+  uuid: string;
+  sha256: string;
+  slug: string;
+  title: string;
+  uploaded_by: string;
+  uploaded_at: number;
+  uploaded_at_iso?: string;
+  size_bytes: number;
+  is_latest: boolean;
+  slug_url: string;
+  sha_url: string;
+  owner_key?: string;
+  owner_label?: string;
+};
+
+export type ArtifactListResponse = {
+  actor: { key: string; label: string };
+  artifacts: ArtifactSummary[];
+  count: number;
+};
+
+export type ArtifactVersionResponse = {
+  latest: ArtifactSummary;
+  versions: ArtifactSummary[];
 };
 
 function buildObservabilityQuery(params: ObservabilityQuery & { limit?: number; offset?: number }) {

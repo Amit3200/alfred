@@ -5,6 +5,7 @@ from __future__ import annotations
 from backend.models.config import AlfredConfig
 from backend.tools.catalog import (
     ALL_KNOWN_TOOLS,
+    ARTIFACT_TOOLS,
     AWS_TOOLS,
     COMPANY_SCRIPT_TOOLS,
     GIT_API_TOOLS,
@@ -42,7 +43,7 @@ def configured_tool_names(config: AlfredConfig) -> frozenset[str]:
     if config.web_search.enabled:
         names |= WEB_TOOLS
 
-    names |= COMPANY_SCRIPT_TOOLS | SCHEDULE_TOOLS
+    names |= COMPANY_SCRIPT_TOOLS | SCHEDULE_TOOLS | ARTIFACT_TOOLS
     return frozenset(names)
 
 

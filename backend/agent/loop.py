@@ -21,6 +21,7 @@ def run_agent_loop(
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
     session: Any | None = None,
     git: Any | None = None,
+    max_tokens: int | None = None,
 ) -> str:
     return run_agent(
         provider,
@@ -32,6 +33,7 @@ def run_agent_loop(
         max_iterations=max_iterations,
         session=session,
         git=git,
+        max_tokens=max_tokens,
     )
 
 

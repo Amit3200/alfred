@@ -98,6 +98,7 @@ def run_agent(
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
     session: Any | None = None,
     git: Any | None = None,
+    max_tokens: int | None = None,
 ) -> str:
     """Run tool-augmented chat until the model returns text or limits are hit."""
     tool_schemas = registry.get_schemas(allowed_tools)
@@ -129,7 +130,12 @@ def run_agent(
         log_checkpoint(iter_checkpoint, f"iteration_{iteration + 1}", "started")
 
         try:
-            response = provider.chat(conversation, tools=tool_schemas, model=model)
+            response = provider.chat(
+                conversation,
+                tools=tool_schemas,
+                model=model,
+                max_tokens=max_tokens,
+            )
         except Exception as exc:
             log_checkpoint(iter_checkpoint, f"iteration_{iteration + 1}", "error", error=exc)
             raise

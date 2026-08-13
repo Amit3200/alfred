@@ -18,6 +18,7 @@ from backend.__version__ import __version__
 from backend.api.deps import require_admin
 from backend.api.routes import integrations_sync as integrations_sync_routes
 from backend.api.routes import auth as auth_routes
+from backend.api.routes import artifacts as artifacts_routes
 from backend.api.routes import branding as branding_routes
 from backend.api.routes import chat as chat_routes
 from backend.api.routes import config as config_routes
@@ -36,7 +37,7 @@ from backend.api.routes import storage as storage_routes
 from backend.api.routes import tools as tools_routes
 from backend.config_manager import ConfigManager
 from backend.logging_config import setup_logging
-from backend.paths import bundled_web_dist
+from backend.paths import bundled_artifacts_static_dir, bundled_web_dist
 from backend.integrations.slack.listener import SlackSocketRunner
 from backend.routing.playbook_store_registry import get_playbook_store
 
@@ -149,6 +150,18 @@ def create_app(data_dir: Path | None = None) -> FastAPI:
     app.include_router(routing_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
     app.include_router(slack_workflows_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
     app.include_router(integrations_sync_routes.router, prefix="/api", dependencies=[Depends(require_admin)])
+
+    # Public HTML presentations — must register before SPA catch-all.
+    app.include_router(artifacts_routes.public_router)
+    app.include_router(artifacts_routes.admin_router, prefix="/api", dependencies=[Depends(require_admin)])
+
+    artifacts_static = bundled_artifacts_static_dir()
+    if artifacts_static.is_dir():
+        app.mount(
+            "/artifacts/assets",
+            StaticFiles(directory=artifacts_static),
+            name="artifact-assets",
+        )
 
     static_dir = bundled_web_dist()
     if static_dir:

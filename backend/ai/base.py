@@ -57,6 +57,7 @@ class LLMProvider(ABC):
         messages: list[Message],
         tools: list[ToolSchema] | None = None,
         model: str | None = None,
+        max_tokens: int | None = None,
     ) -> LLMResponse: ...
 
     def stream(
@@ -64,8 +65,9 @@ class LLMProvider(ABC):
         messages: list[Message],
         tools: list[ToolSchema] | None = None,
         model: str | None = None,
+        max_tokens: int | None = None,
     ) -> Iterator[LLMChunk]:
-        response = self.chat(messages, tools=tools, model=model)
+        response = self.chat(messages, tools=tools, model=model, max_tokens=max_tokens)
         yield LLMChunk(content=response.content or "", done=True)
 
     def is_available(self) -> bool:

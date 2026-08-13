@@ -21,6 +21,7 @@ def run_hermes_loop(
     max_iterations: int = DEFAULT_MAX_ITERATIONS,
     session: Any | None = None,
     git: Any | None = None,
+    max_tokens: int | None = None,
 ) -> str:
     """Run autonomous tool-augmented loop until final answer or iteration limit."""
     return run_agent(
@@ -33,4 +34,5 @@ def run_hermes_loop(
         max_iterations=max_iterations,
         session=session,
         git=git,
+        max_tokens=max_tokens,
     )

@@ -95,6 +95,15 @@ def goal_spec_from_plan(plan: ToolPlan | None) -> GoalSpec | None:
             "slack.board.comment",
         )
 
+    if plan.intent_class == "html_slides":
+        criteria.extend(
+            [
+                "Call save_html_deck (or publish_html_artifact when user asked to publish)",
+                "Do not claim the deck was saved without a successful artifact tool",
+                "Reply includes download path or share URL from tool result",
+            ]
+        )
+
     failure = plan.goal
     if plan.intent_class == "repo.docs.qa":
         failure = (
@@ -106,6 +115,19 @@ def goal_spec_from_plan(plan: ToolPlan | None) -> GoalSpec | None:
             "I couldn't complete that on the Slack List board. "
             "Try `@alfred create task for …` or `@alfred move ST-1 to in progress`."
         )
+    if plan.intent_class == "html_slides":
+        publish_tools = [t for t in plan.tools_needed if t == "publish_html_artifact"]
+        if publish_tools:
+            failure = (
+                "I couldn't finish the HTML slide deck. "
+                "I'll build the deck, call save_html_deck, then publish_html_artifact "
+                "and report the share URL from the tool result."
+            )
+        else:
+            failure = (
+                "I couldn't save the HTML slide deck. "
+                "Try again — I'll call save_html_deck with the full HTML file."
+            )
     if plan.missing_capabilities:
         failure = (
             f"I can't complete this yet — missing tools: {', '.join(plan.missing_capabilities)}."
@@ -123,6 +145,40 @@ def goal_spec_from_plan(plan: ToolPlan | None) -> GoalSpec | None:
 
 def extract_urls(text: str) -> set[str]:
     return {match.group(0).rstrip(".,)") for match in _URL_RE.finditer(text or "")}
+
+
+_ARTIFACT_PATH_RE = re.compile(
+    r"(/(?:artifacts/(?:s|sha)/[^\s<>\"']+|api/chat/exports/[^\s<>\"']+))",
+    re.I,
+)
+
+
+def extract_artifact_paths(text: str) -> set[str]:
+    """Relative artifact/export paths cited in prose (not caught by http URL regex)."""
+    return {match.group(1).rstrip(".,)") for match in _ARTIFACT_PATH_RE.finditer(text or "")}
+
+
+def url_grounding_variants(url: str) -> set[str]:
+    """Equivalent URL forms for grounding (absolute vs path-only)."""
+    cleaned = (url or "").strip().rstrip(".,)")
+    if not cleaned:
+        return set()
+    variants = {cleaned}
+    if cleaned.startswith(("http://", "https://")):
+        from urllib.parse import urlparse
+
+        parsed = urlparse(cleaned)
+        if parsed.path:
+            variants.add(parsed.path)
+            if parsed.netloc:
+                variants.add(f"{parsed.scheme}://{parsed.netloc}{parsed.path}")
+    elif cleaned.startswith("/"):
+        variants.add(cleaned)
+    return variants
+
+
+def urls_match_for_grounding(left: str, right: str) -> bool:
+    return bool(url_grounding_variants(left) & url_grounding_variants(right))
 
 
 def detect_action_claims(text: str) -> list[str]:

@@ -50,6 +50,8 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
     "list_repo_docs": "List indexed documentation paths",
     "athena_query": "Run Athena SQL query",
     "web_search": "Web search",
+    "save_html_deck": "REQUIRED: save self-contained HTML slide deck (.alfred/exports/) — call after building HTML",
+    "publish_html_artifact": "Publish HTML deck — /artifacts/s/{slug} with slug, or /artifacts/sha/{sha256} without",
 }
 
 
@@ -92,6 +94,29 @@ def get_tool_description(tool_name: str) -> str:
         "list_repo_docs": "List indexed documentation paths",
     }
     return _extras.get(tool_name, "See tool schema in registry")
+
+
+def _artifact_manifest_section(allowed: list[str]) -> list[str]:
+    if not set(allowed) <= {"save_html_deck", "publish_html_artifact"}:
+        return []
+    lines = [
+        "",
+        "**DELIVERY (mandatory — call a tool, do not only reply in prose):**",
+    ]
+    if "save_html_deck" in allowed:
+        lines.append(
+            "- `save_html_deck` — build HTML first, then pass the full file; "
+            "default for every slide request"
+        )
+    if "publish_html_artifact" in allowed:
+        lines.append(
+            "- `publish_html_artifact` — publish/host/share; slug optional "
+            "(slug → /artifacts/s/{slug}, no slug → /artifacts/sha/{sha256})"
+        )
+    lines.append(
+        "- Claiming the deck is done without a successful tool call will be rejected."
+    )
+    return lines
 
 
 def _group_tools(tool_names: list[str]) -> dict[str, list[str]]:
@@ -161,6 +186,8 @@ def format_tool_manifest(
             suffix = f" — {desc}" if desc else ""
             lines.append(f"- `{name}`{suffix}")
 
+    lines.extend(_artifact_manifest_section(allowed))
+
     if registered_tools is not None:
         missing_common = [
             t
@@ -187,6 +214,8 @@ def format_tool_manifest(
 
 def all_plannable_tool_names() -> list[str]:
     """Canonical names used when building planner catalog."""
+    from backend.tools.catalog import ARTIFACT_TOOLS
+
     return sorted(
         JIRA_TOOLS
         | GOOGLE_SHEET_TOOLS
@@ -197,4 +226,5 @@ def all_plannable_tool_names() -> list[str]:
         | AWS_TOOLS
         | WEB_TOOLS
         | COMPANY_SCRIPT_TOOLS
+        | ARTIFACT_TOOLS
     )

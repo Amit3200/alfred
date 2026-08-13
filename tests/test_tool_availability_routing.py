@@ -21,6 +21,11 @@ def test_playbook_has_runnable_tools_accepts_athena():
     assert playbook_has_runnable_tools(["athena_query"], config)
 
 
+def test_playbook_has_runnable_tools_accepts_html_slide_tools():
+    config = default_config()
+    assert playbook_has_runnable_tools(["save_html_deck", "publish_html_artifact"], config)
+
+
 def test_router_skips_stale_playbook_and_falls_back_to_heuristic(tmp_path: Path):
     playbooks = tmp_path / "playbooks"
     playbooks.mkdir()
