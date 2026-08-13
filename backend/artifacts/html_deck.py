@@ -13,6 +13,8 @@ _SLIDE_SECTION_RE = re.compile(r'<section\s+class=["\']slide', re.I)
 _SCRIPT_BLOCK_RE = re.compile(r"<script[^>]*>([\s\S]*?)</script>", re.I)
 _FOOTER_TAG_RE = re.compile(r"<footer\s+class=[\"']deck-footer[\"']", re.I)
 _HTML_DOCTYPE_RE = re.compile(r"<!doctype\s+html", re.I)
+_ELEMENT_ID_RE = re.compile(r'\bid=(["\'])([^"\']+)\1', re.I)
+_REQUIRED_NAV_IDS = ("topProgress", "slideCounter", "themeToggle")
 _REQUIRED_THEME_TOKENS = ("--bg:", "--accent:", "--text:", "ul.bullets")
 _THEME_EXTRAS_CSS = """
 ::selection {
@@ -20,24 +22,55 @@ _THEME_EXTRAS_CSS = """
   color: var(--text);
 }
 """.strip()
+_MIN_NAV_CSS = """
+.progress-track { height: 1px; background: var(--border, rgba(255,255,255,0.1)); }
+.progress-fill { height: 100%; width: 0%; background: var(--accent, #818cf8); transition: width 0.4s ease; }
+.slide { opacity: 0; pointer-events: none; }
+.slide.active { opacity: 1; pointer-events: auto; }
+""".strip()
 
 HTML_SLIDES_MAX_TOKENS = 16384
 
 
 @lru_cache(maxsize=1)
-def _template_tail() -> tuple[str, str]:
+def _template_shell() -> dict[str, str]:
     from backend.paths import bundled_artifacts_static_dir
 
     text = (bundled_artifacts_static_dir() / "slide-template.html").read_text(encoding="utf-8")
+    topbar = re.search(r'<header class="topbar">.*?</header>', text, re.S | re.I)
+    progress = re.search(
+        r'<div class="progress-track"><div class="progress-fill" id="topProgress"></div></div>',
+        text,
+        re.I,
+    )
     footer = re.search(r'<footer class="deck-footer">.*?</footer>', text, re.S | re.I)
     script = re.search(r"<script>\s*let currentSlideIndex.*?</script>", text, re.S | re.I)
-    if not footer or not script:
-        raise RuntimeError("slide-template.html is missing deck footer or navigation script")
-    return footer.group(0), script.group(0)
+    if not topbar or not progress or not footer or not script:
+        raise RuntimeError("slide-template.html is missing deck shell or navigation script")
+    return {
+        "topbar": topbar.group(0),
+        "progress": progress.group(0),
+        "footer": footer.group(0),
+        "script": script.group(0),
+    }
 
 
 def count_slides(html: str) -> int:
     return len(_SLIDE_SECTION_RE.findall(html or ""))
+
+
+def _has_element_id(html: str, element_id: str) -> bool:
+    needle = element_id.lower()
+    for match in _ELEMENT_ID_RE.finditer(html or ""):
+        if match.group(2).lower() == needle:
+            return True
+    return False
+
+
+def has_deck_chrome(html: str) -> bool:
+    """True when all navigation DOM hooks exist."""
+    text = html or ""
+    return all(_has_element_id(text, element_id) for element_id in _REQUIRED_NAV_IDS)
 
 
 def has_navigation_script(html: str) -> bool:
@@ -50,11 +83,10 @@ def has_navigation_script(html: str) -> bool:
 
 def deck_navigation_ready(html: str) -> bool:
     text = html or ""
-    compact = re.sub(r"\s+", "", text.lower())
     return (
         has_navigation_script(text)
         and _FOOTER_TAG_RE.search(text) is not None
-        and "id=\"themetoggle\"" in compact
+        and has_deck_chrome(text)
     )
 
 
@@ -74,6 +106,181 @@ def ensure_theme_extras(html: str) -> str:
     return html[:insert_at] + f"\n{_THEME_EXTRAS_CSS}\n" + html[insert_at:]
 
 
+def ensure_min_nav_css(html: str) -> str:
+    """Ensure slide/progress CSS exists so repaired decks still animate."""
+    text = html or ""
+    if ".progress-track" in text and ".slide.active" in text:
+        return text
+    match = re.search(r"</style>", text, re.I)
+    if not match:
+        return text
+    insert_at = match.start()
+    return text[:insert_at] + f"\n{_MIN_NAV_CSS}\n" + text[insert_at:]
+
+
+def _insert_before_main_or_slides(text: str, block: str) -> str:
+    main_match = re.search(r"<main\s+class=[\"']stage[\"']", text, re.I)
+    if main_match:
+        return text[: main_match.start()] + block + "\n    " + text[main_match.start() :]
+    slide_match = re.search(r"<section\s+class=[\"']slide", text, re.I)
+    if slide_match:
+        return text[: slide_match.start()] + block + "\n      " + text[slide_match.start() :]
+    return text
+
+
+def ensure_deck_chrome(html: str) -> str:
+    """Inject missing topbar/progress controls required by the nav script."""
+    text = html or ""
+    shell = _template_shell()
+
+    if not _has_element_id(text, "topProgress"):
+        progress_track = re.search(r'<div\s+class=["\']progress-track["\']', text, re.I)
+        if progress_track:
+            text, count = re.subn(
+                r'(<div\s+class=["\']progress-track["\'][^>]*>\s*<div)([^>]*)(>)',
+                lambda match: (
+                    f'{match.group(1)} class="progress-fill" id="topProgress"{match.group(3)}'
+                    if "id=" not in match.group(2).lower()
+                    else match.group(0)
+                ),
+                text,
+                count=1,
+                flags=re.I,
+            )
+            if count and _has_element_id(text, "topProgress"):
+                pass
+            elif progress_track:
+                text = re.sub(
+                    r'(<div\s+class=["\']progress-track["\'][^>]*>)',
+                    r'\1<div class="progress-fill" id="topProgress"></div>',
+                    text,
+                    count=1,
+                    flags=re.I,
+                )
+        else:
+            text = _insert_before_main_or_slides(text, shell["progress"])
+
+    if not _has_element_id(text, "slideCounter") or not _has_element_id(text, "themeToggle"):
+        topbar_actions = re.search(r'<div\s+class=["\']topbar-actions["\']', text, re.I)
+        if topbar_actions:
+            if not _has_element_id(text, "slideCounter"):
+                text = re.sub(
+                    r'(<div\s+class=["\']topbar-actions["\'][^>]*>)',
+                    r'\1\n        <span class="slide-counter" id="slideCounter">1 / 1</span>',
+                    text,
+                    count=1,
+                    flags=re.I,
+                )
+            if not _has_element_id(text, "themeToggle"):
+                text = re.sub(
+                    r'(<div\s+class=["\']topbar-actions["\'][^>]*>)',
+                    r'\1\n        <button class="theme-btn" id="themeToggle" type="button">ink / paper</button>',
+                    text,
+                    count=1,
+                    flags=re.I,
+                )
+        elif re.search(r"<header[^>]*class=[\"'][^\"']*topbar", text, re.I):
+            text = re.sub(
+                r"(</header>)",
+                "      <div class=\"topbar-actions\">\n"
+                "        <span class=\"slide-counter\" id=\"slideCounter\">1 / 1</span>\n"
+                "        <button class=\"theme-btn\" id=\"themeToggle\" type=\"button\">ink / paper</button>\n"
+                "      </div>\n    \\1",
+                text,
+                count=1,
+                flags=re.I,
+            )
+        else:
+            insert = shell["topbar"] + "\n    "
+            if not _has_element_id(text, "topProgress"):
+                insert += shell["progress"] + "\n    "
+            text = _insert_before_main_or_slides(text, insert)
+
+    return text
+
+
+def strip_navigation_scripts(html: str) -> str:
+    """Remove broken or duplicate slide navigation scripts."""
+
+    def _replace(match: re.Match[str]) -> str:
+        body = match.group(1)
+        if (
+            "updateNavUI" in body
+            or "window.nextSlide" in body
+            or "currentSlideIndex" in body
+        ):
+            return ""
+        return match.group(0)
+
+    return _SCRIPT_BLOCK_RE.sub(_replace, html or "")
+
+
+def ensure_canonical_navigation_script(html: str) -> str:
+    """Always use the bundled navigation script so DOM hooks stay in sync."""
+    text = strip_navigation_scripts(html or "")
+    shell = _template_shell()
+    script = shell["script"]
+    body_close = re.search(r"</body>", text, re.I)
+    if body_close:
+        insert_at = body_close.start()
+        return text[:insert_at] + f"\n  {script}\n" + text[insert_at:]
+    return text.rstrip() + f"\n  {script}\n"
+
+
+def _ensure_deck_wrapper(html: str) -> str:
+    text = html or ""
+    lower = text.lower()
+    if '<div class="deck"' in lower or "<div class='deck'" in lower:
+        return text
+    body_open = re.search(r"<body[^>]*>", text, re.I)
+    body_close = re.search(r"</body>", text, re.I)
+    if not body_open or not body_close:
+        return text
+    inner = text[body_open.end() : body_close.start()].strip()
+    wrapped = (
+        text[: body_open.end()]
+        + '\n  <div class="deck">\n    '
+        + inner
+        + "\n  </div>\n"
+        + text[body_close.start() :]
+    )
+    return wrapped
+
+
+def _ensure_main_stage(html: str) -> str:
+    text = html or ""
+    if re.search(r"<main\s+class=[\"']stage[\"']", text, re.I):
+        return text
+    slides = list(_SLIDE_SECTION_RE.finditer(text))
+    if not slides:
+        return text
+    first = slides[0].start()
+    last = slides[-1].end()
+    block = text[first:last]
+    return text[:first] + '<main class="stage">\n      ' + block + "\n    </main>" + text[last:]
+
+
+def _ensure_footer(html: str) -> str:
+    text = html or ""
+    if _FOOTER_TAG_RE.search(text):
+        return text
+    shell = _template_shell()
+    lower = text.lower()
+    if "</main>" in lower:
+        return re.sub(r"</main>", f"</main>\n\n    {shell['footer']}", text, count=1, flags=re.I)
+    return text.rstrip() + f"\n    {shell['footer']}\n"
+
+
+def _ensure_document_closure(html: str) -> str:
+    text = (html or "").rstrip()
+    lower = text.lower()
+    if "</body>" not in lower:
+        text += "\n</body>\n"
+    if "</html>" not in lower:
+        text += "</html>\n"
+    return text
+
+
 def finalize_html_deck(
     html: str,
     *,
@@ -83,34 +290,24 @@ def finalize_html_deck(
     text = ensure_theme_extras((html or "").replace("\r\n", "\n"))
     if not text.strip() or count_slides(text) < 1:
         return apply_branding(text, branding)
+
     if deck_navigation_ready(text) and "</html>" in text.lower():
         return apply_branding(text, branding)
 
-    footer, script = _template_tail()
     lower = text.lower()
-
     if "</html>" not in lower:
         last_section = lower.rfind("</section>")
         if last_section != -1:
             text = text[: last_section + len("</section>")]
             lower = text.lower()
 
-    if "</main>" not in lower:
-        text = text.rstrip() + "\n    </main>\n"
-        lower = text.lower()
-
-    if not _FOOTER_TAG_RE.search(text):
-        text = text.rstrip() + f"\n    {footer}\n"
-
-    if not has_navigation_script(text):
-        if '<div class="deck"' in lower and text.count("<div") > text.count("</div>"):
-            text = text.rstrip() + "\n  </div>\n"
-        text = text.rstrip() + f"\n  {script}\n"
-
-    if "</body>" not in text.lower():
-        text = text.rstrip() + "\n</body>\n"
-    if "</html>" not in text.lower():
-        text = text.rstrip() + "\n</html>\n"
+    text = _ensure_deck_wrapper(text)
+    text = _ensure_main_stage(text)
+    text = ensure_min_nav_css(text)
+    text = ensure_deck_chrome(text)
+    text = _ensure_footer(text)
+    text = ensure_canonical_navigation_script(text)
+    text = _ensure_document_closure(text)
     return apply_branding(text, branding)
 
 
@@ -132,6 +329,10 @@ def validate_html_deck(html: str) -> list[str]:
         issues.append("No slide sections found")
     if not has_required_theme_css(text):
         issues.append("Missing ink/paper theme CSS — copy tokens from html_slides skill or slide-template.html")
-    if not deck_navigation_ready(text):
-        issues.append("Navigation script or footer controls are missing")
+    if not has_deck_chrome(text):
+        issues.append("Navigation chrome is missing (#topProgress, #slideCounter, or #themeToggle)")
+    if not has_navigation_script(text):
+        issues.append("Navigation script is missing")
+    if not _FOOTER_TAG_RE.search(text):
+        issues.append("Footer is missing")
     return issues

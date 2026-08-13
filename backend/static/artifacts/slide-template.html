@@ -336,8 +336,8 @@
     function updateNavUI() {
       slides.forEach((s, i) => s.classList.toggle('active', i === currentSlideIndex));
       const pct = slides.length <= 1 ? 100 : (currentSlideIndex / (slides.length - 1)) * 100;
-      topProgress.style.width = pct + '%';
-      slideCounter.textContent = (currentSlideIndex + 1) + ' / ' + slides.length;
+      if (topProgress) topProgress.style.width = pct + '%';
+      if (slideCounter) slideCounter.textContent = (currentSlideIndex + 1) + ' / ' + slides.length;
     }
     window.nextSlide = () => { if (currentSlideIndex < slides.length - 1) { currentSlideIndex++; updateNavUI(); } };
     window.prevSlide = () => { if (currentSlideIndex > 0) { currentSlideIndex--; updateNavUI(); } };
@@ -350,9 +350,12 @@
       else if (e.key === 'End') { e.preventDefault(); goToSlide(slides.length - 1); }
     });
 
-    document.getElementById('themeToggle').addEventListener('click', () => {
-      document.body.classList.toggle('paper-mode');
-    });
+    const themeToggle = document.getElementById('themeToggle');
+    if (themeToggle) {
+      themeToggle.addEventListener('click', () => {
+        document.body.classList.toggle('paper-mode');
+      });
+    }
     updateNavUI();
   </script>
 </body>

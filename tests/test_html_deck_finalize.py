@@ -78,3 +78,40 @@ def test_finalize_idempotent_for_complete_template():
     twice = finalize_html_deck(once)
     assert once == twice
     assert not validate_html_deck(twice)
+
+
+def test_finalize_repairs_missing_top_progress_with_nav_script():
+    html = """<!DOCTYPE html>
+<html><head><title>Deck</title><style>
+:root { --bg: #0a0a0a; --accent: #818cf8; --text: #fff; --border: #333; }
+.slide { display:none; } .slide.active { display:block; }
+ul.bullets { list-style: none; } ul.bullets li::before { content: "—"; }
+</style></head>
+<body><div class="deck"><header class="topbar">
+<div class="topbar-actions">
+<span id="slideCounter">1 / 2</span>
+<button id="themeToggle" type="button"></button>
+</div></header>
+<main class="stage">
+<section class="slide active"><h1>One</h1></section>
+<section class="slide"><h1>Two</h1></section>
+</main>
+<footer class="deck-footer"><div>Powered by Alfred</div></footer>
+</div>
+<script>
+let currentSlideIndex = 0;
+const slides = document.querySelectorAll('.slide');
+const topProgress = document.getElementById('topProgress');
+function updateNavUI() { topProgress.style.width = '50%'; }
+window.nextSlide = () => { currentSlideIndex++; updateNavUI(); };
+</script>
+</body></html>"""
+    from backend.artifacts.html_deck import has_deck_chrome
+
+    assert not has_deck_chrome(html)
+    repaired = finalize_html_deck(html)
+    assert has_deck_chrome(repaired)
+    assert deck_navigation_ready(repaired)
+    assert 'id="topProgress"' in repaired
+    assert "if (topProgress)" in repaired
+    assert not validate_html_deck(repaired)
