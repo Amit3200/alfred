@@ -172,8 +172,28 @@ Admin preview: `GET /api/artifacts/template/slides`
 - `--radius: 2px` max
 - `.brand-name` — sans, bold, **no** `text-transform: lowercase`
 - `.stat-row` — bordered grid, not `.card-grid`
-- `table.data-table` — mono headers, 1px row borders
-- No `.glow`, `.nav-btn`, `.dots`, or `.card-grid`
+- `table.data-table` — mono headers, 1px row borders, **right-align numbers** with `th.num` / `td.num`
+- `.level-rate` — absolute rates/shares (no `+` prefix)
+- `.delta-up` / `.delta-down` — relative **changes only** (green up / red down)
+- `.inverse-delta` wrapper — flip colors when **up is bad** (redirect rate, failures)
+- No `.glow`, `.nav-btn`, `.dots`, `.card-grid`, or `rowspan` in tables
+
+### Data formatting (critical)
+
+Read JSON field names exactly — do not guess `country_name` when the payload has `country_code`.
+
+| Type | Format | CSS | Example |
+|------|--------|-----|---------|
+| GMV / money (INR) | lakhs `₹54.93 L`, crore `₹15.99 Cr` | plain | ₹3.92 Cr |
+| Absolute rate / share | `25.80%` — **no + sign** | `.level-rate` or `.accent-cell` | redirect rate 2.35% |
+| Relative change | `+60.96%` / `-5.38%` | `.delta-up` / `.delta-down` | orders vs prev day |
+| Bad-metric change | redirect rate up = **red** | `.inverse-delta` + `.delta-up` | wrap stat-row or td |
+
+**Inverse metrics (up = bad):** checkout redirect rate, failure counts, error rates. Wrap in `<div class="stat-row inverse-delta">` or `<td class="inverse-delta">`.
+
+**Tables:** one metric per row — avoid `rowspan`. Numeric columns: `<th class="num">` / `<td class="num">`. Label columns left-aligned.
+
+**Captions:** add `<p class="metric-caption">` under tables explaining formulas (e.g. redirect rate = redirects ÷ sessions).
 
 ## Content rules
 
@@ -197,7 +217,10 @@ Admin preview: `GET /api/artifacts/template/slides`
 - Use external image URLs for screenshots (they break offline / expire)
 - Use legacy coral palette (`#e07a5f`) or rounded `.card-grid` KPI boxes
 - Add footer prev/next buttons, dot pagination, or glow orbs
-- Lowercase the company name in the topbar
+- Put `+` on absolute rates or shares (conversion 29.12%, share of redirects 25.8%)
+- Color redirect/error increases green — use `.inverse-delta`
+- Use `rowspan` in data tables (breaks row alignment)
+- Guess JSON keys — inspect payload (`country_code` vs `country_name`)
 - Remove confidential footer or Alfred × company attribution
 - Ship multi-file decks (breaks single-file delivery)
 - Autoplay slides

@@ -176,6 +176,8 @@
       letter-spacing: 0.08em; color: var(--text-dim);
       padding-top: 0.35rem; font-variant-numeric: tabular-nums;
     }
+    .feature-index.alert-warn { color: #eab308; }
+    .feature-index.alert-critical { color: #ef4444; }
     .feature-body h2 { margin-bottom: 0.45rem; font-size: 1.15rem; }
     .feature-body .lead { font-size: 0.92rem; max-width: 62ch; }
 
@@ -204,18 +206,31 @@
     table.data-table th {
       text-align: left; font-family: var(--font-mono); font-size: 0.62rem;
       letter-spacing: 0.12em; text-transform: uppercase; color: var(--text-dim);
-      padding: 0.5rem 0.75rem 0.5rem 0; border-bottom: 1px solid var(--border-strong);
-      font-weight: 500;
+      padding: 0.55rem 0.75rem 0.55rem 0; border-bottom: 1px solid var(--border-strong);
+      font-weight: 500; vertical-align: bottom;
     }
+    table.data-table th.num { text-align: right; padding-left: 0.75rem; padding-right: 0; }
     table.data-table td {
-      padding: 0.5rem 0.75rem 0.5rem 0; color: var(--text-muted);
+      padding: 0.55rem 0.75rem 0.55rem 0; color: var(--text-muted);
       border-bottom: 1px solid var(--border);
-      vertical-align: middle;
+      vertical-align: baseline; line-height: 1.35;
     }
+    table.data-table td.num { text-align: right; padding-left: 0.75rem; padding-right: 0; color: var(--text); }
     table.data-table tbody tr:last-child td { border-bottom: none; }
     table.data-table td.metric-cell { color: var(--text); font-weight: 600; }
     table.data-table td strong { color: var(--text); font-weight: 600; }
     table.data-table td.accent-cell { color: var(--accent); font-weight: 600; }
+    .delta-up { color: #22c55e; font-weight: 650; font-variant-numeric: tabular-nums; }
+    .delta-down { color: #ef4444; font-weight: 650; font-variant-numeric: tabular-nums; }
+    .delta-flat { color: var(--text-muted); font-variant-numeric: tabular-nums; }
+    .level-rate { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+    .inverse-delta .delta-up { color: #ef4444; }
+    .inverse-delta .delta-down { color: #22c55e; }
+    .flag-warn, .alert-warn { color: #eab308; font-weight: 650; }
+    .flag-critical, .alert-critical { color: #ef4444; font-weight: 650; }
+    ul.bullets li.bullet-warn::before { color: #eab308; content: "!"; }
+    ul.bullets li.bullet-critical::before { color: #ef4444; content: "!"; }
+    ul.bullets li.bullet-up::before { color: #22c55e; content: "↑"; }
 
     .terminal-panel {
       border: 1px solid var(--border); border-radius: var(--radius);
@@ -236,6 +251,10 @@
     }
     .kbd-hint { font-family: var(--font-mono); font-size: 0.62rem; opacity: 0.8; }
     .powered strong { color: var(--text-muted); font-weight: 600; }
+    .metric-caption {
+      font-family: var(--font-mono); font-size: 0.62rem; letter-spacing: 0.04em;
+      color: var(--text-dim); margin-top: 0.35rem; max-width: 72ch; line-height: 1.5;
+    }
 
     ::selection { background: var(--accent-soft); color: var(--text); }
   </style>
