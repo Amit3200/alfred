@@ -11,6 +11,7 @@ from backend.artifacts.html_deck import (
     finalize_html_deck,
     has_navigation_script,
     has_required_theme_css,
+    has_valid_deck_structure,
     validate_html_deck,
 )
 
@@ -115,3 +116,66 @@ window.nextSlide = () => { currentSlideIndex++; updateNavUI(); };
     assert 'id="topProgress"' in repaired
     assert "if (topProgress)" in repaired
     assert not validate_html_deck(repaired)
+
+
+def test_finalize_repairs_broken_shell_with_logo_in_slide():
+    html = """<!DOCTYPE html>
+<html><head><title>FlexyPe Daily Metrics</title><style>
+:root { --bg: #0a0a0a; --accent: #818cf8; --text: #fff; --border: #333; }
+.slide { display:none; } .slide.active { display:block; }
+ul.bullets { list-style: none; } ul.bullets li::before { content: "—"; }
+</style></head>
+<body>
+<section class="slide active">
+<img class="brand-logo" src="data:image/png;base64,AAAA" style="height:200px" alt="FlexyPe" />
+<div class="topbar-title"><span class="brand-name">FlexyPe</span><span class="deck-name">presentation</span></div>
+<footer class="deck-footer"><span class="confidential">Do not distribute without permission</span></footer>
+<h1>FlexyPe Daily Metrics</h1>
+<div class="stat-row"><div class="stat-item"><div class="stat-value">54.9L</div></div></div>
+</section>
+<section class="slide"><h2>Details</h2></section>
+</body></html>"""
+    assert not has_valid_deck_structure(html)
+    repaired = finalize_html_deck(html)
+    assert has_valid_deck_structure(repaired)
+    assert deck_navigation_ready(repaired)
+    assert '<main class="stage">' in repaired
+    assert repaired.count('class="brand-logo"') == 0 or "topbar" in repaired
+    assert "touchstart" in repaired
+    assert "touchend" in repaired
+    assert count_slides(repaired) == 2
+    assert not validate_html_deck(repaired)
+
+
+def test_finalize_always_injects_touch_navigation_on_ready_deck():
+    html = """<!DOCTYPE html>
+<html><head><title>Deck</title><style>
+:root { --bg: #0a0a0a; --accent: #818cf8; --text: #fff; --border: #333; }
+.slide { display:none; } .slide.active { display:block; }
+ul.bullets { list-style: none; } ul.bullets li::before { content: "—"; }
+</style></head>
+<body><div class="deck"><header class="topbar">
+<div class="topbar-title"><span class="brand-name">Co</span></div>
+<div class="topbar-actions"><span id="slideCounter">1 / 2</span>
+<button id="themeToggle" type="button"></button></div></header>
+<div class="progress-track"><div class="progress-fill" id="topProgress"></div></div>
+<main class="stage">
+<section class="slide active"><h1>One</h1></section>
+<section class="slide"><h1>Two</h1></section>
+</main>
+<footer class="deck-footer"><div><span class="confidential">Do not distribute without permission</span></div>
+<div class="powered">Powered by <strong>Alfred</strong></div></footer>
+</div>
+<script>
+let currentSlideIndex = 0;
+const slides = document.querySelectorAll('.slide');
+function updateNavUI() {}
+window.nextSlide = () => {};
+</script>
+</body></html>"""
+    assert deck_navigation_ready(html)
+    assert "touchstart" not in html
+    repaired = finalize_html_deck(html)
+    assert "touchstart" in repaired
+    assert "touchend" in repaired
+    assert deck_navigation_ready(repaired)

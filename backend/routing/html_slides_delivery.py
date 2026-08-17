@@ -388,7 +388,9 @@ def html_slides_system_addendum(
     else:
         lines.extend(
             [
-                "- Build the full single-file HTML deck first (embedded CSS/JS, data-URI images).",
+                "- Build the full single-file HTML deck first (embedded CSS/JS, data-URI images). "
+                "Copy `slide-template.html` shell — slides only inside `<main class=\"stage\">`, "
+                "logo only in topbar.",
                 "- **Always** finish by calling `save_html_deck` with the complete HTML.",
                 "- Only call `publish_html_artifact` when the user explicitly asks to publish/host/share.",
             ]
@@ -451,7 +453,8 @@ def inject_html_slides_bootstrap_message(
             f"Requested slug: `{slug}`.\n\n"
             "Required workflow:\n"
             "1. Parse metrics/data from the user message.\n"
-            "2. Generate the complete HTML deck (template CSS/JS embedded).\n"
+            "2. Generate the complete HTML deck — copy shell from `slide-template.html` "
+            "(topbar + main.stage + footer outside slides; logo only in topbar).\n"
             "3. Call `save_html_deck` with the full HTML string.\n"
             f"4. Call `publish_html_artifact` with slug=`{slug}` and `source_filename` from step 3.\n"
             "5. Reply with the share URL from the publish tool result only — do not invent URLs.\n"
@@ -462,7 +465,8 @@ def inject_html_slides_bootstrap_message(
             f"User request: {text[:500]}\n\n"
             "Required workflow:\n"
             "1. Parse metrics/data from the user message.\n"
-            "2. Generate the complete HTML deck (template CSS/JS embedded).\n"
+            "2. Generate the complete HTML deck — copy shell from `slide-template.html` "
+            "(topbar + main.stage + footer outside slides; logo only in topbar).\n"
             "3. **Call `save_html_deck`** with the full HTML string.\n"
             "4. Reply briefly with the tool result download path.\n"
         )

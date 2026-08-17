@@ -10,6 +10,10 @@ if TYPE_CHECKING:
     from backend.artifacts.slide_branding import SlideBrandingContext
 
 _SLIDE_SECTION_RE = re.compile(r'<section\s+class=["\']slide', re.I)
+_SLIDE_SECTION_FULL_RE = re.compile(
+    r'<section\s+class=["\']slide[^>]*>[\s\S]*?</section>',
+    re.I,
+)
 _SCRIPT_BLOCK_RE = re.compile(r"<script[^>]*>([\s\S]*?)</script>", re.I)
 _FOOTER_TAG_RE = re.compile(r"<footer\s+class=[\"']deck-footer[\"']", re.I)
 _HTML_DOCTYPE_RE = re.compile(r"<!doctype\s+html", re.I)
@@ -27,6 +31,23 @@ _MIN_NAV_CSS = """
 .progress-fill { height: 100%; width: 0%; background: var(--accent, #818cf8); transition: width 0.4s ease; }
 .slide { opacity: 0; pointer-events: none; }
 .slide.active { opacity: 1; pointer-events: auto; }
+""".strip()
+_LAYOUT_GUARD_MARKER = "Layout guards — injected by Alfred finalize"
+_LAYOUT_GUARD_CSS = """
+/* Layout guards — injected by Alfred finalize */
+.slide img:not(.chart-img) {
+  max-height: min(42vh, 320px); max-width: 100%;
+  width: auto; height: auto; object-fit: contain;
+}
+.slide .brand-logo,
+.slide .topbar-title,
+.slide .deck-footer,
+.slide .confidential { display: none !important; }
+main.stage { touch-action: pan-y pinch-zoom; }
+@media (max-width: 760px) {
+  .slide { padding: 1rem 1.1rem; justify-content: flex-start; overflow-y: auto; }
+  h1 { max-width: none; font-size: clamp(1.5rem, 6vw, 2rem); }
+}
 """.strip()
 
 HTML_SLIDES_MAX_TOKENS = 16384
@@ -116,6 +137,173 @@ def ensure_min_nav_css(html: str) -> str:
         return text
     insert_at = match.start()
     return text[:insert_at] + f"\n{_MIN_NAV_CSS}\n" + text[insert_at:]
+
+
+def ensure_layout_guard_css(html: str) -> str:
+    """Inject CSS that prevents broken slide layouts (oversized logos, chrome in body)."""
+    text = html or ""
+    if ".slide .brand-logo" in text and "display: none !important" in text:
+        return text
+    match = re.search(r"</style>", text, re.I)
+    if not match:
+        return text
+    insert_at = match.start()
+    return text[:insert_at] + f"\n{_LAYOUT_GUARD_CSS}\n" + text[insert_at:]
+
+
+def _extract_slide_sections(html: str) -> list[str]:
+    return _SLIDE_SECTION_FULL_RE.findall(html or "")
+
+
+def _sanitize_slide_body(slide_html: str) -> str:
+    """Remove misplaced chrome (logos, topbar, footer) from slide content."""
+    text = slide_html or ""
+    text = re.sub(
+        r'<img[^>]*class=["\'][^"\']*brand-logo[^"\']*["\'][^>]*/?>',
+        "",
+        text,
+        flags=re.I,
+    )
+    text = re.sub(
+        r'<header\s+class=["\']topbar["\'][^>]*>[\s\S]*?</header>',
+        "",
+        text,
+        flags=re.I,
+    )
+    text = re.sub(
+        r'<footer\s+class=["\']deck-footer["\'][^>]*>[\s\S]*?</footer>',
+        "",
+        text,
+        flags=re.I,
+    )
+    text = re.sub(
+        r'<div\s+class=["\']topbar-title["\'][^>]*>[\s\S]*?</div>',
+        "",
+        text,
+        flags=re.I,
+    )
+    text = re.sub(
+        r'<div\s+class=["\']progress-track["\'][^>]*>[\s\S]*?</div>',
+        "",
+        text,
+        flags=re.I,
+    )
+    return text
+
+
+def _sanitize_slides_in_place(html: str) -> str:
+    """Sanitize each slide section without rebuilding the full shell."""
+    text = html or ""
+
+    def _replace(match: re.Match[str]) -> str:
+        return _sanitize_slide_body(match.group(0))
+
+    return _SLIDE_SECTION_FULL_RE.sub(_replace, text)
+
+
+def _slides_inside_stage(html: str) -> bool:
+    stage_match = re.search(
+        r'<main\s+class=["\']stage["\'][^>]*>([\s\S]*?)</main>',
+        html or "",
+        re.I,
+    )
+    if not stage_match:
+        return False
+    all_slides = _extract_slide_sections(html)
+    stage_slides = _extract_slide_sections(stage_match.group(1))
+    return len(all_slides) > 0 and len(all_slides) == len(stage_slides)
+
+
+def has_valid_deck_structure(html: str) -> bool:
+    """True when deck shell matches slide-template.html anatomy."""
+    text = html or ""
+    if not re.search(r'<div\s+class=["\']deck["\']', text, re.I):
+        return False
+    if not re.search(r'<header\s+class=["\']topbar["\']', text, re.I):
+        return False
+    if not re.search(r'<main\s+class=["\']stage["\']', text, re.I):
+        return False
+    if not _FOOTER_TAG_RE.search(text):
+        return False
+    if not _slides_inside_stage(text):
+        return False
+
+    topbar_pos = re.search(r'<header\s+class=["\']topbar["\']', text, re.I)
+    main_pos = re.search(r'<main\s+class=["\']stage["\']', text, re.I)
+    footer_pos = _FOOTER_TAG_RE.search(text)
+    if not (topbar_pos and main_pos and footer_pos):
+        return False
+    if topbar_pos.start() > main_pos.start():
+        return False
+    if main_pos.start() > footer_pos.start():
+        return False
+
+    for slide in _extract_slide_sections(text):
+        if re.search(r'<header\s+class=["\']topbar["\']', slide, re.I):
+            return False
+        if re.search(r'<footer\s+class=["\']deck-footer["\']', slide, re.I):
+            return False
+        if re.search(r'class=["\'][^"\']*brand-logo[^"\']*["\']', slide, re.I):
+            return False
+        if re.search(r'class=["\']confidential["\']', slide, re.I):
+            return False
+    return True
+
+
+def _ensure_first_slide_active(slides: list[str]) -> list[str]:
+    if not slides:
+        return slides
+    first = slides[0]
+    if re.search(r'class=["\']slide\s+active["\']', first, re.I):
+        return slides
+    updated = re.sub(
+        r'class=(["\'])slide(\1)',
+        r'class="slide active"',
+        first,
+        count=1,
+        flags=re.I,
+    )
+    return [updated, *slides[1:]]
+
+
+def _rebuild_deck_shell(html: str) -> str:
+    """Extract slide sections and wrap them in the canonical deck shell."""
+    slides = [_sanitize_slide_body(s) for s in _extract_slide_sections(html)]
+    if not slides:
+        return html
+    slides = _ensure_first_slide_active(slides)
+    shell = _template_shell()
+    slides_block = "\n      ".join(slides)
+    grid_bg = '<div class="grid-bg" aria-hidden="true"></div>'
+    body_content = f"""
+  {grid_bg}
+
+  <div class="deck">
+    {shell["topbar"]}
+    {shell["progress"]}
+
+    <main class="stage">
+      {slides_block}
+    </main>
+
+    {shell["footer"]}
+  </div>
+"""
+    body_open = re.search(r"<body[^>]*>", html, re.I)
+    body_close = re.search(r"</body>", html, re.I)
+    if body_open and body_close:
+        return html[: body_open.end()] + body_content + "\n" + html[body_close.start() :]
+    return html.rstrip() + body_content
+
+
+def ensure_deck_structure(html: str) -> str:
+    """Rebuild or sanitize deck shell so slides render inside main.stage only."""
+    text = html or ""
+    if not _extract_slide_sections(text):
+        return text
+    if has_valid_deck_structure(text):
+        return _sanitize_slides_in_place(text)
+    return _rebuild_deck_shell(text)
 
 
 def _insert_before_main_or_slides(text: str, block: str) -> str:
@@ -215,9 +403,26 @@ def strip_navigation_scripts(html: str) -> str:
     return _SCRIPT_BLOCK_RE.sub(_replace, html or "")
 
 
+def has_canonical_navigation_script(html: str) -> bool:
+    """True when the bundled nav script is present (keyboard + touch + null-safe hooks)."""
+    for block in _SCRIPT_BLOCK_RE.findall(html or ""):
+        if (
+            "updateNavUI" in block
+            and "window.nextSlide" in block
+            and "touchstart" in block
+            and "SWIPE_MIN" in block
+            and "if (topProgress)" in block
+        ):
+            return True
+    return False
+
+
 def ensure_canonical_navigation_script(html: str) -> str:
     """Always use the bundled navigation script so DOM hooks stay in sync."""
-    text = strip_navigation_scripts(html or "")
+    text = html or ""
+    if has_canonical_navigation_script(text):
+        return text
+    text = strip_navigation_scripts(text)
     shell = _template_shell()
     script = shell["script"]
     body_close = re.search(r"</body>", text, re.I)
@@ -291,9 +496,6 @@ def finalize_html_deck(
     if not text.strip() or count_slides(text) < 1:
         return apply_branding(text, branding)
 
-    if deck_navigation_ready(text) and "</html>" in text.lower():
-        return apply_branding(text, branding)
-
     lower = text.lower()
     if "</html>" not in lower:
         last_section = lower.rfind("</section>")
@@ -301,9 +503,11 @@ def finalize_html_deck(
             text = text[: last_section + len("</section>")]
             lower = text.lower()
 
+    text = ensure_deck_structure(text)
     text = _ensure_deck_wrapper(text)
     text = _ensure_main_stage(text)
     text = ensure_min_nav_css(text)
+    text = ensure_layout_guard_css(text)
     text = ensure_deck_chrome(text)
     text = _ensure_footer(text)
     text = ensure_canonical_navigation_script(text)
@@ -335,4 +539,6 @@ def validate_html_deck(html: str) -> list[str]:
         issues.append("Navigation script is missing")
     if not _FOOTER_TAG_RE.search(text):
         issues.append("Footer is missing")
+    if not has_valid_deck_structure(text):
+        issues.append("Deck shell is invalid — slides must live inside main.stage with topbar/footer outside")
     return issues

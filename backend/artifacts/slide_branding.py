@@ -199,7 +199,13 @@ def html_slides_branding_prompt(ctx: SlideBrandingContext) -> str:
         "- **Fonts** — Inter/Geist sans for headlines; JetBrains Mono for labels, tables, counters.",
         "- **Data** — `table.data-table` for tabular metrics; `.stat-row` for headline KPIs (grid with borders, not cards).",
         "- **Insights** — `.feature-row` with small mono index (01, 02) + flat body copy.",
-        "- **Navigation** — keyboard only (← → space); no footer prev/next buttons.",
+        "- **Navigation** — keyboard (← → space), swipe left/right on mobile, tap stage edges; no footer prev/next buttons.",
+        "- **Shell (mandatory)** — copy `slide-template.html` body structure verbatim:",
+        "  - `<div class=\"grid-bg\">` + `<div class=\"deck\">` wrapper",
+        "  - `<header class=\"topbar\">` once, **outside** slides — logo only here as `<img class=\"brand-logo\">` (~1rem tall)",
+        "  - `<main class=\"stage\">` contains **only** `<section class=\"slide\">` blocks",
+        "  - `<footer class=\"deck-footer\">` once, **outside** slides — never duplicate confidential/powered-by text inside slides",
+        "- **Never** put company logo, topbar, footer, or \"Do not distribute\" inside a `<section class=\"slide\">`.",
         "- Copy CSS/structure from `backend/static/artifacts/slide-template.html` verbatim.",
     ]
     if ctx.has_company:
@@ -210,7 +216,9 @@ def html_slides_branding_prompt(ctx: SlideBrandingContext) -> str:
     else:
         lines.append("- Footer: `Powered by Alfred`")
     if ctx.logo_data_uri:
-        lines.append('- Optional logo before brand name: `<img class="brand-logo" … />`')
+        lines.append(
+            '- Logo **only in topbar** before brand name: `<img class="brand-logo" … />` — never full-size inside slides'
+        )
     return "\n".join(lines) + "\n"
 
 

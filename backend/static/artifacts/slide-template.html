@@ -103,7 +103,10 @@
       transition: width 0.4s var(--ease);
     }
 
-    main.stage { flex: 1; position: relative; overflow: hidden; }
+    main.stage {
+      flex: 1; position: relative; overflow: hidden;
+      touch-action: pan-y pinch-zoom; cursor: default;
+    }
 
     .slide {
       position: absolute; inset: 0;
@@ -257,6 +260,26 @@
     }
 
     ::selection { background: var(--accent-soft); color: var(--text); }
+
+    /* Layout guards — keep slide content inside the stage */
+    .slide img:not(.chart-img) {
+      max-height: min(42vh, 320px); max-width: 100%;
+      width: auto; height: auto; object-fit: contain;
+    }
+    .slide .brand-logo,
+    .slide .topbar-title,
+    .slide .deck-footer,
+    .slide .confidential { display: none !important; }
+
+    @media (max-width: 760px) {
+      header.topbar { padding: 0.5rem 0.85rem; }
+      .slide {
+        padding: 1rem 1.1rem; justify-content: flex-start; overflow-y: auto;
+      }
+      h1 { max-width: none; font-size: clamp(1.5rem, 6vw, 2rem); }
+      .stat-row { grid-template-columns: repeat(2, 1fr); }
+      .kbd-hint { display: none; }
+    }
   </style>
 </head>
 <body>
@@ -340,7 +363,7 @@
     <footer class="deck-footer">
       <div>
         <span class="confidential">Do not distribute without permission</span>
-        <span class="kbd-hint"> · ← → space</span>
+        <span class="kbd-hint"> · ← → space · swipe · tap edges</span>
       </div>
       <div class="powered">Powered by <strong>Alfred</strong></div>
     </footer>
@@ -368,6 +391,32 @@
       else if (e.key === 'Home') { e.preventDefault(); goToSlide(0); }
       else if (e.key === 'End') { e.preventDefault(); goToSlide(slides.length - 1); }
     });
+
+    const stage = document.querySelector('main.stage');
+    let touchStartX = 0;
+    let touchStartY = 0;
+    const SWIPE_MIN = 48;
+    if (stage) {
+      stage.addEventListener('touchstart', (e) => {
+        const t = e.changedTouches[0];
+        touchStartX = t.screenX;
+        touchStartY = t.screenY;
+      }, { passive: true });
+      stage.addEventListener('touchend', (e) => {
+        const t = e.changedTouches[0];
+        const dx = t.screenX - touchStartX;
+        const dy = t.screenY - touchStartY;
+        if (Math.abs(dx) < SWIPE_MIN || Math.abs(dx) < Math.abs(dy)) return;
+        if (dx < 0) nextSlide(); else prevSlide();
+      }, { passive: true });
+      stage.addEventListener('click', (e) => {
+        if (e.target.closest('a, button, input, textarea, select, label')) return;
+        const rect = stage.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        if (x < rect.width * 0.18) prevSlide();
+        else if (x > rect.width * 0.82) nextSlide();
+      });
+    }
 
     const themeToggle = document.getElementById('themeToggle');
     if (themeToggle) {

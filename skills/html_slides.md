@@ -20,7 +20,9 @@ allowed_tools:
 
 Build a **single self-contained HTML file** when the user provides data, metrics, conversation summaries, charts, or **screenshots/images attached in the prompt**.
 
-**Do not fetch external sites at generation time.** Use the bundled **terminal deck** aesthetic: deep ink background (`#0a0a0a`), sharp 1px borders, **2px max radius**, Inter/Geist headlines, JetBrains Mono labels, `table.data-table`, `.stat-row` KPI strips (not rounded cards), and numbered `.feature-row` sections. Copy the full CSS and structure from `backend/static/artifacts/slide-template.html`.
+**Do not fetch external sites at generation time.** Use the bundled **terminal deck** aesthetic: deep ink background (`#0a0a0a`), sharp 1px borders, **2px max radius**, Inter/Geist headlines, JetBrains Mono labels, `table.data-table`, `.stat-row` KPI strips (not rounded cards), and numbered `.feature-row` sections.
+
+**Start from the template shell** — copy the full `<style>`, body structure, and navigation `<script>` from `backend/static/artifacts/slide-template.html` **verbatim**, then replace slide content only. Alfred repairs broken decks at save/serve time, but following the shell avoids layout bugs (oversized logos, footer text in slide body, empty viewport).
 
 **Company branding:** Alfred injects configured company name (**exact casing**, e.g. `FlexyPe`), logo, and accent colors from admin **Company profile** / `branding.slide_accent` at save/publish time. Company accent **overrides** default palette when set.
 
@@ -118,7 +120,29 @@ Sharp terminal layout — flat borders, data-forward tables, no glow orbs or pil
 
 **Avoid:** `.card-grid`, rounded pill metrics, glow orbs, footer prev/next buttons.
 
-### Layout anatomy
+### Layout anatomy (mandatory shell)
+
+Copy this structure from `slide-template.html` — **do not invent alternate layouts**:
+
+```
+body
+  .grid-bg (fixed background)
+  .deck
+    header.topbar          ← brand-name · deck-name · counter · theme toggle
+    .progress-track        ← #topProgress fill
+    main.stage             ← ONLY slide sections live here
+      section.slide × N
+    footer.deck-footer     ← confidential · kbd hint · Powered by Alfred
+```
+
+**Critical rules:**
+
+| Rule | Detail |
+|------|--------|
+| Logo placement | `<img class="brand-logo">` **only** inside `header.topbar` (~1rem tall). **Never** put logo images inside `section.slide`. |
+| Topbar / footer | Exactly **one** topbar and **one** footer, outside slides. Never duplicate "Do not distribute" or "Powered by Alfred" in slide body. |
+| Slide content | Each `section.slide` holds title, metrics, tables, bullets — **not** deck chrome. |
+| Viewport fill | Slides use absolute positioning inside `main.stage` (flex: 1). Do not wrap slides in extra divs outside `.deck`. |
 
 ```
 ┌ topbar: brand-name · deck-name (mono) · counter · ink/paper toggle ─┐
@@ -136,9 +160,11 @@ Sharp terminal layout — flat borders, data-forward tables, no glow orbs or pil
 | `→` `↓` `Space` `PageDown` | Next slide |
 | `←` `↑` `Backspace` `PageUp` | Previous slide |
 | `Home` / `End` | First / last slide |
+| Swipe left / right (mobile) | Next / previous slide |
+| Tap left/right edge of stage | Previous / next slide |
 | `#themeToggle` click | Toggle `body.paper-mode` |
 
-**No footer nav buttons or dot pagination** — keyboard + top progress bar only.
+**No footer nav buttons or dot pagination** — keyboard + swipe + top progress bar only.
 
 Slide transition: `opacity 0→1` + `translateY(10px→0)`, ~400ms, `--ease`. No autoplay.
 
@@ -161,7 +187,7 @@ Slide transition: `opacity 0→1` + `translateY(10px→0)`, ~400ms, `--ease`. No
 
 ## Reference skeleton
 
-Start from **`backend/static/artifacts/slide-template.html`** — copy the entire `<style>` block, HTML shell, and navigation `<script>` verbatim. Duplicate `<section class="slide">` blocks inside `<main class="stage">`.
+Start from **`backend/static/artifacts/slide-template.html`** — copy the entire `<style>` block, HTML shell (`grid-bg`, `deck`, `topbar`, `progress-track`, `main.stage`, `footer`), and navigation `<script>` verbatim. Duplicate `<section class="slide">` blocks **inside** `<main class="stage">` only.
 
 Admin preview: `GET /api/artifacts/template/slides`
 
@@ -213,6 +239,8 @@ Read JSON field names exactly — do not guess `country_name` when the payload h
 ## Do not
 
 - Fetch external URLs for styling — use this embedded snapshot only
+- Put `<img class="brand-logo">`, topbar, footer, or confidential text **inside** `section.slide`
+- Omit `main.stage` or put slides directly under `body` / `.deck` without the stage wrapper
 - Call `publish_html_artifact` unless the user explicitly asked to publish/host/share
 - Use external image URLs for screenshots (they break offline / expire)
 - Use legacy coral palette (`#e07a5f`) or rounded `.card-grid` KPI boxes
