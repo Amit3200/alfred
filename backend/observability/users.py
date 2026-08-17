@@ -46,16 +46,24 @@ class UserLabelEnricher:
 
     @classmethod
     def from_config(cls, config: AlfredConfig, *, data_dir: Path | None = None) -> "UserLabelEnricher":
+        from backend.integrations.sync.slack_users import sync_slack_users_if_stale
+
         slack_client = None
         if config.slack.enabled and config.slack.bot_token:
             try:
-                pass
-
                 slack_client = WebClient(token=config.slack.bot_token)
             except Exception:
                 slack_client = None
         enricher = cls(config, slack_client=slack_client, data_dir=data_dir)
-        enricher.preload_slack_workspace()
+        sync_slack_users_if_stale(config, data_dir=data_dir)
+        if enricher._user_cache is not None:
+            enricher._cache.update(enricher._user_cache.get_many())
+        preload_hours = float(getattr(config.observability, "slack_user_preload_hours", 1) or 1)
+        from backend.integrations.sync.store import SyncStateStore
+
+        store = SyncStateStore(data_dir)
+        if store.is_stale("slack_users", hours=preload_hours):
+            enricher.preload_slack_workspace()
         return enricher
 
     def preload_slack_workspace(self) -> None:

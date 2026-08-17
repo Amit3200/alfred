@@ -15,6 +15,18 @@ class ServerConfig(BaseModel):
     admin_password: str | None = None
 
 
+class ArtifactsConfig(BaseModel):
+    """HTML presentation artifact hosting."""
+
+    public_base_url: str = Field(
+        default="",
+        description=(
+            "Public base URL for share links in Slack (e.g. https://alfred.company.com). "
+            "When empty, replies use relative paths like /artifacts/s/{slug}."
+        ),
+    )
+
+
 class SlackListJiraSyncConfig(BaseModel):
     """Auto-create JIRA bugs when Slack List workflow posts eligible tickets."""
 
@@ -52,6 +64,44 @@ class SlackListJiraSyncConfig(BaseModel):
     )
 
 
+class SlackBoardColumnMap(BaseModel):
+    title: str = Field(default="Name", description="List column for issue title.")
+    status: str = Field(default="Status", description="Kanban status column label.")
+    severity: str = Field(default="Severity", description="Priority/severity select column.")
+    assignee: str = Field(default="Assignee", description="User assignee column.")
+    merchant: str = Field(default="Merchant Name", description="Merchant name column.")
+    merchant_domain: str = Field(default="Merchant Domain", description="Merchant domain column.")
+    details: str = Field(default="Ticket Details", description="Long text / details column.")
+    display_id: str = Field(
+        default="",
+        description="Optional column for Alfred display ids (TS-123). Leave empty to skip.",
+    )
+
+
+class SlackBoardProfile(BaseModel):
+    name: str = Field(default="bugs-tracker", description="Registry key for this board.")
+    list_id: str = Field(default="", description="Slack List id (F… from list URL).")
+    channel_ids: list[str] = Field(
+        default_factory=list,
+        description="Slack channel ids bound to this board. Empty = any allowed channel.",
+    )
+    display_id_prefix: str = Field(default="TS", description="Prefix for generated ticket ids.")
+    default_status: str = Field(default="Not picked", description="Status for new tasks.")
+    auto_approve_writes: bool = Field(
+        default=False,
+        description="Skip yes/proceed for board write tools in bound channels.",
+    )
+    columns: SlackBoardColumnMap = Field(default_factory=SlackBoardColumnMap)
+
+
+class SlackBoardWorkflowsConfig(BaseModel):
+    enabled: bool = Field(
+        default=False,
+        description="Enable Slack List board management via @alfred.",
+    )
+    boards: list[SlackBoardProfile] = Field(default_factory=list)
+
+
 class SlackConfig(BaseModel):
     enabled: bool = False
     bot_token: str = ""
@@ -59,6 +109,14 @@ class SlackConfig(BaseModel):
     app_token: str = ""
     allowed_channels: list[str] = Field(default_factory=lambda: ["*"])
     list_jira_sync: SlackListJiraSyncConfig = Field(default_factory=SlackListJiraSyncConfig)
+    board_workflows: SlackBoardWorkflowsConfig = Field(default_factory=SlackBoardWorkflowsConfig)
+    ticket_create_disambiguation: bool = Field(
+        default=True,
+        description=(
+            "When JIRA and a Slack List board are both available in a channel, "
+            "ask the user to choose (Slack buttons) before creating a generic ticket/task."
+        ),
+    )
     loading_messages: list[str] = Field(
         default_factory=list,
         description=(
@@ -85,6 +143,12 @@ class SlackConfig(BaseModel):
         le=200,
         description="Maximum thread replies to fetch before ranking.",
     )
+    user_cache_refresh_hours: float = Field(
+        default=1.0,
+        ge=0.25,
+        le=168.0,
+        description="Hours between automatic Slack users.list cache refreshes. Use Integrations → Sync for urgent refresh.",
+    )
 
 
 class GitHubAppConfig(BaseModel):
@@ -100,12 +164,43 @@ class GitHubAppConfig(BaseModel):
     client_secret: str = ""
 
 
+class GitRepoProfile(BaseModel):
+    """Per-repository role and knowledge-base flags (mirrors, doc index, Graphify)."""
+
+    repo: str = Field(
+        default="",
+        description="Repository slug, e.g. FlexyPe/docs or docs (expanded with default_org).",
+    )
+    role: Literal["code", "docs", "scripts"] = Field(
+        default="code",
+        description="docs = support knowledge base; scripts = scheduled metrics/automation repo.",
+    )
+    doc_index: bool | None = Field(
+        default=None,
+        description="Build BM25 doc index on sync. Default: true for role=docs, false otherwise.",
+    )
+    graphify: bool | None = Field(
+        default=None,
+        description="Build Graphify graph on sync. Default: true for role=docs when graphify_enabled.",
+    )
+    tags: list[str] = Field(
+        default_factory=list,
+        description="Optional labels for knowledge UI and routing (e.g. handbook, playbook, runbook).",
+    )
+
+
 class GitConfig(BaseModel):
     enabled: bool = False
     provider: Literal["github", "gitlab"] = "github"
     token: str = ""
     default_org: str = ""
     repos: list[str] = Field(default_factory=list)
+    repo_profiles: list[GitRepoProfile] = Field(
+        default_factory=list,
+        description=(
+            "Optional per-repo roles and knowledge flags. Repos listed here are auto-included in mirrors."
+        ),
+    )
     main_repo: str = Field(
         default="",
         description="Primary repository for default code context and investigation.",
@@ -333,6 +428,91 @@ class JiraConfig(BaseModel):
             "e.g. C0123ABC: TS for #tech-support."
         ),
     )
+    project_aliases: dict[str, str] = Field(
+        default_factory=dict,
+        description=(
+            "Board/display name or phrase → JIRA project key, "
+            "e.g. 'tech-support': TS, 'TECH-SUPPORT': TS, 'engineering': TECH."
+        ),
+    )
+    project_issue_types: dict[str, str] = Field(
+        default_factory=dict,
+        description="Optional project key → default issue type for creates, e.g. TS: Task.",
+    )
+
+
+class RepoKnowledgeConfig(BaseModel):
+    enabled: bool = Field(
+        default=True,
+        description="Enable on-demand repo doc search (search_repo_docs) instead of wholesale context injection.",
+    )
+    doc_paths: list[str] = Field(
+        default_factory=lambda: ["docs", "runbooks", "README.md"],
+        description="Paths under the shared mirror to index (files or directories).",
+    )
+    index_on_sync: bool = Field(
+        default=True,
+        description="Rebuild doc BM25 index when main repo mirror syncs.",
+    )
+    inject_overview: bool = Field(
+        default=False,
+        description="When false, skip injecting full overview/layout into every prompt (use doc tools instead).",
+    )
+    max_search_results: int = Field(default=8, ge=1, le=20)
+    max_read_chars: int = Field(default=12000, ge=1000, le=50000)
+
+
+class RoutingConfig(BaseModel):
+    planner_strategy: Literal["llm_first", "rules_first"] = Field(
+        default="llm_first",
+        description=(
+            "llm_first: LLM tool planner decides intent/tools; rules only for entity-direct fast paths. "
+            "rules_first: legacy phrase rules before LLM fallback."
+        ),
+    )
+    tool_planner_enabled: bool = Field(
+        default=True,
+        description="Enable rule/LLM tool planning before agent execution.",
+    )
+    tool_planner_llm_fallback: bool = Field(
+        default=True,
+        description="Use LLM tool planner when rule-based plan confidence is low.",
+    )
+    tool_planner_min_confidence: float = Field(
+        default=0.55,
+        ge=0.0,
+        le=1.0,
+        description="Minimum confidence to accept a tool plan.",
+    )
+    langgraph_enabled: bool = Field(
+        default=True,
+        description="Route tool execution through LangGraph orchestration (plan → validate → execute → ground).",
+    )
+    langgraph_checkpoint: bool = Field(
+        default=True,
+        description="Persist LangGraph state to SQLite for pause/resume across confirmations.",
+    )
+    plan_first_routing: bool = Field(
+        default=True,
+        description="Resolve skill from tool plan + skill policy before keyword/BM25 router.",
+    )
+    skill_router_fallback: bool = Field(
+        default=True,
+        description="When plan-first misses, fall back to SkillRouter (keyword → BM25 → LLM).",
+    )
+    phrase_routing_enabled: bool = Field(
+        default=False,
+        description=(
+            "When false, investigation routing skips keyword/heuristic/BM25 tiers "
+            "(plan-first + plan templates + optional LLM fallback only)."
+        ),
+    )
+    plan_template_min_confidence: float = Field(
+        default=0.7,
+        ge=0.0,
+        le=1.0,
+        description="Minimum confidence to accept a matched plan template.",
+    )
 
 
 class AIProviderConfig(BaseModel):
@@ -429,6 +609,18 @@ class BrandingConfig(BaseModel):
         default="",
         description="Logo file extension when uploaded (png, jpg, webp, svg).",
     )
+    slide_accent: str = Field(
+        default="",
+        description="Company slide accent (ink mode). Overrides default when set in branding config.",
+    )
+    slide_accent_paper: str = Field(
+        default="",
+        description="Company slide accent in paper/light mode. Overrides default when set.",
+    )
+    slide_accent_secondary: str = Field(
+        default="",
+        description="Optional secondary highlight for slides. Empty uses #a5b4fc.",
+    )
     setup_completed: bool = Field(
         default=False,
         description="True after company branding has been configured in admin or init.",
@@ -456,6 +648,12 @@ class ObservabilityConfig(BaseModel):
     user_labels: dict[str, str] = Field(
         default_factory=dict,
         description="Map Slack user IDs (or internal keys) to display names, e.g. U0522NX5GG0: amit",
+    )
+    slack_user_preload_hours: float = Field(
+        default=1.0,
+        ge=0.25,
+        le=168.0,
+        description="Hours before observability dashboards refresh Slack user names from the API.",
     )
     model_pricing: dict[str, ModelPricingConfig] = Field(
         default_factory=dict,
@@ -544,6 +742,9 @@ class AlfredConfig(BaseModel):
     observability: ObservabilityConfig = Field(default_factory=ObservabilityConfig)
     orchestrator: OrchestratorConfig = Field(default_factory=OrchestratorConfig)
     governance: GovernanceConfig = Field(default_factory=GovernanceConfig)
+    routing: RoutingConfig = Field(default_factory=RoutingConfig)
+    repo_knowledge: RepoKnowledgeConfig = Field(default_factory=RepoKnowledgeConfig)
+    artifacts: ArtifactsConfig = Field(default_factory=ArtifactsConfig)
 
 
 class AlfredSecrets(BaseModel):

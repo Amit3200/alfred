@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from pathlib import Path
 
+import mimetypes
+
 from fastapi import APIRouter, Depends, HTTPException
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
 from backend.api.deps import get_manager, require_admin
@@ -22,6 +24,7 @@ class CreateChatRequest(BaseModel):
 
 class SendMessageRequest(BaseModel):
     content: str = Field(min_length=1)
+    persona: str = Field(default="support", pattern="^(support|tech|all|general|auto|qa|debug)$")
 
 
 class ExportChatRequest(BaseModel):
@@ -118,7 +121,7 @@ def send_message(
     service: UIChatService = Depends(_service),
 ):
     try:
-        return service.send_message(chat_id, body.content)
+        return service.send_message(chat_id, body.content, persona=body.persona)
     except KeyError:
         raise HTTPException(status_code=404, detail="Chat not found") from None
     except ValueError as exc:
@@ -150,4 +153,15 @@ def download_export(
     path = exports_dir(manager.data_dir) / filename
     if not path.is_file():
         raise HTTPException(status_code=404, detail="Export not found")
-    return FileResponse(path, media_type="text/markdown", filename=filename)
+    if filename.lower().endswith(".html"):
+        from backend.artifacts.html_deck import finalize_html_deck
+        from backend.artifacts.slide_branding import build_slide_branding_context
+
+        config, _ = manager.load_merged()
+        branding = build_slide_branding_context(config, manager.data_dir)
+        return HTMLResponse(
+            finalize_html_deck(path.read_text(encoding="utf-8"), branding=branding),
+            media_type="text/html; charset=utf-8",
+        )
+    media_type, _ = mimetypes.guess_type(path.name)
+    return FileResponse(path, media_type=media_type or "application/octet-stream", filename=filename)

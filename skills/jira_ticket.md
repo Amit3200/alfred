@@ -14,6 +14,9 @@ allowed_tools:
   - get_jira_issue
   - link_jira_issue
   - jira_search
+  - transition_jira_issue
+  - jira_add_comment
+  - jira_assign_issue
 requires_thread_context: true
 ---
 

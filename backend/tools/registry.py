@@ -32,6 +32,7 @@ class ToolRegistry:
         self.last_result: ToolResult | None = None
         self.last_tool_name: str | None = None
         self.last_tool_args: dict[str, Any] | None = None
+        self.tool_trace: list[dict[str, Any]] = []
 
     def set_registration_filter(self, allowed_tools: list[str] | None) -> None:
         """When set, ``register()`` skips tools not in this allowlist."""
@@ -39,10 +40,24 @@ class ToolRegistry:
 
         self._registration_filter = normalize_allowed(allowed_tools)
 
+    def clear_trace(self) -> None:
+        self.tool_trace = []
+
     def clear_results(self) -> None:
         self.last_result = None
         self.last_tool_name = None
         self.last_tool_args = None
+        self.tool_trace = []
+
+    def record_trace(self, name: str, *, success: bool, result_kind: str, observation: str) -> None:
+        self.tool_trace.append(
+            {
+                "tool": name,
+                "success": success,
+                "result_kind": result_kind,
+                "observation": observation,
+            }
+        )
 
     def register(self, schema: ToolSchema, handler: ToolHandler) -> None:
         filt = self._registration_filter

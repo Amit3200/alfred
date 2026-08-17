@@ -18,6 +18,8 @@ from backend.models.task import Task
 def test_processor_runs_investigation_loop_for_pr_question():
     config = default_config()
     config.git = GitConfig(enabled=True, provider="github", token="ghp_test")
+    config.routing.langgraph_enabled = False
+    config.routing.phrase_routing_enabled = True
 
     processor = TaskProcessor(config)
     processor.router = MagicMock()

@@ -12,6 +12,46 @@ export type AIProviderConfig = {
   model: string;
 };
 
+export type GitRepoProfile = {
+  repo: string;
+  role: "code" | "docs" | "scripts";
+  doc_index?: boolean | null;
+  graphify?: boolean | null;
+  tags?: string[];
+};
+
+export type KnowledgeDocStatus = {
+  indexed: boolean;
+  chunk_count: number;
+  generated_at?: string | null;
+  head_sha?: string | null;
+};
+
+export type KnowledgeGraphStatus = {
+  present: boolean;
+  node_count: number;
+  edge_count: number;
+};
+
+export type KnowledgeBaseEntry = {
+  repo: string;
+  role: "code" | "docs" | "scripts";
+  doc_index: boolean;
+  graphify: boolean;
+  tags?: string[];
+  mirror_present: boolean;
+  doc: KnowledgeDocStatus;
+  graph: KnowledgeGraphStatus;
+  is_main_repo: boolean;
+};
+
+export type KnowledgeBasesResponse = {
+  graphify_enabled: boolean;
+  repo_knowledge_enabled: boolean;
+  index_on_sync: boolean;
+  repos: KnowledgeBaseEntry[];
+};
+
 export type AlfredConfig = {
   initialized: boolean;
   server: { host: string; port: number; admin_token: string };
@@ -24,6 +64,7 @@ export type AlfredConfig = {
     thread_relevance_enabled?: boolean;
     thread_relevance_top_n?: number;
     thread_fetch_limit?: number;
+    user_cache_refresh_hours?: number;
   };
   git: {
     enabled: boolean;
@@ -31,6 +72,7 @@ export type AlfredConfig = {
     token: string;
     default_org: string;
     repos: string[];
+    repo_profiles?: GitRepoProfile[];
     main_repo?: string;
     graphify_enabled?: boolean;
     mirror_ttl_hours?: number;
@@ -38,6 +80,16 @@ export type AlfredConfig = {
     mirror_max_workspaces?: number;
     mirror_shallow_depth?: number;
     write_enabled?: boolean;
+  };
+  scripts?: {
+    enabled?: boolean;
+    timeout_seconds?: number;
+    remote?: {
+      repo?: string;
+      branch?: string;
+      path?: string;
+      playbooks_path?: string;
+    };
   };
   github: {
     enabled: boolean;
@@ -66,6 +118,10 @@ export type AlfredConfig = {
     api_token: string;
     default_project: string;
     allowed_projects: string[];
+    project_aliases?: Record<string, string>;
+    channel_projects?: Record<string, string>;
+    assignee_map?: Record<string, string>;
+    project_issue_types?: Record<string, string>;
   };
   google: {
     enabled: boolean;
@@ -220,6 +276,29 @@ export function getAdminToken(): string {
 
 export function setAdminToken(token: string) {
   localStorage.setItem(TOKEN_KEY, token);
+}
+
+const ACTOR_LABEL_KEY = "alfred_actor_label";
+const ACTOR_KEY_KEY = "alfred_actor_key";
+
+export function setArtifactActor(label: string, key?: string) {
+  const trimmed = label.trim() || "admin";
+  localStorage.setItem(ACTOR_LABEL_KEY, trimmed);
+  localStorage.setItem(ACTOR_KEY_KEY, key || `admin:${trimmed.toLowerCase()}`);
+}
+
+export function getArtifactActorLabel(): string {
+  return localStorage.getItem(ACTOR_LABEL_KEY) || "admin";
+}
+
+export function getArtifactActorHeaders(): Record<string, string> {
+  const label = getArtifactActorLabel();
+  const key =
+    localStorage.getItem(ACTOR_KEY_KEY) || `admin:${label.toLowerCase()}`;
+  return {
+    "X-Alfred-User": label,
+    "X-Alfred-Actor-Key": key,
+  };
 }
 
 async function request<T>(
@@ -384,10 +463,10 @@ export const api = {
   getChatSession: (id: string) => request<ChatSessionDetail>(`/api/chat/sessions/${id}`, {}, true),
   deleteChatSession: (id: string) =>
     request<{ ok: boolean }>(`/api/chat/sessions/${id}`, { method: "DELETE" }, true),
-  sendChatMessage: (id: string, content: string) =>
+  sendChatMessage: (id: string, content: string, persona: ChatPersona = "support") =>
     request<ChatMessageResponse>(
       `/api/chat/sessions/${id}/messages`,
-      { method: "POST", body: JSON.stringify({ content }) },
+      { method: "POST", body: JSON.stringify({ content, persona }) },
       true,
     ),
   getChatTaskStatus: (taskId: string) =>
@@ -397,6 +476,13 @@ export const api = {
       progress_label?: string;
       current_tool?: string | null;
       recent_tools?: string[];
+      progress_steps?: Array<{ label: string; status: "done" | "active" | "error" }>;
+      progress_plan?: {
+        intent?: string;
+        intent_label?: string;
+        goal?: string;
+        steps?: string[];
+      } | null;
     }>(`/api/chat/tasks/${taskId}/status`, {}, true),
   getChatActiveTask: (chatId: string) =>
     request<{
@@ -405,6 +491,13 @@ export const api = {
       progress_label?: string;
       current_tool?: string | null;
       recent_tools?: string[];
+      progress_steps?: Array<{ label: string; status: "done" | "active" | "error" }>;
+      progress_plan?: {
+        intent?: string;
+        intent_label?: string;
+        goal?: string;
+        steps?: string[];
+      } | null;
     }>(`/api/chat/sessions/${encodeURIComponent(chatId)}/active-task`, {}, true),
   cancelChatTask: (taskId: string) =>
     request<{ task_id: string; status: string }>(
@@ -486,9 +579,30 @@ export const api = {
     request<GraphifyReportResponse>("/api/repo-context/graphify/report", {}, true),
   getGraphifySummary: () =>
     request<GraphifySummaryResponse>("/api/repo-context/graphify/summary", {}, true),
-  rebuildGraphify: () =>
+  rebuildGraphify: (repo?: string) =>
     request<GraphifyRebuildResult>(
-      "/api/repo-context/graphify/rebuild",
+      `/api/repo-context/graphify/rebuild${repo ? `?repo=${encodeURIComponent(repo)}` : ""}`,
+      { method: "POST", body: JSON.stringify({}) },
+      true,
+    ),
+
+  getKnowledgeBases: () =>
+    request<KnowledgeBasesResponse>("/api/repo-context/knowledge", {}, true),
+  syncKnowledgeRepo: (repo: string) =>
+    request<{ ok: boolean; knowledge: KnowledgeBasesResponse }>(
+      `/api/repo-context/knowledge/${encodeURIComponent(repo)}/sync`,
+      { method: "POST", body: JSON.stringify({}) },
+      true,
+    ),
+  rebuildKnowledgeIndex: (repo: string) =>
+    request<{ ok: boolean; knowledge: KnowledgeBasesResponse }>(
+      `/api/repo-context/knowledge/${encodeURIComponent(repo)}/index`,
+      { method: "POST", body: JSON.stringify({}) },
+      true,
+    ),
+  rebuildKnowledgeGraph: (repo: string) =>
+    request<{ ok: boolean; knowledge: KnowledgeBasesResponse }>(
+      `/api/repo-context/knowledge/${encodeURIComponent(repo)}/graphify`,
       { method: "POST", body: JSON.stringify({}) },
       true,
     ),
@@ -546,6 +660,60 @@ export const api = {
 
   listSchedules: () =>
     request<{ schedules: ScheduledJob[] }>("/api/observability/schedules", {}, true),
+
+  listSlackChannelWorkflows: () =>
+    request<SlackChannelWorkflowsResponse>("/api/slack/workflows/channels", {}, true),
+  upsertSlackChannelWorkflow: (channelId: string, body: SlackChannelWorkflowInput) =>
+    request<{ channel: SlackChannelWorkflow }>(
+      `/api/slack/workflows/channels/${encodeURIComponent(channelId)}`,
+      { method: "PUT", body: JSON.stringify({ ...body, channel_id: channelId }) },
+      true,
+    ),
+  deleteSlackChannelWorkflow: (channelId: string) =>
+    request<{ ok: boolean }>(
+      `/api/slack/workflows/channels/${encodeURIComponent(channelId)}`,
+      { method: "DELETE" },
+      true,
+    ),
+  listSlackBoardBindings: () =>
+    request<SlackBoardBindingsResponse>("/api/slack/workflows/boards", {}, true),
+  createSlackBoardBinding: (body: SlackBoardBindingInput) =>
+    request<{ board: SlackBoardBinding }>(
+      "/api/slack/workflows/boards",
+      { method: "POST", body: JSON.stringify(body) },
+      true,
+    ),
+  updateSlackBoardBinding: (bindingId: string, body: Partial<SlackBoardBindingInput>) =>
+    request<{ board: SlackBoardBinding }>(
+      `/api/slack/workflows/boards/${encodeURIComponent(bindingId)}`,
+      { method: "PUT", body: JSON.stringify(body) },
+      true,
+    ),
+  deleteSlackBoardBinding: (bindingId: string) =>
+    request<{ ok: boolean }>(
+      `/api/slack/workflows/boards/${encodeURIComponent(bindingId)}`,
+      { method: "DELETE" },
+      true,
+    ),
+  deleteSlackBoardBindingsForChannel: (channelId: string) =>
+    request<{ ok: boolean; removed: number }>(
+      `/api/slack/workflows/boards/channel/${encodeURIComponent(channelId)}`,
+      { method: "DELETE" },
+      true,
+    ),
+  dedupeSlackBoardBindings: () =>
+    request<{ ok: boolean; boards: number; duplicate_rows_removed: number }>(
+      "/api/slack/workflows/boards/dedupe",
+      { method: "POST" },
+      true,
+    ),
+  verifySlackBoardListId: (listId: string, channelId?: string) =>
+    request<{ ok: boolean; list_id: string }>(
+      "/api/slack/workflows/boards/verify-list",
+      { method: "POST", body: JSON.stringify({ list_id: listId, channel_id: channelId || "" }) },
+      true,
+    ),
+
   toggleSchedule: (jobId: string, active: boolean) =>
     request<{ status: string }>(
       `/api/observability/schedules/${encodeURIComponent(jobId)}/toggle`,
@@ -581,6 +749,19 @@ export const api = {
   },
 
   listPlaybooks: () => request<PlaybooksListResponse>("/api/playbooks", {}, true),
+  getToolsCatalog: (params?: { domain?: string; enabled_only?: boolean }) => {
+    const q = new URLSearchParams();
+    if (params?.domain) q.set("domain", params.domain);
+    if (params?.enabled_only) q.set("enabled_only", "true");
+    const query = q.toString();
+    return request<ToolsCatalogResponse>(`/api/tools/catalog${query ? `?${query}` : ""}`, {}, true);
+  },
+  getRoutingTraces: (limit = 50) =>
+    request<RoutingTracesResponse>(`/api/routing/traces?limit=${limit}`, {}, true),
+  getRoutingTrace: (taskId: string) =>
+    request<RoutingTraceRecord>(`/api/routing/traces/${encodeURIComponent(taskId)}`, {}, true),
+  getCapabilityBundles: () =>
+    request<CapabilityBundlesResponse>("/api/routing/capabilities", {}, true),
   listPendingPlaybooks: () =>
     request<PendingPlaybooksResponse>("/api/playbooks/pending", {}, true),
   getPendingPlaybook: (pendingId: string) =>
@@ -637,6 +818,25 @@ export const api = {
   listScripts: () => request<ScriptsListResponse>("/api/scripts", {}, true),
   syncScripts: () =>
     request<ScriptsSyncResponse>("/api/scripts/sync", { method: "POST" }, true),
+
+  getIntegrationSyncStatus: () =>
+    request<IntegrationSyncStatusResponse>("/api/integrations/sync/status", {}, true),
+  syncSlackUsers: () =>
+    request<SlackUsersSyncResponse>(
+      "/api/integrations/sync/slack/users",
+      { method: "POST" },
+      true,
+    ),
+  syncJiraContext: (applyAssigneeMap = false) =>
+    request<JiraContextSyncResponse>(
+      "/api/integrations/sync/jira/context",
+      {
+        method: "POST",
+        body: JSON.stringify({ apply_assignee_map: applyAssigneeMap }),
+      },
+      true,
+    ),
+
   getScriptExample: () => request<ScriptExampleResponse>("/api/scripts/example", {}, true),
   getScriptFile: (relativePath: string) =>
     request<ScriptFileDetail>(`/api/scripts/files/${encodeScriptPath(relativePath)}`, {}, true),
@@ -675,7 +875,54 @@ export const api = {
       { method: "DELETE" },
       true,
     ),
+
+  listMyArtifacts: (limit = 100) =>
+    request<ArtifactListResponse>(
+      `/api/artifacts/mine?limit=${limit}`,
+      { headers: getArtifactActorHeaders() },
+      true,
+    ),
+
+  getArtifactMeta: (slug: string) =>
+    request<ArtifactVersionResponse>(
+      `/api/artifacts/${encodeURIComponent(slug)}`,
+      { headers: getArtifactActorHeaders() },
+      true,
+    ),
+
+  uploadArtifactHtml: (body: { slug: string; title?: string; html: string }) =>
+    request<{ ok: boolean; artifact: ArtifactSummary }>(
+      "/api/artifacts",
+      {
+        method: "POST",
+        body: JSON.stringify(body),
+        headers: getArtifactActorHeaders(),
+      },
+      true,
+    ),
+
+  uploadArtifactFile: async (slug: string, title: string, file: File) => {
+    const form = new FormData();
+    form.append("slug", slug);
+    form.append("title", title);
+    form.append("file", file);
+    const res = await fetch("/api/artifacts/upload", {
+      method: "POST",
+      headers: {
+        "X-Alfred-Token": getAdminToken(),
+        ...getArtifactActorHeaders(),
+      },
+      body: form,
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({}));
+      throw new ApiError(String(body.detail || "Upload failed"), res.status);
+    }
+    return res.json() as Promise<{ ok: boolean; artifact: ArtifactSummary }>;
+  },
 };
+
+export type ChatPersona = "support" | "tech" | "all" | "general";
 
 export type ChatSessionSummary = {
   id: string;
@@ -1099,6 +1346,73 @@ export type PlaybooksListResponse = {
   example_available: boolean;
 };
 
+export type ToolCatalogEntry = {
+  name: string;
+  domain: string;
+  category: string;
+  domain_label: string;
+  description: string;
+  enabled: boolean;
+  integration: string;
+  governance: "read" | "staging" | "confirm" | "write";
+  skills: string[];
+};
+
+export type ToolCatalogDomain = {
+  name: string;
+  label: string;
+  tool_count: number;
+  enabled_count: number;
+  tools: ToolCatalogEntry[];
+};
+
+export type ToolsCatalogResponse = {
+  summary: {
+    total: number;
+    enabled: number;
+    disabled: number;
+    write_tools: number;
+    domain_count: number;
+  };
+  domains: ToolCatalogDomain[];
+  tools: ToolCatalogEntry[];
+};
+
+export type RoutingTraceRecord = {
+  task_id: string;
+  recorded_at: string;
+  intent: string;
+  skill_name: string;
+  routing_strategy: string;
+  tool_plan: Record<string, unknown> | null;
+  scoped_tools: string[];
+  graph_route: string;
+  tool_trace: Record<string, unknown>[];
+  grounding_passed: boolean;
+  grounding_issues: string[];
+  steps: Record<string, unknown>[];
+  source: string;
+  channel_id: string;
+};
+
+export type RoutingTracesResponse = {
+  traces: RoutingTraceRecord[];
+  count: number;
+};
+
+export type CapabilityBundleInfo = {
+  tools: string[];
+  policy_name: string;
+  context_injectors: string[];
+  subagent: string;
+  output_format: string;
+};
+
+export type CapabilityBundlesResponse = {
+  bundles: Record<string, CapabilityBundleInfo>;
+  count: number;
+};
+
 export type PlaybookDetail = PlaybookSummary & {
   content: string;
   ok?: boolean;
@@ -1122,6 +1436,75 @@ export type PendingPlaybook = {
 
 export type PendingPlaybooksResponse = {
   pending: PendingPlaybook[];
+  total: number;
+};
+
+export type SlackChannelWorkflow = {
+  channel_id: string;
+  channel_name: string;
+  ticket_system: "ask" | "slack_list" | "jira";
+  jira_project_key: string;
+  enabled: boolean;
+  updated_at: number;
+};
+
+export type SlackChannelWorkflowInput = {
+  channel_id?: string;
+  channel_name?: string;
+  ticket_system?: "ask" | "slack_list" | "jira";
+  jira_project_key?: string;
+  enabled?: boolean;
+};
+
+export type SlackChannelWorkflowsResponse = {
+  channels: SlackChannelWorkflow[];
+  total: number;
+};
+
+export type SlackBoardColumnMap = {
+  title: string;
+  status: string;
+  severity: string;
+  assignee: string;
+  merchant: string;
+  merchant_domain: string;
+  details: string;
+  display_id: string;
+};
+
+export type SlackBoardBinding = {
+  id: string;
+  board_key: string;
+  list_id: string;
+  list_name: string;
+  channel_id: string;
+  channel_name: string;
+  display_id_prefix: string;
+  next_display_num: number;
+  default_status: string;
+  auto_approve_writes: boolean;
+  columns: SlackBoardColumnMap;
+  enabled: boolean;
+  created_at: number;
+  updated_at: number;
+};
+
+export type SlackBoardBindingInput = {
+  board_key: string;
+  list_id: string;
+  channel_id: string;
+  channel_name?: string;
+  list_name?: string;
+  display_id_prefix?: string;
+  next_display_num?: number;
+  default_status?: string;
+  auto_approve_writes?: boolean;
+  columns?: Partial<SlackBoardColumnMap>;
+  enabled?: boolean;
+};
+
+export type SlackBoardBindingsResponse = {
+  boards: SlackBoardBinding[];
   total: number;
 };
 
@@ -1189,6 +1572,50 @@ export type ScriptsRemoteInfo = {
   };
 };
 
+export type IntegrationSyncStatusResponse = {
+  slack_users: {
+    last_sync_at?: string;
+    user_count?: number;
+    refresh_hours?: number;
+  };
+  jira_context: {
+    last_sync_at?: string;
+    project_count?: number;
+    identity_count?: number;
+    matched_jira?: number;
+    assignee_map_added?: number;
+  };
+  slack_refresh_hours: number;
+  observability_refresh_hours: number;
+  jira_snapshot: {
+    project_count?: number;
+    identity_count?: number;
+    matched_jira?: number;
+    assignee_suggestions?: number;
+  };
+};
+
+export type SlackUsersSyncResponse = {
+  ok: boolean;
+  skipped?: boolean;
+  reason?: string;
+  user_count?: number;
+  last_sync_at?: string;
+  error?: string;
+};
+
+export type JiraContextSyncResponse = {
+  ok: boolean;
+  project_count?: number;
+  identity_count?: number;
+  matched_jira?: number;
+  assignee_map_suggestion_count?: number;
+  assignee_map_added?: number;
+  projects_error?: string | null;
+  last_sync_at?: string;
+  error?: string;
+};
+
 export type ScriptsSyncResponse = {
   ok: boolean;
   skipped?: boolean;
@@ -1222,6 +1649,33 @@ export type ScriptFileDetail = {
 export type ScriptExampleResponse = {
   package_path: string;
   files: Record<string, string>;
+};
+
+export type ArtifactSummary = {
+  uuid: string;
+  sha256: string;
+  slug: string;
+  title: string;
+  uploaded_by: string;
+  uploaded_at: number;
+  uploaded_at_iso?: string;
+  size_bytes: number;
+  is_latest: boolean;
+  slug_url: string;
+  sha_url: string;
+  owner_key?: string;
+  owner_label?: string;
+};
+
+export type ArtifactListResponse = {
+  actor: { key: string; label: string };
+  artifacts: ArtifactSummary[];
+  count: number;
+};
+
+export type ArtifactVersionResponse = {
+  latest: ArtifactSummary;
+  versions: ArtifactSummary[];
 };
 
 function buildObservabilityQuery(params: ObservabilityQuery & { limit?: number; offset?: number }) {

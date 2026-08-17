@@ -771,6 +771,46 @@ def github_review(
         click.echo(f"Preview:\n{body[:500]}{'…' if len(body) > 500 else ''}")
 
 
+@main.group()
+def tools() -> None:
+    """Inspect registered agent tools."""
+
+
+@tools.command("list")
+@click.option("--data-dir", type=click.Path(path_type=Path), default=None)
+@click.option("--domain", default=None, help="Filter by domain (git, jira, slack, …).")
+@click.option("--enabled-only", is_flag=True, help="Show only tools enabled by current config.")
+@click.option("--json", "as_json", is_flag=True, help="Emit JSON instead of text.")
+def tools_list(
+    data_dir: Path | None,
+    domain: str | None,
+    enabled_only: bool,
+    as_json: bool,
+) -> None:
+    """List all Alfred tools grouped by domain with enablement and governance."""
+    import json
+
+    from backend.routing.playbook_store_registry import get_playbook_store
+    from backend.tools.list_catalog import build_tools_catalog, format_tools_cli
+
+    manager = ConfigManager(data_dir)
+    config, _ = manager.load_merged()
+    store = get_playbook_store(manager.data_dir)
+    catalog = build_tools_catalog(config, playbooks=store.list_playbooks())
+
+    if as_json:
+        tools_out = catalog.get("tools") or []
+        if domain:
+            tools_out = [t for t in tools_out if t.get("domain") == domain]
+        if enabled_only:
+            tools_out = [t for t in tools_out if t.get("enabled")]
+        payload = {**catalog, "tools": tools_out}
+        click.echo(json.dumps(payload, indent=2))
+        return
+
+    click.echo(format_tools_cli(catalog, enabled_only=enabled_only, domain=domain))
+
+
 @main.command("down")
 @click.option("--data-dir", type=click.Path(path_type=Path), default=None)
 @click.option("--with-ollama/--keep-ollama", default=True)
@@ -783,4 +823,49 @@ def down_cmd(data_dir: Path | None, with_ollama: bool, with_frontend: bool) -> N
         data_dir=data_dir,
         with_ollama=with_ollama,
         with_frontend=with_frontend,
+    )
+
+
+@main.command("restart")
+@click.option("--data-dir", type=click.Path(path_type=Path), default=None)
+@click.option("--host", default=None, help="Bind host (overrides config).")
+@click.option("--port", default=None, type=int, help="Bind port (overrides config).")
+@click.option(
+    "--with-ollama/--no-ollama",
+    default=None,
+    help="Start local Ollama (default: on when default AI provider is ollama).",
+)
+@click.option("--model", default=None, help="Ollama model name for readiness checks.")
+@click.option(
+    "--with-frontend/--no-frontend",
+    default=True,
+    help="Start Vite dev server for hot-reload UI (default: on).",
+)
+@click.option("--frontend-port", default=None, type=int, help="Vite dev port (default: 5173).")
+def restart_cmd(
+    data_dir: Path | None,
+    host: str | None,
+    port: int | None,
+    with_ollama: bool | None,
+    model: str | None,
+    with_frontend: bool,
+    frontend_port: int | None,
+) -> None:
+    """Stop then start Alfred (`alfred down && alfred up`)."""
+    ctx = click.get_current_context()
+    ctx.invoke(
+        stop_cmd,
+        data_dir=data_dir,
+        with_ollama=True,
+        with_frontend=True,
+    )
+    ctx.invoke(
+        up,
+        data_dir=data_dir,
+        host=host,
+        port=port,
+        with_ollama=with_ollama,
+        model=model,
+        with_frontend=with_frontend,
+        frontend_port=frontend_port,
     )

@@ -5,6 +5,7 @@ import { AppSidebar } from "./AppSidebar";
 import { ChatPage } from "./ChatPage";
 import { HomePage } from "./HomePage";
 import { LoginPage } from "./LoginPage";
+import { KnowledgePanel } from "./panels/KnowledgePanel";
 import { BrandingPanel } from "./panels/BrandingPanel";
 import { AISettingsPanel } from "./panels/AISettingsPanel";
 import { HealthPanel } from "./panels/HealthPanel";
@@ -12,10 +13,14 @@ import { IntegrationsPanel } from "./panels/IntegrationsPanel";
 import { RepoMirrorsPanel } from "./panels/RepoMirrorsPanel";
 import { PlaybooksPanel } from "./panels/PlaybooksPanel";
 import { ScriptsPanel } from "./panels/ScriptsPanel";
+import { ArtifactsPanel } from "./panels/ArtifactsPanel";
 import { SecretsPanel } from "./panels/SecretsPanel";
 import { UsagePanel } from "./panels/UsagePanel";
 import { SchedulesPanel } from "./panels/SchedulesPanel";
+import { SlackBoardsPanel } from "./panels/SlackBoardsPanel";
 import { LogsPanel } from "./panels/LogsPanel";
+import { ToolsPanel } from "./panels/ToolsPanel";
+import { RoutingPanel } from "./panels/RoutingPanel";
 import { useApp } from "../context/AppContext";
 
 const { Content } = Layout;
@@ -32,18 +37,28 @@ function SettingsContent() {
       return <SecretsPanel />;
     case "integrations":
       return <IntegrationsPanel />;
+    case "knowledge":
+      return <KnowledgePanel />;
     case "repos":
       return <RepoMirrorsPanel />;
     case "playbooks":
       return <PlaybooksPanel />;
     case "scripts":
       return <ScriptsPanel />;
+    case "artifacts":
+      return <ArtifactsPanel />;
+    case "tools":
+      return <ToolsPanel />;
+    case "routing":
+      return <RoutingPanel />;
     case "health":
       return <HealthPanel />;
     case "usage":
       return <UsagePanel />;
     case "schedules":
       return <SchedulesPanel />;
+    case "slack-boards":
+      return <SlackBoardsPanel />;
     case "logs":
       return <LogsPanel />;
     default:

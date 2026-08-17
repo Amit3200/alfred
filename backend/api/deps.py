@@ -62,3 +62,21 @@ def require_admin(
                 pass
 
     raise HTTPException(status_code=401, detail="Unauthorized")
+
+
+def get_artifact_actor(
+    x_alfred_user: str | None = Header(default=None, alias="X-Alfred-User"),
+    x_alfred_actor_key: str | None = Header(default=None, alias="X-Alfred-Actor-Key"),
+) -> "ArtifactActor":
+    """Resolve the human actor for artifact management (admin UI or Slack)."""
+    from backend.artifacts.actor import ArtifactActor, normalize_actor_key
+
+    label = (x_alfred_user or "").strip()
+    if not label:
+        raise HTTPException(
+            status_code=400,
+            detail="X-Alfred-User header required (admin username or Slack display name)",
+        )
+    raw_key = (x_alfred_actor_key or "").strip()
+    key = raw_key or normalize_actor_key(label)
+    return ArtifactActor(key=key, label=label)

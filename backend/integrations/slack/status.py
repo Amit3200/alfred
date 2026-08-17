@@ -313,7 +313,13 @@ class ThinkingIndicator:
         self._superseded = True
         self._stop_rotation_thread()
 
-    def finish(self, text: str, *, files: list[Any] | None = None) -> None:
+    def finish(
+        self,
+        text: str,
+        *,
+        files: list[Any] | None = None,
+        blocks: list[dict[str, Any]] | None = None,
+    ) -> None:
         self._stop_rotation_thread()
         if self.thread_ts:
             key = _thread_key(self.channel, self.thread_ts)
@@ -322,12 +328,18 @@ class ThinkingIndicator:
                     del _ACTIVE_BY_THREAD[key]
         if self._assistant_active:
             # Slack clears assistant status automatically when the app posts a reply.
-            self._post_reply(text, files=files)
+            self._post_reply(text, files=files, blocks=blocks)
             self._clear_assistant_status()
             return
-        self._finish_legacy(text, files=files)
+        self._finish_legacy(text, files=files, blocks=blocks)
 
-    def _post_reply(self, text: str, *, files: list[Any] | None = None) -> None:
+    def _post_reply(
+        self,
+        text: str,
+        *,
+        files: list[Any] | None = None,
+        blocks: list[dict[str, Any]] | None = None,
+    ) -> None:
         pass
         pass
 
@@ -343,6 +355,7 @@ class ThinkingIndicator:
             channel=self.channel,
             thread_ts=self.thread_ts,
             text=text,
+            blocks=blocks if blocks else None,
         )
 
     def _set_status_kwargs(self) -> dict[str, Any]:
@@ -483,7 +496,13 @@ class ThinkingIndicator:
                 logger.debug("Legacy status rotation failed", exc_info=True)
                 return
 
-    def _finish_legacy(self, text: str, *, files: list[Any] | None = None) -> None:
+    def _finish_legacy(
+        self,
+        text: str,
+        *,
+        files: list[Any] | None = None,
+        blocks: list[dict[str, Any]] | None = None,
+    ) -> None:
         pass
         pass
 
@@ -494,4 +513,4 @@ class ThinkingIndicator:
             except Exception:
                 logger.debug("Could not delete legacy thinking placeholder", exc_info=True)
             self._legacy_message_ts = None
-        self._post_reply(text, files=attachments)
+        self._post_reply(text, files=attachments, blocks=blocks)

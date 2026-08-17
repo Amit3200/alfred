@@ -1,0 +1,29 @@
+# Example capability bundle overrides
+#
+# Copy to `.alfred/capabilities.yaml` to customize tool groups per domain.
+# Bundles merge with built-in defaults in `backend/routing/capabilities.py`.
+
+bundles:
+  jira:
+    tools:
+      - get_jira_issue
+      - jira_search
+      - jira_create_issue
+      - jira_assign_issue
+      - transition_jira_issue
+    policy_name: jira_management
+    context_injectors:
+      - jira_context
+    subagent: jira_worker
+    output_format: jira_summary
+
+  repo:
+    tools:
+      - grep_repo
+      - read_file
+      - search_repo_docs
+      - read_repo_doc
+    policy_name: investigate_bug
+    context_injectors:
+      - git_context
+      - repo_context

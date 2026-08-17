@@ -37,6 +37,7 @@ class SlackFileAttachment:
 class SlackDelivery:
     text: str
     files: list[SlackFileAttachment] = field(default_factory=list)
+    blocks: list[dict] | None = None
 
 
 @dataclass
@@ -45,8 +46,70 @@ class TabularData:
     rows: list[list[str]]
 
 
+_HTML_DOCTYPE_RE = re.compile(r"<!doctype\s+html", re.IGNORECASE)
+_HTML_FENCE_RE = re.compile(r"```html\s*\n(.*?)```", re.IGNORECASE | re.DOTALL)
+
+
+def extract_html_deck(text: str) -> tuple[str, str] | None:
+    """Return (html, filename) when the reply contains a full HTML presentation."""
+    if not text:
+        return None
+    match = _HTML_FENCE_RE.search(text)
+    if match:
+        html = match.group(1).strip()
+        if _HTML_DOCTYPE_RE.search(html) or "<html" in html.lower():
+            return html, _html_filename_from_content(html)
+    stripped = text.strip()
+    lower = stripped.lower()
+    if _HTML_DOCTYPE_RE.search(stripped[:256]) or lower.startswith("<html"):
+        end = lower.rfind("</html>")
+        if end != -1:
+            html = stripped[: end + len("</html>")]
+            return html, _html_filename_from_content(html)
+    return None
+
+
+def _html_filename_from_content(html: str) -> str:
+    title_match = re.search(r"<title>([^<]+)</title>", html, re.IGNORECASE)
+    if title_match:
+        raw = title_match.group(1).strip().lower()
+        slug = re.sub(r"[^a-z0-9]+", "-", raw).strip("-")
+        if slug:
+            return f"{slug[:48]}.html"
+    return "presentation.html"
+
+
 def prepare_slack_delivery(rendered_text: str, intent: str) -> SlackDelivery:
     """Format reply text and optionally attach export files or handle length truncation."""
+    if rendered_text and (
+        "*HTML slide deck saved*" in rendered_text
+        or "*Published HTML slides*" in rendered_text
+        or "**HTML slide deck saved**" in rendered_text
+        or "**Published HTML slides**" in rendered_text
+    ):
+        return SlackDelivery(text=rendered_text)
+
+    deck = extract_html_deck(rendered_text)
+    if deck:
+        html, filename = deck
+        attachment = SlackFileAttachment(
+            filename=filename,
+            content=html.encode("utf-8"),
+            mime_type="text/html",
+            title="HTML presentation",
+        )
+        intro = (
+            "*HTML slide deck attached* — open the `.html` file in a browser "
+            "(arrow keys to navigate, ink/paper toggle in the header)."
+        )
+        lower_intent = intent.lower()
+        if not any(word in lower_intent for word in ("publish", "host", "share link", "upload")):
+            intro += (
+                "\n\n_Not published to a share URL. Ask to **publish** or **host** "
+                "if you want a link like `/artifacts/s/your-slug`._"
+            )
+        return SlackDelivery(text=intro, files=[attachment])
+
     export_format = detect_export_format(intent)
     if export_format:
         table = extract_tabular_data(rendered_text)

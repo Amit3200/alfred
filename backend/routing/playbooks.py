@@ -4,7 +4,7 @@ import logging
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 import yaml
 
@@ -15,6 +15,7 @@ logger = logging.getLogger(__name__)
 _FRONTMATTER_RE = re.compile(r"^---\s*\n(.*?)\n---\s*\n", re.DOTALL)
 
 SkillMode = Literal["conversational", "investigation", "workflow"]
+PlaybookType = Literal["playbook", "policy", "plan_template", "workflow", "deprecated_skill"]
 
 
 @dataclass
@@ -32,6 +33,11 @@ class Playbook:
     fetch_urls: list[str] = field(default_factory=list)
     fetch_ttl_minutes: int = 60
     scripts: list[str] = field(default_factory=list)
+    playbook_type: PlaybookType = "playbook"
+    capability_bundle: str = ""
+    plan_template: dict[str, Any] = field(default_factory=dict)
+    output_format: str = ""
+    governance: dict[str, Any] = field(default_factory=dict)
     _body: str | None = field(default=None, repr=False, compare=False)
 
     @property
@@ -376,6 +382,31 @@ def _parse_playbook_index(path: Path, *, bundled: bool) -> Playbook:
     requires_thread_context = bool(meta.get("requires_thread_context", False))
     fetch_urls = _normalize_str_list(meta.get("fetch_urls"))
     fetch_ttl_minutes = int(meta.get("fetch_ttl_minutes") or 60)
+    playbook_type = str(meta.get("type") or "playbook")
+    if playbook_type not in (
+        "playbook",
+        "policy",
+        "plan_template",
+        "workflow",
+        "deprecated_skill",
+    ):
+        if mode == "workflow":
+            playbook_type = "workflow"
+        elif mode == "investigation" and not triggers:
+            playbook_type = "policy"
+        else:
+            playbook_type = "playbook"
+    capability_bundle = str(meta.get("capability_bundle") or "").strip()
+    plan_template_raw = meta.get("plan_template")
+    plan_template = dict(plan_template_raw) if isinstance(plan_template_raw, dict) else {}
+    output_block = meta.get("output")
+    output_format = ""
+    if isinstance(output_block, dict):
+        output_format = str(output_block.get("format") or "").strip()
+    if not output_format:
+        output_format = str(meta.get("output_format") or "").strip()
+    governance_raw = meta.get("governance")
+    governance = dict(governance_raw) if isinstance(governance_raw, dict) else {}
 
     if channels == ["*"]:
         channels = []
@@ -394,6 +425,11 @@ def _parse_playbook_index(path: Path, *, bundled: bool) -> Playbook:
         bundled=bundled,
         fetch_urls=fetch_urls,
         fetch_ttl_minutes=max(1, fetch_ttl_minutes),
+        playbook_type=playbook_type,  # type: ignore[arg-type]
+        capability_bundle=capability_bundle,
+        plan_template=plan_template,
+        output_format=output_format,
+        governance=governance,
     )
 
 

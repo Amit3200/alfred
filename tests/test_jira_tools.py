@@ -21,7 +21,7 @@ def _config() -> AlfredConfig:
     return config
 
 
-@patch("backend.tools.jira_tool.JiraApiClient")
+@patch("backend.tools.jira.register.JiraApiClient")
 def test_get_jira_issue_tool(mock_client_cls):
     client = MagicMock()
     mock_client_cls.from_alfred_config.return_value = client
@@ -40,7 +40,7 @@ def test_get_jira_issue_tool(mock_client_cls):
     assert result.data["issue"]["key"] == "ENG-1"
 
 
-@patch("backend.tools.jira_tool.JiraApiClient")
+@patch("backend.tools.jira.register.JiraApiClient")
 def test_jira_search_tool(mock_client_cls):
     client = MagicMock()
     mock_client_cls.from_alfred_config.return_value = client
@@ -57,7 +57,7 @@ def test_jira_search_tool(mock_client_cls):
     client.search_issues.assert_called_once()
 
 
-@patch("backend.tools.jira_tool.JiraApiClient")
+@patch("backend.tools.jira.register.JiraApiClient")
 def test_jira_create_issue_tool(mock_client_cls):
     client = MagicMock()
     mock_client_cls.from_alfred_config.return_value = client
@@ -81,7 +81,7 @@ def test_jira_create_issue_tool(mock_client_cls):
     assert result.data["key"] == "ENG-99"
 
 
-@patch("backend.tools.jira_tool.JiraApiClient")
+@patch("backend.tools.jira.register.JiraApiClient")
 def test_link_jira_issue_tool(mock_client_cls):
     client = MagicMock()
     mock_client_cls.from_alfred_config.return_value = client

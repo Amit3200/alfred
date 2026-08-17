@@ -14,6 +14,8 @@ from backend.models.task import Task
 def test_processor_direct_list_my_prs_skips_llm():
     config = default_config()
     config.git = GitConfig(enabled=True, provider="github", token="ghp_test")
+    config.routing.langgraph_enabled = False
+    config.routing.phrase_routing_enabled = True
 
     processor = TaskProcessor(config)
     processor.router = MagicMock()
@@ -33,18 +35,20 @@ def test_processor_direct_list_my_prs_skips_llm():
         mock_client = mock_client_cls.from_alfred_config.return_value
         mock_client.list_my_prs.return_value = prs
 
-        with patch("backend.agent.loop.run_agent_loop") as mock_loop:
-            task = Task(
-                source="slack",
-                user_id="U1",
-                channel_id="C1",
-                raw_text="@alfred what are open PRs of mine?",
-                cleaned_intent="what are open PRs of mine?",
-            )
-            response = processor.process(task)
+        with patch("backend.orchestrator.graph.nodes.run_agent_loop") as mock_graph_loop:
+            with patch("backend.agent.loop.run_agent_loop") as mock_loop:
+                task = Task(
+                    source="slack",
+                    user_id="U1",
+                    channel_id="C1",
+                    raw_text="@alfred what are open PRs of mine?",
+                    cleaned_intent="what are open PRs of mine?",
+                )
+                response = processor.process(task)
 
     reply = render_for_channel(response, "slack")
     assert response.payload.kind == "pr_list"
     assert "*1 open PR*" in reply
     assert "#7 Fix" in reply
+    mock_graph_loop.assert_not_called()
     mock_loop.assert_not_called()

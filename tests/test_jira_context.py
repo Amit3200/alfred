@@ -13,6 +13,7 @@ from backend.routing.jira_context import (
     resolve_assignees_for_task,
     resolve_jira_assignee,
     resolve_jira_project_for_task,
+    resolve_project_alias,
     wants_current_user,
 )
 from backend.models.config import AlfredConfig, JiraConfig, SlackListJiraSyncConfig
@@ -177,6 +178,7 @@ def test_detect_jira_list_action_honors_explicit_ts_board(monkeypatch):
         base_url="https://acme.atlassian.net",
         email="bob@example.com",
         default_project="TECH",
+        project_aliases={"ts board": "TS", "on ts": "TS"},
     )
     task = _task(
         raw="@alfred list jira tickets on TS board",
@@ -198,12 +200,27 @@ def test_detect_jira_list_action_honors_explicit_ts_board(monkeypatch):
     assert 'project = "TS"' in args["jql"]
 
 
+def test_resolve_project_alias_from_config():
+    config = JiraConfig(
+        project_aliases={
+            "tech-support": "TS",
+            "ts board": "TS",
+            "tech board": "TECH",
+        }
+    )
+    assert resolve_project_alias("list tickets on TS board", config) == "TS"
+    assert resolve_project_alias("move to tech board", config) == "TECH"
+    assert resolve_project_alias("check tech-support queue", config) == "TS"
+    assert resolve_project_alias("hello world", config) is None
+
+
 def test_jira_projects_for_task_prefers_intent_over_channel():
     config = AlfredConfig()
     config.jira = JiraConfig(
         enabled=True,
         default_project="TECH",
         channel_projects={"C1": "TS"},
+        project_aliases={"tech board": "TECH"},
     )
     task = _task(
         raw="list TECH board tickets",

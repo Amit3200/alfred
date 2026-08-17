@@ -1,4 +1,4 @@
-"""Tool names grouped by integration — used for lazy registration."""
+"""Tool names grouped by integration — single source of truth for registration and observability."""
 
 from __future__ import annotations
 
@@ -36,6 +36,14 @@ GIT_WRITE_TOOLS = frozenset(
 
 GRAPHIFY_TOOLS = frozenset({"query_graph"})
 
+REPO_DOC_TOOLS = frozenset(
+    {
+        "search_repo_docs",
+        "read_repo_doc",
+        "list_repo_docs",
+    }
+)
+
 GIT_TOOLS = GIT_API_TOOLS | GIT_LOCAL_TOOLS | GIT_WRITE_TOOLS | GRAPHIFY_TOOLS
 
 IDENTITY_TOOLS = frozenset(
@@ -56,6 +64,7 @@ JIRA_TOOLS = frozenset(
         "jira_update_issue",
         "jira_add_comment",
         "jira_create_issue",
+        "jira_assign_issue",
     }
 )
 
@@ -69,16 +78,59 @@ AWS_TOOLS = frozenset(
     }
 )
 
-GOOGLE_TOOLS = frozenset(
+GOOGLE_SHEET_TOOLS = frozenset(
     {
+        "google_create_sheet",
         "google_read_sheet",
         "google_write_sheet",
         "google_append_sheet",
+    }
+)
+
+GOOGLE_DOC_TOOLS = frozenset(
+    {
         "google_read_doc",
         "google_create_doc",
         "google_append_doc",
     }
 )
+
+GOOGLE_TOOLS = GOOGLE_SHEET_TOOLS | GOOGLE_DOC_TOOLS
+
+SLACK_READ_TOOLS = frozenset(
+    {
+        "slack_fetch_thread",
+        "slack_fetch_channel_history",
+    }
+)
+
+SLACK_BOARD_TOOLS = frozenset(
+    {
+        "slack_board_create_task",
+        "slack_board_update_task",
+        "slack_board_search_tasks",
+        "slack_board_get_task",
+        "slack_board_comment",
+    }
+)
+
+SLACK_BOARD_WRITE_TOOLS = frozenset(
+    {
+        "slack_board_create_task",
+        "slack_board_update_task",
+        "slack_board_comment",
+    }
+)
+
+SLACK_BOARD_READ_TOOLS = frozenset(
+    {
+        "slack_fetch_thread",
+        "slack_board_search_tasks",
+        "slack_board_get_task",
+    }
+)
+
+SLACK_TOOLS = SLACK_READ_TOOLS | SLACK_BOARD_TOOLS
 
 WEB_TOOLS = frozenset({"web_search"})
 
@@ -102,12 +154,53 @@ SCHEDULE_TOOLS = frozenset(
     }
 )
 
+ARTIFACT_TOOLS = frozenset(
+    {
+        "save_html_deck",
+        "publish_html_artifact",
+    }
+)
+
 ALL_KNOWN_TOOLS = (
     GIT_TOOLS
+    | REPO_DOC_TOOLS
     | JIRA_MODULE_TOOLS
     | AWS_TOOLS
     | GOOGLE_TOOLS
+    | SLACK_TOOLS
     | WEB_TOOLS
     | COMPANY_SCRIPT_TOOLS
     | SCHEDULE_TOOLS
+    | ARTIFACT_TOOLS
 )
+
+# Per-tool domain for logging and observability (finer than category).
+TOOL_DOMAINS: dict[str, str] = {
+    **{name: "git" for name in GIT_API_TOOLS | GIT_LOCAL_TOOLS | GIT_WRITE_TOOLS | GRAPHIFY_TOOLS},
+    **{name: "repo_docs" for name in REPO_DOC_TOOLS},
+    **{name: "jira" for name in JIRA_TOOLS},
+    **{name: "identity" for name in IDENTITY_TOOLS},
+    **{name: "aws" for name in AWS_TOOLS},
+    **{name: "google_sheet" for name in GOOGLE_SHEET_TOOLS},
+    **{name: "google_doc" for name in GOOGLE_DOC_TOOLS},
+    **{name: "slack" for name in SLACK_READ_TOOLS},
+    **{name: "slack_write" for name in SLACK_BOARD_TOOLS},
+    **{name: "web" for name in WEB_TOOLS},
+    **{name: "script" for name in COMPANY_SCRIPT_TOOLS},
+    **{name: "schedule" for name in SCHEDULE_TOOLS},
+    **{name: "artifact" for name in ARTIFACT_TOOLS},
+}
+
+
+def tool_domain(tool_name: str) -> str:
+    return TOOL_DOMAINS.get(tool_name, "other")
+
+
+def tool_category(tool_name: str) -> str:
+    """Coarser grouping for observability dashboards."""
+    domain = tool_domain(tool_name)
+    if domain.startswith("google_"):
+        return "google"
+    if domain == "identity":
+        return "jira"
+    return domain

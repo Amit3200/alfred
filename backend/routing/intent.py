@@ -39,6 +39,18 @@ def detect_direct_action(
 
     # 2. Check Git/investigate direct actions
     if config.git.enabled and playbook:
+        from backend.routing.git_direct import (
+            extract_pr_reference,
+            wants_pr_code_analysis,
+            wants_pr_summary,
+        )
+
+        if ref := extract_pr_reference(intent):
+            if wants_pr_summary(intent) and not wants_pr_code_analysis(intent):
+                if not playbook.allowed_tools or "get_pr" in playbook.allowed_tools:
+                    logger.info("Unified Router: detected direct PR metadata summary")
+                    return "get_pr", {"repo": ref[0], "number": ref[1]}
+
         # Check git_status direct actions (e.g. list_my_prs, get_pr, list_repos)
         git_action = detect_git_direct_action(intent, playbook, config.git)
         if git_action:

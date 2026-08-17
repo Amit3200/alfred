@@ -2,18 +2,22 @@ import {
   ApiOutlined,
   BankOutlined,
   BarChartOutlined,
+  BookOutlined,
+  CalendarOutlined,
   CodeOutlined,
   CommentOutlined,
   DatabaseOutlined,
+  FileSearchOutlined,
   FileTextOutlined,
+  FundProjectionScreenOutlined,
   HeartOutlined,
   HomeOutlined,
   KeyOutlined,
   LogoutOutlined,
+  NodeIndexOutlined,
   RobotOutlined,
   SettingOutlined,
-  CalendarOutlined,
-  FileSearchOutlined,
+  ToolOutlined,
 } from "@ant-design/icons";
 import { Layout, Menu, Typography, Select, Button } from "antd";
 import { useEffect, useMemo, useState } from "react";
@@ -26,7 +30,43 @@ import type { SettingsPage } from "../types";
 
 const { Sider } = Layout;
 
-const SETTINGS_KEYS = new Set(["branding", "ai", "secrets", "integrations", "repos", "playbooks", "scripts", "health", "usage", "schedules", "logs"]);
+const ALL_SETTINGS = new Set<SettingsPage>([
+  "branding",
+  "ai",
+  "secrets",
+  "integrations",
+  "knowledge",
+  "repos",
+  "playbooks",
+  "scripts",
+  "artifacts",
+  "tools",
+  "routing",
+  "schedules",
+  "slack-boards",
+  "usage",
+  "logs",
+  "health",
+]);
+
+const GROUP_FOR_PAGE: Record<SettingsPage, string> = {
+  branding: "setup",
+  ai: "setup",
+  secrets: "setup",
+  integrations: "setup",
+  knowledge: "grp-knowledge",
+  repos: "grp-knowledge",
+  playbooks: "grp-knowledge",
+  scripts: "automation",
+  artifacts: "automation",
+  schedules: "automation",
+  "slack-boards": "automation",
+  tools: "developer",
+  routing: "developer",
+  usage: "operations",
+  logs: "operations",
+  health: "operations",
+};
 
 type AppSidebarProps = {
   width: number;
@@ -40,14 +80,14 @@ export function AppSidebar({ width }: AppSidebarProps) {
     [view, settingsPage],
   );
 
-  const [openKeys, setOpenKeys] = useState<string[]>(["settings"]);
+  const [openKeys, setOpenKeys] = useState<string[]>(["setup", "grp-knowledge"]);
 
-  // Keep Configure expanded when viewing a settings page.
   useEffect(() => {
     if (view === "settings") {
-      setOpenKeys((keys) => (keys.includes("settings") ? keys : [...keys, "settings"]));
+      const group = GROUP_FOR_PAGE[settingsPage];
+      setOpenKeys((keys) => (keys.includes(group) ? keys : [...keys, group]));
     }
-  }, [view]);
+  }, [view, settingsPage]);
 
   const onOpenChange = (keys: string[]) => {
     setOpenKeys(keys);
@@ -62,7 +102,7 @@ export function AppSidebar({ width }: AppSidebarProps) {
       navigate("chat");
       return;
     }
-    if (SETTINGS_KEYS.has(key)) {
+    if (ALL_SETTINGS.has(key as SettingsPage)) {
       navigate("settings", key as SettingsPage);
     }
   };
@@ -93,18 +133,51 @@ export function AppSidebar({ width }: AppSidebarProps) {
             { key: "home", icon: <HomeOutlined />, label: "Home" },
             { key: "chat", icon: <CommentOutlined />, label: "Chat" },
             {
-              key: "settings",
+              key: "setup",
               icon: <SettingOutlined />,
-              label: "Configure",
+              label: "Setup",
               children: [
                 { key: "branding", icon: <BankOutlined />, label: "Company profile" },
                 { key: "ai", icon: <RobotOutlined />, label: "AI providers" },
                 { key: "secrets", icon: <KeyOutlined />, label: "Secrets" },
                 { key: "integrations", icon: <ApiOutlined />, label: "Integrations" },
+              ],
+            },
+            {
+              key: "grp-knowledge",
+              icon: <BookOutlined />,
+              label: "Knowledge",
+              children: [
+                { key: "knowledge", icon: <BookOutlined />, label: "Knowledge bases" },
                 { key: "repos", icon: <DatabaseOutlined />, label: "Repo mirrors" },
                 { key: "playbooks", icon: <FileTextOutlined />, label: "Playbooks" },
+              ],
+            },
+            {
+              key: "automation",
+              icon: <CalendarOutlined />,
+              label: "Automation",
+              children: [
                 { key: "scripts", icon: <CodeOutlined />, label: "Scripts" },
+                { key: "artifacts", icon: <FundProjectionScreenOutlined />, label: "HTML slides" },
                 { key: "schedules", icon: <CalendarOutlined />, label: "Schedules" },
+                { key: "slack-boards", icon: <CommentOutlined />, label: "Slack boards" },
+              ],
+            },
+            {
+              key: "developer",
+              icon: <ToolOutlined />,
+              label: "Developer",
+              children: [
+                { key: "tools", icon: <ToolOutlined />, label: "Tools" },
+                { key: "routing", icon: <NodeIndexOutlined />, label: "Routing" },
+              ],
+            },
+            {
+              key: "operations",
+              icon: <BarChartOutlined />,
+              label: "Operations",
+              children: [
                 { key: "usage", icon: <BarChartOutlined />, label: "Usage" },
                 { key: "logs", icon: <FileSearchOutlined />, label: "Logs" },
                 { key: "health", icon: <HeartOutlined />, label: "Health" },

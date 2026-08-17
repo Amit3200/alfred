@@ -55,6 +55,7 @@ class OpenAICompatProvider(LLMProvider):
         messages: list[Message],
         tools: list[ToolSchema] | None = None,
         model: str | None = None,
+        max_tokens: int | None = None,
     ) -> LLMResponse:
         client = self._get_client()
         model_name = model or self.config.model
@@ -62,7 +63,7 @@ class OpenAICompatProvider(LLMProvider):
         kwargs: dict[str, Any] = {
             "model": model_name,
             "messages": payload_messages,
-            "max_tokens": 4096,
+            "max_tokens": max_tokens or 4096,
         }
         if tools:
             kwargs["tools"] = [
@@ -76,9 +77,9 @@ class OpenAICompatProvider(LLMProvider):
                 }
                 for t in tools
             ]
-        elif self.provider_name == "kimi":
-            # Kimi K2.6 defaults to thinking mode — can return empty content with
-            # only reasoning_content, which breaks plain chat replies.
+        if self.provider_name == "kimi":
+            # Kimi K2.6 thinking mode can return empty assistant content (with tool_calls
+            # or only reasoning_content), which breaks OpenAI-compatible chat APIs.
             kwargs["extra_body"] = {"thinking": {"type": "disabled"}}
         completion = client.chat.completions.create(**kwargs)
         choice = completion.choices[0]

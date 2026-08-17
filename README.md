@@ -54,7 +54,7 @@ Config and encrypted secrets live in `.alfred/` (not a SaaS). Optional Ollama on
 | **Task Planning** | Checklist-Based Task Planning Mode — pre-plans complex workflows, executes checklist step-by-step (`.alfred/plans/`). |
 | **Self-Improving** | Meta-Learning loop reflects on completed queries and writes playbooks to `.alfred/playbooks/`. |
 | **Prompts Registry** | Centralized `prompts.yaml` registry to configure all system, format, planning, and learning instructions. |
-| **Admin UI** | Chat, secrets, AI routing, integrations, repo mirrors, playbooks, scripts, usage (tokens + est. cost), health. |
+| **Admin UI** | Chat, secrets, AI routing, integrations, repo mirrors, playbooks, scripts, tools catalog, **routing debugger**, usage (tokens + est. cost), health. |
 | **CLI** | `exec`, `git sync`, `slack emojis`, `up` / `stop`, Ollama helpers. |
 
 ### Shipped skills (`skills/`)
@@ -345,7 +345,7 @@ Configure at [api.slack.com/apps](https://api.slack.com/apps):
 
 1. Enable **Socket Mode** → App-Level Token with `connections:write`
 2. **Bot Token Scopes:**  
-   `app_mentions:read`, `channels:history`, `channels:read`, `chat:write`, `files:write`, `groups:history`, `groups:read`, `lists:read`, `users:read`, **`users:read.email`**, `assistant:write`  
+   `app_mentions:read`, `channels:history`, `channels:read`, `chat:write`, `files:read`, `files:write`, `groups:history`, `groups:read`, `lists:read`, **`lists:write`**, `users:read`, **`users:read.email`**, `assistant:write`  
    Optional: **`emoji:read`** (for `alfred slack emojis`)
 3. Enable **Agents & AI Apps** for native thinking status
 4. **Event Subscriptions** → `app_mention`
@@ -375,6 +375,7 @@ List shortcodes: `alfred slack emojis` (requires `emoji:read` scope). Custom + b
 | `alfred serve` | API + admin UI + Slack listener |
 | `alfred serve --reload` | Dev auto-reload |
 | `alfred up` | Background: API + Slack (+ Vite UI, + Ollama if default) |
+| `alfred restart` | Stop then start (`alfred down && alfred up`) |
 | `alfred stop` / `alfred down` | Stop background processes |
 | `alfred status` | Data dir, init state, Slack readiness |
 | `alfred token` | Print admin username, password, and token |
@@ -506,79 +507,60 @@ Runtime data (not in git): **`.alfred/`** at repo root or `ALFRED_DATA_DIR`.
 ## Architecture
 
 ```mermaid
-flowchart TD
-    %% Ingress & Queue Layer
-    subgraph Ingress ["1. Ingress & Task Queueing"]
-        Slack["Slack Bot (@mentions Ingress)"]
-        UI["Admin UI Chat (FastAPI POST)"]
-        CLI["CLI Ingress (alfred exec)"]
-        Queue[("SQLite Task Queue (sqlite_queue.py)")]
-        Worker["Task Queue Worker Daemon Thread (worker.py)"]
+flowchart TB
+    subgraph Ingress["1. Ingress & queue"]
+        Slack["Slack @mentions"]
+        UI["Admin UI / CLI"]
+        Queue[("SQLite task queue")]
+        Worker["Background worker"]
     end
 
-    Slack -->|Bolt App Event| Queue
-    UI -->|API Endpoint| Queue
-    CLI --> Queue
-    Queue -->|Dequeues Task| Worker
-
-    %% Context, Routing & Pruning Layer
-    subgraph Engine ["2. Routing, Relevancy & Pruning Engine"]
-        Context["Load Slack Thread Context & History"]
-        Pruner["Context Pruner (policy.py)\n- Truncate Tracebacks\n- Shorten long URLs"]
-        DirectRouter{"Direct Action Routing Heuristics?"}
-        CacheLookup{"Cached JIRA/PR Key in Session?"}
-        DirectExec["Execute Tool Directly"]
-        KeywordMatcher{"Word-Boundary Trigger Keyword Match?"}
-        ReActLoop["ReAct Agent Loop (LLM Routing)"]
+    subgraph Routing["2. Plan-first routing"]
+        Entities["Entity extraction"]
+        Planner["Tool planner\nrules → plan templates → LLM"]
+        Policy["Policy layer\nskill + capability bundle"]
+        Phrase["Phrase router (legacy, off by default)"]
     end
 
-    Worker --> Context
-    Context --> Pruner
-    Pruner --> DirectRouter
-    
-    DirectRouter -->|Yes| CacheLookup
-    CacheLookup -->|Yes| DirectExec
-    CacheLookup -->|No| KeywordMatcher
-    DirectRouter -->|No| KeywordMatcher
-    
-    KeywordMatcher -->|Yes Match Playbook| ReActLoop
-    KeywordMatcher -->|No Fallback| ReActLoop
-
-    %% Execution & Monitoring Layer
-    subgraph Execution ["3. Execution & Observability Logging"]
-        Tools["Allowed Tools Gated Registry"]
-        GitMirror["Git Mirrors (grep/blame/log)"]
-        JIRA["JIRA Cloud Integrations"]
-        AWS["AWS Tools (Athena / CloudWatch)"]
-        Checkpoints[("SQLite Task Checkpoints Database\n(started / completed / error timeline)")]
+    subgraph Graph["3. LangGraph orchestration"]
+        Validate["Validate plan + scope tools"]
+        Exec["Direct path or ReAct worker"]
+        Ground["Grounding gate"]
+        Format["Intent formatters"]
     end
 
-    DirectExec --> Tools
-    ReActLoop --> Tools
-    Tools --> GitMirror & JIRA & AWS
-    Tools -.->|Log checkpoint event| Checkpoints
-
-    %% Delivery Layer
-    subgraph Delivery ["4. Response Delivery Formatting"]
-        Render["Strategies Formatting Layer (strategies.py)"]
-        SlackSend["Post message + upload files to Slack thread"]
-        UISend["Return JSON payload response to Admin UI client"]
+    subgraph Tools["4. Tool registry"]
+        Git["Git mirrors + Graphify"]
+        Docs["Repo doc index"]
+        Jira["JIRA · Google · Slack · AWS · Scripts"]
     end
 
-    GitMirror & JIRA & AWS --> Render
-    Render --> SlackSend
-    Render --> UISend
+    subgraph Admin["5. Observability"]
+        Traces["Routing traces"]
+        Usage["Token usage + checkpoints"]
+    end
 
-    classDef default fill:#f9f9f9,stroke:#333,stroke-width:1px;
-    classDef database fill:#e1f5fe,stroke:#01579b,stroke-width:2px;
-    classDef worker fill:#fff3e0,stroke:#e65100,stroke-width:2px;
-    class Queue,Checkpoints database;
-    class Worker worker;
+    Slack --> Queue
+    UI --> Queue
+    Queue --> Worker
+    Worker --> Entities --> Planner --> Policy
+    Policy --> Validate --> Exec --> Ground --> Format
+    Phrase -.->|fallback| Policy
+    Exec --> Tools
+    Format --> Slack
+    Format --> UI
+    Graph --> Traces
+    Worker --> Usage
 ```
 
-Principles: **local-first**, **generic core + local playbooks**, **pluggable AI**, **read-only AWS/git by default**.
+**Principles:** local-first · generic core + local playbooks · pluggable AI · read-only AWS/git by default.
 
-Full design: [`docs/build-reference/v0.md`](docs/build-reference/v0.md)
+| Doc | Content |
+|-----|---------|
+| [`docs/architecture/overview.md`](docs/architecture/overview.md) | Context diagram + sequence flow |
+| [`docs/architecture/implementation-status.md`](docs/architecture/implementation-status.md) | Phase 0–4 progress |
+| [`docs/architecture/routing-and-tools-plan.md`](docs/architecture/routing-and-tools-plan.md) | Full routing revamp spec |
+| [`docs/build-reference/v0.md`](docs/build-reference/v0.md) | Original layer architecture |
 
 ---
 

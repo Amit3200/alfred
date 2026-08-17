@@ -13,6 +13,7 @@ import {
   api,
   getAdminToken,
   setAdminToken,
+  setArtifactActor,
   ApiError,
 } from "../api/client";
 import { defaultPublicBranding } from "../branding";
@@ -155,6 +156,9 @@ export function AppProvider({ children }: { children: ReactNode }) {
       }
       setAdminToken(token);
       setTokenInput(token);
+      if (username.trim()) {
+        setArtifactActor(username.trim());
+      }
       setIsAuthenticated(true);
       await load();
       notify("success", "Logged in successfully");

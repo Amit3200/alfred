@@ -129,6 +129,30 @@ def branding_dir(data_dir: Path | None = None) -> Path:
     return path
 
 
+def artifacts_dir(data_dir: Path | None = None) -> Path:
+    """Content-addressed HTML presentations under `.alfred/artifacts/`."""
+    path = get_data_dir(data_dir) / "artifacts"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def artifact_blobs_dir(data_dir: Path | None = None) -> Path:
+    path = artifacts_dir(data_dir) / "blobs"
+    path.mkdir(parents=True, exist_ok=True)
+    return path
+
+
+def artifact_blob_path(data_dir: Path, sha256: str) -> Path:
+    """Two-level shard layout: blobs/ab/abcdef....html"""
+    digest = sha256.lower().strip()
+    return artifact_blobs_dir(data_dir) / digest[:2] / f"{digest}.html"
+
+
+def bundled_artifacts_static_dir() -> Path:
+    """Bundled logos and reference templates shipped with Alfred."""
+    return Path(__file__).resolve().parent / "static" / "artifacts"
+
+
 def bundled_web_dist() -> Path | None:
     """Return path to bundled admin UI static assets, if present."""
     package_root = Path(__file__).resolve().parent

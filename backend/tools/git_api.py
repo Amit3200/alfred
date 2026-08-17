@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 from backend.tools.catalog import (
+    ARTIFACT_TOOLS,
     AWS_TOOLS,
     COMPANY_SCRIPT_TOOLS,
     GIT_API_TOOLS,
@@ -12,14 +13,15 @@ from backend.tools.catalog import (
     GRAPHIFY_TOOLS,
     JIRA_MODULE_TOOLS,
     SCHEDULE_TOOLS,
+    SLACK_TOOLS,
     WEB_TOOLS,
 )
 from backend.tools.git_local import register_local_git_tools
 from backend.tools.git_write import register_git_write_tools
 from backend.tools.graphify_tool import register_graphify_tools
-from backend.tools.jira_tool import register_jira_tools
+from backend.tools.google import register_google_tools
+from backend.tools.jira import register_jira_tools
 from backend.tools.aws_tool import register_aws_tools
-from backend.tools.google_tool import register_google_tools
 from backend.tools.selection import wants_module, wants_tool
 
 from pathlib import Path
@@ -119,6 +121,7 @@ def build_git_tool_registry(
     registry.git_config = config.git
     registry.workspace_id = workspace_id
     registry.data_dir = data_dir
+    registry.alfred_config = config
 
     allowed = registry._registration_filter
 
@@ -209,6 +212,19 @@ def build_git_tool_registry(
     if wants_module(GOOGLE_TOOLS, allowed):
         register_google_tools(registry, config)
 
+    if wants_module(SLACK_TOOLS, allowed):
+        from backend.tools.slack import register_slack_tools
+
+        register_slack_tools(registry, config)
+        if data_dir is not None:
+            from backend.tools.slack.board_register import register_slack_board_tools
+
+            register_slack_board_tools(
+                registry,
+                config,
+                data_dir=Path(data_dir),
+            )
+
     if wants_module(WEB_TOOLS, allowed):
         from backend.tools.web_search_tool import register_web_search_tools
 
@@ -223,5 +239,17 @@ def build_git_tool_registry(
         from backend.tools.company_script_tool import register_company_script_tools
 
         register_company_script_tools(registry, config=config, data_dir=data_dir)
+
+    if wants_module(ARTIFACT_TOOLS, allowed):
+        from backend.tools.artifacts_tool import register_artifact_tools
+
+        register_artifact_tools(registry, config=config, data_dir=data_dir)
+
+    if config.repo_knowledge.enabled and config.git.enabled and data_dir is not None:
+        from backend.tools.catalog import REPO_DOC_TOOLS
+        from backend.tools.repo_docs import register_repo_doc_tools
+
+        if wants_module(REPO_DOC_TOOLS, allowed):
+            register_repo_doc_tools(registry, config, data_dir=data_dir)
 
     return registry

@@ -127,9 +127,12 @@ class TaskQueueWorker:
                         resolver = SlackUserResolver(client)
                         rendered = resolve_user_ids_in_text(rendered, resolver)
                         delivery = prepare_slack_delivery(rendered, task.cleaned_intent)
+                        from backend.routing.ticket_create_disambiguation import slack_blocks_from_response
+
+                        blocks = slack_blocks_from_response(response) or delivery.blocks
 
                         if task.source == "slack" and indicator is not None:
-                            indicator.finish(delivery.text, files=delivery.files)
+                            indicator.finish(delivery.text, files=delivery.files, blocks=blocks)
                         else:
                             client.chat_postMessage(
                                 channel=task.channel_id,

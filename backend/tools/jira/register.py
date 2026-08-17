@@ -1,4 +1,4 @@
-"""JIRA tools — list/get issues, transitions, comments, and Git links."""
+"""JIRA tools — list/get issues, transitions, comments, assign, and Git links."""
 
 from __future__ import annotations
 from backend.integrations.identity.user_identity import build_workspace_identity_map
@@ -235,6 +235,25 @@ JIRA_CREATE_ISSUE = ToolSchema(
     },
 )
 
+JIRA_ASSIGN_ISSUE = ToolSchema(
+    name="jira_assign_issue",
+    description=(
+        "Assign or reassign an EXISTING JIRA issue to a user by name, email, or account ID. "
+        "Use when the user asks to assign a ticket that already exists."
+    ),
+    parameters={
+        "type": "object",
+        "properties": {
+            "issue_key": {"type": "string", "description": "Issue key, e.g. PROJ-123."},
+            "assignee": {
+                "type": "string",
+                "description": "Assignee display name, email, Slack-resolved email, or JIRA account ID.",
+            },
+        },
+        "required": ["issue_key", "assignee"],
+    },
+)
+
 
 def register_jira_tools(registry: ToolRegistry, config: AlfredConfig) -> None:
     def workspace_identity_handler(args: dict[str, Any]) -> ToolResult:
@@ -399,6 +418,17 @@ def register_jira_tools(registry: ToolRegistry, config: AlfredConfig) -> None:
         except (RuntimeError, ValueError) as exc:
             return ToolResult.error(str(exc))
 
+    def assign_handler(args: dict[str, Any]) -> ToolResult:
+        key = str(args.get("issue_key") or "").strip()
+        assignee = str(args.get("assignee") or "").strip()
+        if not key or not assignee:
+            return ToolResult.error("issue_key and assignee are required.")
+        try:
+            result = client.assign_issue(key, assignee=assignee)
+            return ToolResult.jira_action("assign", result)
+        except (RuntimeError, ValueError) as exc:
+            return ToolResult.error(str(exc))
+
     registry.register(LIST_JIRA_ISSUES, list_handler)
     registry.register(GET_JIRA_ISSUE, get_handler)
     registry.register(TRANSITION_JIRA_ISSUE, transition_handler)
@@ -408,3 +438,4 @@ def register_jira_tools(registry: ToolRegistry, config: AlfredConfig) -> None:
     registry.register(JIRA_UPDATE_ISSUE, update_handler)
     registry.register(JIRA_ADD_COMMENT, jira_comment_handler)
     registry.register(JIRA_CREATE_ISSUE, create_handler)
+    registry.register(JIRA_ASSIGN_ISSUE, assign_handler)

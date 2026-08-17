@@ -16,6 +16,7 @@ from backend.integrations.company_scripts.manifest import (
     load_manifest,
     normalize_script_ref,
     package_name_from_dir,
+    parse_triggers,
     resolve_entry,
     runtime_from_meta,
     script_aliases,
@@ -47,6 +48,7 @@ class CompanyScript:
     relative_path: str = ""
     kind: str = "package"
     aliases: set[str] = field(default_factory=set)
+    triggers: list[str] = field(default_factory=list)
     file_count: int = 0
 
     def format_for_prompt(self) -> str:
@@ -198,6 +200,7 @@ class CompanyScriptStore:
             relative_path=package_dir.relative_to(root).as_posix(),
             kind="package",
             aliases=script_aliases(name),
+            triggers=parse_triggers(meta),
             file_count=file_count,
         )
 
@@ -218,6 +221,7 @@ class CompanyScriptStore:
             relative_path=rel,
             kind="legacy",
             aliases=script_aliases(name),
+            triggers=parse_triggers(meta),
             file_count=1,
         )
 

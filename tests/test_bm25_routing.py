@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 from unittest.mock import MagicMock
 
-from backend.models.config import AlfredConfig, SkillsConfig
+from backend.models.config import AlfredConfig, GitConfig, SkillsConfig
 from backend.routing import RouteContext, RouteMode, SkillRouter
 from backend.routing.bm25 import route_by_bm25
 from backend.routing.playbooks import PlaybookStore
@@ -86,7 +86,11 @@ def test_hybrid_bm25_wins_before_llm(tmp_path: Path, monkeypatch):
     llm_router = MagicMock()
     llm_router.resolve_task.return_value = ("kimi", provider, "m")
 
-    config = AlfredConfig(skills=SkillsConfig(bm25_min_score=-1.0, bm25_min_gap=0.1))
+    config = AlfredConfig(
+        git=GitConfig(enabled=True, provider="github", token="ghp_test"),
+        skills=SkillsConfig(bm25_min_score=-1.0, bm25_min_gap=0.1),
+    )
+    config.routing.phrase_routing_enabled = True
     router = SkillRouter(config, store, llm_router=llm_router)
     result = router.route_investigation(
         RouteContext(intent="please put this in a google doc", mode=RouteMode.INVESTIGATION)

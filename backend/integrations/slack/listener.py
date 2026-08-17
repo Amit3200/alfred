@@ -160,6 +160,17 @@ def build_slack_bolt_app(
             save_task_feedback(Path(data_dir), task_id, "bad")
         respond("Thank you for your feedback! (Bad 👎)")
 
+    from backend.integrations.slack.ticket_disambiguation_actions import (
+        register_ticket_disambiguation_actions,
+    )
+
+    register_ticket_disambiguation_actions(
+        app,
+        processor=processor,
+        session_store=session_store,
+        data_dir=data_dir,
+    )
+
     return app
 
 
@@ -186,7 +197,10 @@ def _process_mention(
             rendered,
             task.cleaned_intent,
         )
-        indicator.finish(delivery.text, files=delivery.files)
+        from backend.routing.ticket_create_disambiguation import slack_blocks_from_response
+
+        blocks = slack_blocks_from_response(response) or delivery.blocks
+        indicator.finish(delivery.text, files=delivery.files, blocks=blocks)
 
         # Randomly ask for feedback (1 out of 20 = 5% chance)
         import random

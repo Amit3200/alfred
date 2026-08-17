@@ -1,5 +1,6 @@
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { DocAuthImage } from "./DocAuthImage";
 
 type Props = {
   content: string;
@@ -16,6 +17,7 @@ export function ChatMarkdown({ content }: Props) {
               {children}
             </a>
           ),
+          img: ({ src, alt }) => <DocAuthImage src={src} alt={alt} />,
         }}
       >
         {content}

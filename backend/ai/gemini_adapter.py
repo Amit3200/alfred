@@ -35,6 +35,7 @@ class GeminiProvider(LLMProvider):
         messages: list[Message],
         tools: list[ToolSchema] | None = None,
         model: str | None = None,
+        max_tokens: int | None = None,
     ) -> LLMResponse:
         client = self._get_client()
         model_name = model or self.config.model

@@ -73,6 +73,44 @@ allowed_tools:
 
 See [`docs/scripts/README.md`](../scripts/README.md).
 
+## Plan templates (Phase 4)
+
+For repeatable multi-step workflows, use **`type: plan_template`** instead of investigation keyword routing:
+
+```yaml
+---
+name: redirect_report
+type: plan_template
+triggers:
+  - redirect metrics
+plan_template:
+  goal: Build redirect metrics report
+  steps:
+    - tool: run_company_script
+      args: { script: redirect_metrics }
+    - tool: google_create_sheet
+---
+```
+
+When rules-based planning does not match, Alfred checks plan templates before the LLM planner. See [`example-plan-template.md`](example-plan-template.md).
+
+## Policy playbooks (Phase 4)
+
+Investigation skills can declare a **capability bundle** instead of a long `allowed_tools` list:
+
+```yaml
+---
+name: checkout_events
+type: policy
+mode: investigation
+capability_bundle: aws
+output:
+  format: athena_query
+---
+```
+
+Bundle definitions: built-in (`backend/routing/capabilities.py`) or `.alfred/capabilities.yaml` — see [`docs/architecture/capabilities.example.yaml`](../architecture/capabilities.example.yaml).
+
 ## Triggers
 
 A playbook is included when **any** trigger string appears in the user's message (case-insensitive). Use short, distinctive keywords.

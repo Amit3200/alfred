@@ -49,6 +49,9 @@ STRUCTURED_TOOL_KINDS = frozenset(
         "google_sheet",
         "google_doc",
         "web_search",
+        "doc_search",
+        "doc_content",
+        "doc_answer",
     }
 )
 
@@ -129,6 +132,155 @@ class TaskProcessor:
         elif gov_patch and session:
             session.metadata.update(gov_patch)
 
+        if task.source == "slack":
+            from backend.routing.slack_board_admin import try_slack_board_admin_command
+
+            admin_response = try_slack_board_admin_command(
+                task,
+                self.config,
+                self._data_dir_path(),
+            )
+            if admin_response is not None:
+                if session_key and self.session_store:
+                    rendered = render_for_channel(admin_response, channel)
+                    self.session_store.append_exchange(
+                        session_key,
+                        source=task.source,
+                        scope_id=task.channel_id,
+                        thread_id=task.thread_ts or "",
+                        user_content=task.cleaned_intent,
+                        assistant_content=rendered,
+                        assistant_payload=admin_response.payload,
+                    )
+                return self._finish_response(admin_response)
+
+        if task.source == "slack":
+            from backend.routing.slack_board_direct import (
+                try_slack_board_create_direct,
+                try_slack_board_status_followup,
+                try_slack_board_update_direct,
+                try_slack_board_where_direct,
+            )
+
+            session_turns: tuple[str, ...] = ()
+            if session and session.turns:
+                session_turns = tuple(
+                    turn.content for turn in session.turns[-4:] if (turn.content or "").strip()
+                )
+
+            followup_response = try_slack_board_where_direct(
+                task,
+                self.config,
+                self._data_dir_path(),
+                session=session,
+            )
+            if followup_response is not None:
+                if session_key and self.session_store:
+                    rendered = render_for_channel(followup_response, channel)
+                    self.session_store.append_exchange(
+                        session_key,
+                        source=task.source,
+                        scope_id=task.channel_id,
+                        thread_id=task.thread_ts or "",
+                        user_content=task.cleaned_intent,
+                        assistant_content=rendered,
+                        assistant_payload=followup_response.payload,
+                    )
+                return self._finish_response(followup_response)
+
+            followup_response = try_slack_board_status_followup(
+                task,
+                self.config,
+                self._data_dir_path(),
+                session=session,
+                session_turns=session_turns,
+            )
+            if followup_response is not None:
+                if session_key and self.session_store:
+                    rendered = render_for_channel(followup_response, channel)
+                    self.session_store.append_exchange(
+                        session_key,
+                        source=task.source,
+                        scope_id=task.channel_id,
+                        thread_id=task.thread_ts or "",
+                        user_content=task.cleaned_intent,
+                        assistant_content=rendered,
+                        assistant_payload=followup_response.payload,
+                    )
+                return self._finish_response(followup_response)
+
+            create_response, board_meta = try_slack_board_create_direct(
+                task,
+                self.config,
+                self._data_dir_path(),
+                session=session,
+                session_turns=session_turns,
+            )
+            if create_response is not None:
+                if board_meta and session:
+                    session.metadata.update(board_meta)
+                    if session_key and self.session_store:
+                        self.session_store.save(session)
+                if session_key and self.session_store:
+                    rendered = render_for_channel(create_response, channel)
+                    self.session_store.append_exchange(
+                        session_key,
+                        source=task.source,
+                        scope_id=task.channel_id,
+                        thread_id=task.thread_ts or "",
+                        user_content=task.cleaned_intent,
+                        assistant_content=rendered,
+                        assistant_payload=create_response.payload,
+                        metadata_patch=board_meta or None,
+                    )
+                return self._finish_response(create_response, metadata_patch=board_meta or None)
+
+            update_response, update_meta = try_slack_board_update_direct(
+                task,
+                self.config,
+                self._data_dir_path(),
+                session=session,
+            )
+            if update_response is not None:
+                if update_meta and session:
+                    session.metadata.update(update_meta)
+                    if session_key and self.session_store:
+                        self.session_store.save(session)
+                if session_key and self.session_store:
+                    rendered = render_for_channel(update_response, channel)
+                    self.session_store.append_exchange(
+                        session_key,
+                        source=task.source,
+                        scope_id=task.channel_id,
+                        thread_id=task.thread_ts or "",
+                        user_content=task.cleaned_intent,
+                        assistant_content=rendered,
+                        assistant_payload=update_response.payload,
+                        metadata_patch=update_meta or None,
+                    )
+                return self._finish_response(update_response, metadata_patch=update_meta or None)
+
+            if self.config.routing.tool_planner_enabled:
+                from backend.routing.slack_board_agent import seed_slack_board_agent_plan
+                from backend.routing.tool_planner import planner_llm_enabled
+
+                if planner_llm_enabled(self.config):
+                    set_call_kind("skill_matching")
+                    _, planner_provider, planner_model = self._resolve_llm("skill_matching")
+                    llm_meta = seed_slack_board_agent_plan(
+                        task,
+                        self.config,
+                        self._data_dir_path(),
+                        session=session,
+                        session_turns=session_turns,
+                        provider=planner_provider,
+                        model=planner_model,
+                    )
+                    if llm_meta and session:
+                        session.metadata.update(llm_meta)
+                        if session_key and self.session_store:
+                            self.session_store.save(session)
+
         if (
             self.config.governance.enabled
             and gov_patch
@@ -151,7 +303,7 @@ class TaskProcessor:
                     assistant_payload=response.payload,
                     metadata_patch=gov_patch,
                 )
-            return response
+            return self._finish_response(response, metadata_patch=gov_patch)
 
         slack_context: str | None = None
         history_window_label = ""
@@ -167,6 +319,9 @@ class TaskProcessor:
                     slack_context = raw_context
             except Exception:
                 logger.exception("Failed to fetch Slack context for task %s", task.id)
+
+        if slack_user_names:
+            task.metadata["slack_user_names"] = slack_user_names
 
         include_context = bool(
             slack_context
@@ -184,8 +339,187 @@ class TaskProcessor:
             slack_context=slack_context if include_context else None,
             repo=repo_hint,
         )
-        investigation = self._skill_router.route_investigation(route_context).playbook
-        if investigation is None and self.config.jira.enabled:
+
+        from backend.routing.ticket_create_disambiguation import (
+            apply_ticket_create_target,
+            build_disambiguation_response,
+            needs_ticket_create_disambiguation,
+            resolve_target_from_pending_reply,
+            store_pending_ticket_create,
+            ticket_create_target_from_task,
+        )
+
+        ticket_target = ticket_create_target_from_task(task)
+        if ticket_target is None and session:
+            reply_target = resolve_target_from_pending_reply(task, session)
+            if reply_target:
+                apply_ticket_create_target(session, reply_target)
+                task.metadata["ticket_create_target"] = reply_target
+                ticket_target = reply_target
+                if session_key and self.session_store:
+                    self.session_store.save(session)
+
+        if ticket_target is None:
+            from backend.routing.ticket_create_disambiguation import default_ticket_create_target
+
+            policy_target = default_ticket_create_target(
+                task,
+                self.config,
+                data_dir=self._data_dir_path(),
+            )
+            if policy_target:
+                task.metadata["ticket_create_target"] = policy_target
+                ticket_target = policy_target
+
+        if (
+            ticket_target is None
+            and needs_ticket_create_disambiguation(
+                task,
+                self.config,
+                session=session,
+                data_dir=self._data_dir_path(),
+            )
+        ):
+            if session and session_key and self.session_store:
+                store_pending_ticket_create(session, task)
+                self.session_store.save(session)
+            response = build_disambiguation_response(session_key=session_key or "")
+            if session_key and self.session_store:
+                rendered = render_for_channel(response, channel)
+                self.session_store.append_exchange(
+                    session_key,
+                    source=task.source,
+                    scope_id=task.channel_id,
+                    thread_id=task.thread_ts or "",
+                    user_content=task.cleaned_intent,
+                    assistant_content=rendered,
+                    assistant_payload=response.payload,
+                )
+            return self._finish_response(response)
+
+        chat_persona = None
+        if task.source == "ui":
+            from backend.routing.chat_persona import persona_skill_name, resolve_effective_persona
+
+            chat_persona = resolve_effective_persona(task, session)
+            task.metadata["chat_persona_effective"] = chat_persona
+
+        investigation = self._resolve_investigation_skill(route_context, task, session=session)
+        if investigation is None and chat_persona:
+            from backend.routing.html_slides_delivery import (
+                looks_like_html_slides_followup,
+                looks_like_html_slides_publish_continuation,
+                looks_like_html_slides_request,
+            )
+
+            slide_text = f"{task.cleaned_intent}\n{task.raw_text}".strip()
+            if (
+                looks_like_html_slides_request(slide_text)
+                or looks_like_html_slides_followup(task, session)
+                or looks_like_html_slides_publish_continuation(task, session)
+            ):
+                investigation = self._playbooks.get_by_name("html_slides")
+                if investigation:
+                    logger.info("Persona override → html_slides for slide request")
+            if investigation is None:
+                forced = persona_skill_name(chat_persona)
+                if forced:
+                    investigation = self._playbooks.get_by_name(forced)
+                    if investigation:
+                        logger.info("Persona %s → skill %s", chat_persona, forced)
+
+        legacy_routing = self.config.routing.planner_strategy == "rules_first"
+        if investigation is None and ticket_target != "jira":
+            from backend.integrations.slack.board_service import board_enabled, resolve_board_for_task
+            from backend.routing.slack_board_intent import (
+                looks_like_slack_board_config_question,
+                looks_like_slack_board_followup,
+                looks_like_slack_board_request,
+                looks_like_slack_board_update,
+            )
+
+            board_ready = resolve_board_for_task(
+                self.config, task, data_dir=self._data_dir_path()
+            )
+            config_question = looks_like_slack_board_config_question(task.cleaned_intent)
+            followup = looks_like_slack_board_followup(
+                task.cleaned_intent,
+                session_turns=route_context.session_turns,
+                thread_context=route_context.thread_context,
+            )
+            board_update = looks_like_slack_board_update(task.cleaned_intent or "")
+            if followup or board_update or (
+                looks_like_slack_board_request(task.cleaned_intent)
+                and (
+                    config_question
+                    or board_ready
+                    or (
+                        legacy_routing
+                        and board_enabled(self.config, self._data_dir_path())
+                        and board_ready
+                    )
+                )
+            ):
+                investigation = self._playbooks.get_by_name("slack_board_management")
+                if investigation:
+                    logger.info("Using slack_board_management for board intent or follow-up")
+
+        if (
+            investigation is not None
+            and investigation.name == "jira_management"
+            and task.source == "slack"
+        ):
+            from backend.integrations.slack.board_service import resolve_board_for_task
+            from backend.routing.slack_board_intent import looks_like_slack_board_update
+
+            if (
+                resolve_board_for_task(self.config, task, data_dir=self._data_dir_path())
+                and looks_like_slack_board_update(task.cleaned_intent or "")
+            ):
+                slack_skill = self._playbooks.get_by_name("slack_board_management")
+                if slack_skill:
+                    investigation = slack_skill
+                    logger.info(
+                        "Preferring slack_board_management over jira for board update in linked channel"
+                    )
+
+        if investigation is None and legacy_routing and self.config.repo_knowledge.enabled:
+            from backend.routing.tool_planner import looks_like_repo_doc_question
+
+            if looks_like_repo_doc_question(task.cleaned_intent, source=task.source):
+                investigation = self._playbooks.get_by_name("repo_knowledge")
+                if investigation:
+                    logger.info(
+                        "Forced repo_knowledge for documentation-style question (routing miss)"
+                    )
+        if investigation is None and ticket_target == "slack_list":
+            investigation = self._playbooks.get_by_name("slack_board_management")
+            if investigation:
+                logger.info("Using slack_board_management from ticket_create_target")
+        if investigation is None and ticket_target == "jira":
+            from backend.integrations.slack.board_service import resolve_board_for_task
+            from backend.routing.slack_board_intent import looks_like_slack_board_update
+
+            if (
+                resolve_board_for_task(self.config, task, data_dir=self._data_dir_path())
+                and looks_like_slack_board_update(task.cleaned_intent or "")
+            ):
+                investigation = self._playbooks.get_by_name("slack_board_management")
+                if investigation:
+                    logger.info(
+                        "Using slack_board_management instead of jira for board update in linked channel"
+                    )
+            else:
+                investigation = self._playbooks.get_by_name("jira_management")
+                if investigation:
+                    logger.info("Using jira_management from ticket_create_target")
+
+        if (
+            investigation is None
+            and legacy_routing
+            and ticket_target != "slack_list"
+            and self.config.jira.enabled
+        ):
             from backend.routing.jira_intent import (
                 looks_like_jira_create_followup,
                 looks_like_jira_create_request,
@@ -220,7 +554,7 @@ class TaskProcessor:
                     context_snapshot=slack_context if include_context else None,
                     metadata_patch=workflow_meta,
                 )
-            return workflow_response
+            return self._finish_response(workflow_response, metadata_patch=workflow_meta)
 
         review_skill = self._resolve_pr_review_skill(investigation, task, session)
         omit_assistant = omit_assistant_session_history(
@@ -230,6 +564,33 @@ class TaskProcessor:
         )
         active_skill = review_skill or investigation
         set_skill_name(active_skill.name if active_skill else None)
+
+        tool_plan = None
+        scoped_binding = None
+        session_meta_patch: dict[str, Any] | None = None
+        if active_skill and active_skill.name == "html_slides":
+            from backend.routing.html_slides_delivery import publish_session_metadata_patch
+
+            session_meta_patch = publish_session_metadata_patch(task)
+            session_meta_patch.setdefault("last_skill_name", "html_slides")
+            session_meta_patch.setdefault("last_intent_class", "html_slides")
+        if active_skill and active_skill.mode in ("investigation", "workflow"):
+            scoped_binding = self._resolve_scoped_tools(
+                task,
+                route_context,
+                active_skill,
+                session=session,
+                persona=chat_persona,
+            )
+            if scoped_binding and scoped_binding.plan:
+                tool_plan = scoped_binding.plan
+                logger.info(
+                    "Tool plan: strategy=%s confidence=%.2f tools=%s goal=%s",
+                    tool_plan.strategy,
+                    tool_plan.confidence,
+                    scoped_binding.allowed_tools,
+                    tool_plan.goal[:80],
+                )
 
         git_context_prompt = ""
         if active_skill and session and self.config.git.enabled:
@@ -274,21 +635,70 @@ class TaskProcessor:
 
         repo_context_prompt = ""
         if self.config.git.enabled:
-            from backend.context.generator import load_repo_context_for_prompt
+            rk = self.config.repo_knowledge
+            if rk.enabled and not rk.inject_overview:
+                repo_context_prompt = (
+                    "## Repository documentation\n"
+                    "Use `search_repo_docs` and `read_repo_doc` for runbook and documentation questions."
+                )
+            else:
+                from backend.context.generator import load_repo_context_for_prompt
 
-            repo_context_prompt = load_repo_context_for_prompt(
-                self._data_dir_path(),
-                self.config.git,
+                repo_context_prompt = load_repo_context_for_prompt(
+                    self._data_dir_path(),
+                    self.config.git,
+                )
+
+        from backend.routing.context_scope import build_context_envelope, format_context_envelope
+
+        context_envelope = build_context_envelope(
+            self.config,
+            task,
+            tool_plan=tool_plan,
+            slack_context=slack_context if include_context else None,
+            jira_context=jira_context_prompt,
+            google_context=google_context_prompt,
+            git_context=git_context_prompt,
+            repo_context=repo_context_prompt,
+            pr_context=pr_context_prompt,
+        )
+        scoped_context = format_context_envelope(context_envelope)
+
+        tool_manifest = scoped_binding.manifest_text if scoped_binding else ""
+
+        goal_spec_block = ""
+        subagent_block = ""
+        goal_spec = None
+        if tool_plan:
+            from backend.routing.goal_spec import goal_spec_from_plan
+            from backend.agent.subagents import (
+                build_subagent_manifest,
+                group_steps_by_domain,
+                should_use_subagents,
             )
+
+            goal_spec = goal_spec_from_plan(tool_plan)
+            if goal_spec:
+                criteria = "\n".join(f"- {c}" for c in goal_spec.success_criteria)
+                goal_spec_block = (
+                    f"## GoalSpec\n"
+                    f"Intent: `{goal_spec.intent_class}`\n"
+                    f"Goal: {goal_spec.goal}\n"
+                    f"Success criteria:\n{criteria}"
+                )
+            if should_use_subagents(tool_plan):
+                subagent_block = "\n\n".join(
+                    build_subagent_manifest(domain, steps)
+                    for domain, steps in group_steps_by_domain(tool_plan.steps or [])
+                )
 
         extra_system = "\n\n".join(
             part
             for part in (
-                repo_context_prompt,
-                git_context_prompt,
-                jira_context_prompt,
-                google_context_prompt,
-                pr_context_prompt,
+                scoped_context,
+                tool_manifest,
+                goal_spec_block,
+                subagent_block,
             )
             if part
         )
@@ -340,6 +750,10 @@ class TaskProcessor:
                 model=model_name,
                 task=task,
                 session=session,
+                scoped_tools=scoped_binding.allowed_tools if scoped_binding else None,
+                goal_spec=goal_spec,
+                route_context=route_context,
+                manifest_text=scoped_binding.manifest_text if scoped_binding else "",
             )
             if inv_patch:
                 metadata_patch = {**(metadata_patch or {}), **inv_patch}
@@ -373,6 +787,10 @@ class TaskProcessor:
                     model=model_name,
                     task=task,
                     session=session,
+                    scoped_tools=scoped_binding.allowed_tools if scoped_binding else None,
+                    goal_spec=goal_spec,
+                    route_context=route_context,
+                    manifest_text=scoped_binding.manifest_text if scoped_binding else "",
                 )
                 if inv_patch:
                     metadata_patch = {**(metadata_patch or {}), **inv_patch}
@@ -412,6 +830,10 @@ class TaskProcessor:
                             model=inv_model,
                             task=task,
                             session=session,
+                            scoped_tools=scoped_binding.allowed_tools if scoped_binding else None,
+                            goal_spec=goal_spec,
+                            route_context=route_context,
+                            manifest_text=scoped_binding.manifest_text if scoped_binding else "",
                         )
                         if inv_patch:
                             metadata_patch = {**(metadata_patch or {}), **inv_patch}
@@ -439,6 +861,10 @@ class TaskProcessor:
                                 model=inv_model,
                                 task=task,
                                 session=session,
+                                scoped_tools=scoped_binding.allowed_tools if scoped_binding else None,
+                                goal_spec=goal_spec,
+                                route_context=route_context,
+                                manifest_text=scoped_binding.manifest_text if scoped_binding else "",
                             )
                             if inv_patch:
                                 metadata_patch = {**(metadata_patch or {}), **inv_patch}
@@ -452,6 +878,18 @@ class TaskProcessor:
                         )
                     else:
                         response = AssistantResponse.from_text(content)
+
+        response = self._finish_response(
+            response,
+            tool_plan=tool_plan,
+            skill=active_skill,
+            metadata_patch={
+                **(metadata_patch or {}),
+                **(session_meta_patch or {}),
+            }
+            if metadata_patch or session_meta_patch
+            else None,
+        )
 
         if session_key and self.session_store:
             raise_if_cancelled(self._data_dir_path(), task.id)
@@ -468,11 +906,38 @@ class TaskProcessor:
                 assistant_content=rendered,
                 assistant_payload=response.payload,
                 context_snapshot=slack_context if include_context else None,
-                metadata_patch=metadata_patch,
+                metadata_patch={
+                    **(metadata_patch or {}),
+                    **(session_meta_patch or {}),
+                }
+                if metadata_patch or session_meta_patch
+                else None,
             )
             logger.info("Session updated: %s", session_key)
 
         return response
+
+    def _finish_response(
+        self,
+        response: AssistantResponse,
+        *,
+        tool_plan: Any | None = None,
+        skill: Any | None = None,
+        metadata_patch: dict[str, Any] | None = None,
+    ) -> AssistantResponse:
+        from backend.routing.reply_meta import finalize_reply_meta
+
+        explicit = None
+        if metadata_patch:
+            raw = metadata_patch.get("reply_meta")
+            if isinstance(raw, dict):
+                explicit = raw
+        return finalize_reply_meta(
+            response,
+            tool_plan=tool_plan,
+            skill_name=str(skill.name) if skill else "",
+            explicit=explicit,
+        )
 
     def _resolve_llm(self, task_kind: str) -> tuple[str, Any, str]:
         from backend.ai.routing import resolve_llm_route
@@ -589,6 +1054,87 @@ class TaskProcessor:
 
         return None, None
 
+    def _resolve_investigation_skill(self, route_context: Any, task: Task, *, session=None):
+        """Plan-first skill resolution; fall back to SkillRouter when needed."""
+        from backend.observability.context import set_call_kind
+        from backend.orchestrator.graph.skill_policy import resolve_policy_skill
+        from backend.routing.chat_persona import normalize_persona, resolve_effective_persona
+        from backend.routing.html_slides_delivery import (
+            looks_like_html_slides_followup,
+            looks_like_html_slides_publish_continuation,
+            looks_like_html_slides_request,
+        )
+        from backend.routing.tool_planner import planner_llm_enabled, resolve_tool_plan
+
+        slide_text = f"{task.cleaned_intent}\n{task.raw_text}".strip()
+        if (
+            looks_like_html_slides_request(slide_text)
+            or looks_like_html_slides_followup(task, session)
+            or looks_like_html_slides_publish_continuation(task, session)
+        ):
+            slides_skill = self._playbooks.get_by_name("html_slides")
+            if slides_skill is not None:
+                logger.info("HTML slides intent → skill html_slides")
+                return slides_skill
+
+        if session:
+            forced_skill = str(session.metadata.get("force_investigation_skill") or "").strip()
+            if forced_skill:
+                skill = self._playbooks.get_by_name(forced_skill)
+                if skill is not None:
+                    logger.info("Forced investigation skill from board agent seed: %s", forced_skill)
+                    return skill
+
+        persona = resolve_effective_persona(task, session) if task.source == "ui" else "all"
+        if normalize_persona(persona) == "support":
+            if not (
+                looks_like_html_slides_request(slide_text)
+                or looks_like_html_slides_followup(task, session)
+            ):
+                skill = self._playbooks.get_by_name("repo_knowledge")
+                if skill is not None:
+                    return skill
+
+        routing = self.config.routing
+        if routing.plan_first_routing and routing.tool_planner_enabled:
+            data_dir = self._data_dir_path()
+            planner_provider = None
+            planner_model = None
+            if planner_llm_enabled(self.config):
+                set_call_kind("skill_matching")
+                _, planner_provider, planner_model = self._resolve_llm("skill_matching")
+            plan = resolve_tool_plan(
+                self.config,
+                task,
+                route_context,
+                provider=planner_provider,
+                model=planner_model or None,
+                skill_allowed=None,
+                data_dir=data_dir,
+                playbook_store=self._playbooks,
+                session_metadata=dict(session.metadata if session else {}),
+            )
+            if plan and plan.confidence >= routing.tool_planner_min_confidence:
+                skill = resolve_policy_skill(
+                    plan,
+                    self._playbooks,
+                    fallback=None,
+                    data_dir=data_dir,
+                )
+                if skill is not None:
+                    logger.info(
+                        "Plan-first skill: %s intent=%s confidence=%.2f",
+                        skill.name,
+                        plan.intent_class,
+                        plan.confidence,
+                    )
+                    return skill
+
+        if not routing.skill_router_fallback:
+            return None
+
+        return self._skill_router.route_investigation(route_context).playbook
+
     def _build_route_context(
         self,
         task: Task,
@@ -682,7 +1228,17 @@ class TaskProcessor:
             return None, None
 
         tool_name, tool_args = direct
-        if skill.allowed_tools and tool_name not in skill.allowed_tools:
+        if not skill.allowed_tools or tool_name not in skill.allowed_tools:
+            from backend.routing.git_direct import wants_pr_code_analysis, wants_pr_summary
+
+            if (
+                tool_name == "get_pr"
+                and wants_pr_summary(task.cleaned_intent)
+                and not wants_pr_code_analysis(task.cleaned_intent)
+            ):
+                git_skill = self._playbooks.get_by_name("git_status")
+                if git_skill and git_skill.name != skill.name:
+                    return self._try_unified_direct(git_skill, task, session)
             logger.info("Direct tool %s detected but not in allowed_tools for %s", tool_name, skill.name)
             return None, None
 
@@ -745,14 +1301,311 @@ class TaskProcessor:
         if tool_name == "get_pr" and wants_pr_summary(task.cleaned_intent):
             detail = result.data.get("pr")
             if detail and not wants_pr_code_analysis(task.cleaned_intent):
-                from backend.integrations.git.pr_analysis import format_pr_context_for_prompt
-                summary = format_pr_context_for_prompt(detail)
+                summary = self._summarize_pr(detail, task)
+                if not summary:
+                    from backend.formatting.strategies import format_pr_detail
+
+                    summary = format_pr_detail({"pr": detail}, slack=task.source == "slack")
                 return AssistantResponse.from_text(summary), patch
 
         structured = _tool_result_to_response(result)
         if structured is not None:
             return structured, patch
         return None, patch
+
+    def _execute_planned_direct(
+        self,
+        skill: Playbook,
+        task: Task,
+        session: ConversationSession | None,
+        plan: Any,
+    ) -> tuple[AssistantResponse | None, dict[str, Any] | None]:
+        """Run a single-step tool plan without the ReAct loop (fast path)."""
+        from backend.routing.tool_plan_types import ToolPlan
+
+        if not isinstance(plan, ToolPlan) or len(plan.steps) != 1:
+            return None, None
+
+        step = plan.steps[0]
+        tool_name = step.tool
+        tool_args = dict(step.args_hint or {})
+
+        if plan.intent_class == "repo.docs.qa" and tool_name == "search_repo_docs":
+            # Doc Q&A uses LangGraph worker (search → read → grounded answer), not the BM25 fast path.
+            return None, None
+
+        if tool_name == "save_html_deck":
+            # Slides require the LLM to synthesize HTML before calling the tool.
+            return None, None
+
+        if tool_name == "publish_html_artifact":
+            from backend.routing.html_slides_delivery import (
+                publish_args_complete,
+                resolve_publish_html_args,
+            )
+
+            tool_args = resolve_publish_html_args(
+                tool_args,
+                task=task,
+                session_metadata=dict(session.metadata if session else {}),
+            )
+            if not publish_args_complete(tool_args):
+                return None, None
+
+        from backend.routing.slack_board_agent import SLACK_BOARD_WRITE_TOOLS
+
+        if tool_name in SLACK_BOARD_WRITE_TOOLS:
+            return None, None
+
+        if not skill.allowed_tools or tool_name not in skill.allowed_tools:
+            return None, None
+
+        from backend.tools.git_api import build_git_tool_registry
+
+        registry = build_git_tool_registry(
+            self.config,
+            workspace_id=mirror_workspace_key(task),
+            data_dir=self._data_dir_path(),
+            allowed_tools=skill.allowed_tools or None,
+        )
+        self._attach_governance(registry, task, session=session, skill_name=skill.name)
+        result = registry.run_normalized(
+            tool_name,
+            tool_args,
+            allowed=skill.allowed_tools,
+            git=self.config.git,
+            session=session,
+        )
+        if result.kind == "error":
+            return AssistantResponse.error(result.data.get("message", f"Tool {tool_name} failed.")), None
+        patch = _unified_metadata_patch(tool_name, tool_args, result)
+        structured = _tool_result_to_response(result)
+        if structured is not None:
+            return structured, patch
+        text = str(result.data.get("text") or "").strip()
+        if text:
+            return AssistantResponse.from_text(text), patch
+        return None, patch
+
+    def _execute_repo_doc_qa_direct(
+        self,
+        skill: Playbook,
+        task: Task,
+        session: ConversationSession | None,
+        query: str,
+    ) -> tuple[AssistantResponse | None, dict[str, Any] | None]:
+        """Search indexed docs, read the top hit, and synthesize a grounded answer."""
+        from backend.formatting.intent_formatters import format_doc_search
+        from backend.observability.checkpoint import log_checkpoint
+        from backend.routing.reply_meta import attach_reply_meta, doc_reply_meta
+        from backend.tools.git_api import build_git_tool_registry
+
+        allowed = list(skill.allowed_tools or [])
+        if "search_repo_docs" not in allowed:
+            repo_skill = self._playbooks.get_by_name("repo_knowledge")
+            if repo_skill and repo_skill.allowed_tools:
+                allowed = list(repo_skill.allowed_tools)
+                skill = repo_skill
+
+        registry = build_git_tool_registry(
+            self.config,
+            workspace_id=mirror_workspace_key(task),
+            data_dir=self._data_dir_path(),
+            allowed_tools=allowed or None,
+        )
+        self._attach_governance(registry, task, session=session, skill_name=skill.name)
+
+        log_checkpoint("doc_tool_call", "search_repo_docs", "started")
+        search_result = registry.run_normalized(
+            "search_repo_docs",
+            {"query": query},
+            allowed=allowed,
+            git=self.config.git,
+            session=session,
+        )
+        if search_result.kind == "error":
+            log_checkpoint("doc_tool_call", "search_repo_docs", "error", error=RuntimeError(str(search_result.data.get("message") or "Doc search failed.")))
+            return AssistantResponse.error(str(search_result.data.get("message") or "Doc search failed.")), None
+
+        if not search_result.data.get("found"):
+            log_checkpoint("doc_tool_call", "search_repo_docs", "completed")
+            from backend.context.doc_index import describe_missing_doc_topic, significant_query_tokens
+            from backend.routing.chat_persona import normalize_persona
+
+            if significant_query_tokens(query):
+                topic = describe_missing_doc_topic(query)
+                body = (
+                    f"**No** — **{topic}** is not documented in indexed FlexyPe support docs. "
+                    "It does not appear to be a supported integration in our handbook."
+                )
+                meta = doc_reply_meta(query, None, not_found=True)
+                return (
+                    attach_reply_meta(AssistantResponse.from_text(body), meta),
+                    {"last_intent_class": "repo.docs.qa", "reply_meta": meta},
+                )
+
+            persona = str(task.metadata.get("chat_persona_effective") or task.metadata.get("chat_persona") or "")
+            if normalize_persona(persona) == "support" and self.config.web_search.enabled and "web_search" in allowed:
+                log_checkpoint("doc_tool_call", "web_search", "started")
+                web_result = registry.run_normalized(
+                    "web_search",
+                    {"query": query},
+                    allowed=allowed,
+                    git=self.config.git,
+                    session=session,
+                )
+                if web_result.kind != "error" and web_result.data.get("results"):
+                    log_checkpoint("doc_tool_call", "web_search", "completed")
+                    from backend.formatting.strategies import WebSearchFormatter
+
+                    body = WebSearchFormatter().render(web_result.data, slack=False)
+                    prefix = (
+                        "I couldn't find this in indexed FlexyPe documentation. "
+                        "Here's what I found on the web instead:\n\n"
+                    )
+                    meta = doc_reply_meta(query, None, web_fallback=True)
+                    return (
+                        attach_reply_meta(AssistantResponse.from_text(prefix + body), meta),
+                        {"reply_meta": meta},
+                    )
+                log_checkpoint("doc_tool_call", "web_search", "completed")
+            return (
+                AssistantResponse.structured(
+                    "doc_search",
+                    {"query": query, "results": [], "found": False},
+                ),
+                None,
+            )
+
+        log_checkpoint("doc_tool_call", "search_repo_docs", "completed")
+        hits = list(search_result.data.get("results") or [])
+        from backend.context.doc_index import describe_missing_doc_topic, pick_best_doc_hit, significant_query_tokens
+
+        top = pick_best_doc_hit(hits, query)
+        if top is None:
+            if hits and significant_query_tokens(query):
+                topic = describe_missing_doc_topic(query)
+                body = (
+                    f"**No** — **{topic}** is not documented in indexed FlexyPe support docs. "
+                    "It does not appear to be a supported integration in our handbook."
+                )
+                meta = doc_reply_meta(query, None, not_found=True)
+                return (
+                    attach_reply_meta(AssistantResponse.from_text(body), meta),
+                    {"last_intent_class": "repo.docs.qa", "reply_meta": meta},
+                )
+            return (
+                AssistantResponse.structured(
+                    "doc_search",
+                    {"query": query, "results": [], "found": False},
+                ),
+                None,
+            )
+        doc_path = str(top.get("path") or "")
+        doc_repo = str(top.get("repo") or "").strip()
+        if doc_path:
+            log_checkpoint("doc_found", doc_path, "completed")
+        if doc_repo:
+            log_checkpoint("repo_context", doc_repo, "completed")
+        read_args: dict[str, Any] = {"path": doc_path}
+        if doc_repo:
+            read_args["repo"] = doc_repo
+
+        doc_content = str(top.get("excerpt") or "")
+        if "read_repo_doc" in allowed and doc_path:
+            log_checkpoint("doc_tool_call", "read_repo_doc", "started")
+            read_result = registry.run_normalized(
+                "read_repo_doc",
+                read_args,
+                allowed=allowed,
+                git=self.config.git,
+                session=session,
+            )
+            if read_result.kind != "error":
+                doc_content = str(read_result.data.get("content") or doc_content)
+                log_checkpoint("doc_tool_call", "read_repo_doc", "completed")
+            else:
+                log_checkpoint(
+                    "doc_tool_call",
+                    "read_repo_doc",
+                    "error",
+                    error=RuntimeError(str(read_result.data.get("message") or "Read failed.")),
+                )
+
+        log_checkpoint("doc_synthesis", "summarize", "started")
+        answer = self._synthesize_doc_answer(
+            task.cleaned_intent,
+            doc_path=doc_path,
+            doc_content=doc_content,
+            repo=doc_repo,
+        )
+        log_checkpoint("doc_synthesis", "summarize", "completed")
+        from backend.context.doc_assets import build_doc_answer_payload
+
+        meta = doc_reply_meta(query, top)
+        payload = build_doc_answer_payload(
+            text=answer,
+            doc_path=doc_path,
+            repo=doc_repo,
+            doc_content=doc_content,
+        )
+        response = AssistantResponse.structured("doc_answer", payload, text=str(payload.get("text") or answer))
+        return (
+            attach_reply_meta(response, meta),
+            {
+                "last_intent_class": "repo.docs.qa",
+                "doc_path": doc_path,
+                "doc_repo": doc_repo,
+                "reply_meta": meta,
+            },
+        )
+
+    def _synthesize_doc_answer(
+        self,
+        question: str,
+        *,
+        doc_path: str,
+        doc_content: str,
+        repo: str = "",
+    ) -> str:
+        """Summarize a doc excerpt for the user question with citations."""
+        excerpt = doc_content.strip()
+        if not excerpt:
+            return format_doc_search({"query": question, "results": [], "found": False})
+
+        header = f"**Source:** `{doc_path}`"
+        if repo:
+            header = f"**Source:** `{doc_path}` ({repo})"
+
+        provider_name, provider, model_name = self._resolve_llm("investigation")
+        system = (
+            "You answer FlexyPe support documentation questions using ONLY the excerpt provided. "
+            "Start with **Yes** or **No** on whether the asked integration/feature is supported or documented. "
+            "If Yes, give concise setup steps (numbered). If No, say clearly it is not documented/supported — "
+            "do NOT describe a different product or integration. "
+            "Never paste raw MDX/JSX tags or frontmatter. Cite the doc path at the end."
+        )
+        user = (
+            f"{header}\n\nQuestion: {question.strip()}\n\nDocumentation excerpt:\n{excerpt[:12000]}"
+        )
+        try:
+            response = provider.chat(
+                [
+                    Message(role="system", content=system),
+                    Message(role="user", content=user),
+                ],
+                model=model_name or None,
+            )
+            text = (response.content or "").strip()
+            if text:
+                return text
+        except Exception as exc:
+            logger.warning("Doc answer synthesis failed: %s", exc)
+
+        return (
+            f"I found `{doc_path}` but couldn't summarize it. "
+            "Open that doc in the knowledge base for full steps."
+        )
 
     def _investigation_failure_response(
         self,
@@ -791,6 +1644,136 @@ class TaskProcessor:
             f"I couldn't complete skill **{skill.name}**: {exc}."
         )
 
+    def _resolve_scoped_tools(
+        self,
+        task: Task,
+        route_context: Any,
+        skill: Playbook,
+        *,
+        session: ConversationSession | None = None,
+        persona: str | None = None,
+    ):
+        from backend.observability.context import set_call_kind
+        from backend.routing.chat_persona import filter_tools_for_persona, resolve_effective_persona
+        from backend.routing.tool_plan_validator import validate_tool_plan
+        from backend.routing.tool_planner import planner_llm_enabled, resolve_tool_plan
+        from backend.tools.git_api import build_git_tool_registry
+
+        effective_persona = persona or (
+            resolve_effective_persona(task, session) if task.source == "ui" else "all"
+        )
+        skill_allowed = list(skill.allowed_tools or [])
+        if effective_persona in ("support", "tech"):
+            skill_allowed = filter_tools_for_persona(effective_persona, skill_allowed)
+
+        set_call_kind("skill_matching")
+        _, provider, model = self._resolve_llm("skill_matching")
+
+        from backend.routing.slack_board_agent import clear_board_agent_plan_seed, seeded_board_agent_plan
+
+        plan = seeded_board_agent_plan(session)
+        used_seed = plan is not None
+        if used_seed:
+            logger.info(
+                "Using seeded board agent plan intent=%s confidence=%.2f",
+                plan.intent_class,
+                plan.confidence,
+            )
+        else:
+            plan = resolve_tool_plan(
+                self.config,
+                task,
+                route_context,
+                provider=provider if planner_llm_enabled(self.config) else None,
+                model=model or None,
+                skill_allowed=skill_allowed or None,
+                data_dir=self._data_dir_path(),
+                playbook_store=self._playbooks,
+                session_metadata=dict(session.metadata if session else {}),
+            )
+
+        registry = build_git_tool_registry(
+            self.config,
+            workspace_id=mirror_workspace_key(task),
+            data_dir=self._data_dir_path(),
+            allowed_tools=skill_allowed or None,
+        )
+        binding = validate_tool_plan(
+            plan,
+            registry,
+            skill_allowed=skill_allowed or None,
+            skill_name=skill.name,
+        )
+        if effective_persona in ("support", "tech") and binding.allowed_tools:
+            binding.allowed_tools = filter_tools_for_persona(
+                effective_persona,
+                binding.allowed_tools,
+                registered=set(registry._tools.keys()),
+            )
+        if used_seed and session:
+            clear_board_agent_plan_seed(session)
+            seed_key = task_session_key(task)
+            if seed_key and self.session_store:
+                self.session_store.save(session)
+        return binding
+
+    def _record_routing_trace(
+        self,
+        task: Task,
+        *,
+        skill: Any,
+        tool_plan: Any | None = None,
+        scoped_tools: list[str] | None = None,
+        graph_final: dict[str, Any] | None = None,
+        routing_strategy: str = "",
+    ) -> None:
+        from backend.orchestrator.graph.serialize import tool_plan_to_dict
+        from backend.routing.trace_store import build_trace_record, record_trace
+
+        plan_dict = tool_plan_to_dict(tool_plan) if tool_plan is not None else None
+        if graph_final and graph_final.get("tool_plan"):
+            plan_dict = graph_final.get("tool_plan")
+
+        steps: list[dict[str, Any]] = []
+        if graph_final:
+            steps = [
+                {"node": "extract_entities", "entities": graph_final.get("entities")},
+                {"node": "plan_tools", "plan": graph_final.get("tool_plan")},
+                {
+                    "node": "execute",
+                    "route": graph_final.get("route"),
+                    "scoped_tools": graph_final.get("scoped_tools"),
+                },
+                {
+                    "node": "ground",
+                    "passed": graph_final.get("grounding_passed"),
+                    "issues": graph_final.get("grounding_issues"),
+                },
+            ]
+
+        strategy = routing_strategy
+        if not strategy and plan_dict:
+            strategy = str(plan_dict.get("strategy") or "")
+
+        record_trace(
+            self._data_dir_path(),
+            build_trace_record(
+                task_id=task.id,
+                intent=task.cleaned_intent,
+                skill_name=skill.name if skill else "",
+                routing_strategy=strategy or "unknown",
+                tool_plan=plan_dict,
+                scoped_tools=scoped_tools or list(graph_final.get("scoped_tools") or []) if graph_final else [],
+                graph_route=str(graph_final.get("route") or "") if graph_final else "",
+                tool_trace=list(graph_final.get("tool_trace") or []) if graph_final else [],
+                grounding_passed=bool(graph_final.get("grounding_passed", True)) if graph_final else True,
+                grounding_issues=list(graph_final.get("grounding_issues") or []) if graph_final else [],
+                steps=steps,
+                source=task.source,
+                channel_id=task.channel_id,
+            ),
+        )
+
     def _run_investigation(
         self,
         skill: Playbook,
@@ -800,7 +1783,28 @@ class TaskProcessor:
         model: str,
         task: Task,
         session: ConversationSession | None,
+        scoped_tools: list[str] | None = None,
+        goal_spec: Any | None = None,
+        route_context: Any | None = None,
+        manifest_text: str = "",
     ) -> tuple[AssistantResponse, dict[str, Any] | None]:
+        if self.config.routing.langgraph_enabled and route_context is not None:
+            from backend.orchestrator.graph.runner import run_investigation_graph
+
+            return run_investigation_graph(
+                self,
+                skill,
+                messages,
+                provider=provider,
+                model=model,
+                task=task,
+                session=session,
+                route_context=route_context,
+                scoped_tools=scoped_tools,
+                goal_spec=goal_spec,
+                manifest_text=manifest_text,
+            )
+
         from backend.agent.loop import run_agent_loop
         from backend.routing.git_direct import looks_like_tool_json, strip_text_tool_markup
         from backend.routing.git_context import metadata_patch_for_tool_result
@@ -811,16 +1815,81 @@ class TaskProcessor:
             self.config,
             workspace_id=mirror_workspace_key(task),
             data_dir=self._data_dir_path(),
-            allowed_tools=skill.allowed_tools or None,
+            allowed_tools=scoped_tools or skill.allowed_tools or None,
         )
+        registry.clear_trace()
+        registry.current_task = task
+        registry.session_metadata = dict(session.metadata if session else {})
         self._attach_governance(registry, task, session=session, skill_name=skill.name)
 
         runner = self.config.orchestrator.agent_runner
         log_checkpoint("agent_loop_start", runner, "started")
 
-        allowed_tools = skill.allowed_tools
+        allowed_tools = scoped_tools or skill.allowed_tools
         if not allowed_tools:
             allowed_tools = list(registry._tools.keys())
+
+        if goal_spec and goal_spec.intent_class == "repo.docs.qa" and messages and messages[0].role == "system":
+            from backend.ai.base import Message
+            from backend.routing.doc_qa_prompt import doc_qa_system_addendum
+
+            messages[0] = Message(
+                role="system",
+                content=f"{messages[0].content.rstrip()}{doc_qa_system_addendum()}",
+            )
+
+        if goal_spec and goal_spec.intent_class == "repo.docs.qa":
+            from backend.models.session import task_session_key
+            from backend.routing.doc_qa_bootstrap import inject_doc_qa_bootstrap_message
+
+            messages = inject_doc_qa_bootstrap_message(
+                messages,
+                registry,
+                query=task.cleaned_intent,
+                allowed=allowed_tools,
+                session=session,
+                git=self.config.git,
+                task_id=task.id,
+                session_key=task_session_key(task),
+            )
+
+        if goal_spec and goal_spec.intent_class.startswith("slack.board."):
+            from backend.routing.slack_board_bootstrap import inject_slack_board_bootstrap_message
+            from backend.routing.slack_board_prompt import slack_board_agentic_addendum
+            from slack_sdk import WebClient
+
+            if messages and messages[0].role == "system":
+                messages[0] = Message(
+                    role="system",
+                    content=(
+                        f"{messages[0].content.rstrip()}"
+                        f"{slack_board_agentic_addendum(intent_class=goal_spec.intent_class)}"
+                    ),
+                )
+            token = (self.config.slack.bot_token or "").strip()
+            if token and goal_spec.intent_class == "slack.board.create":
+                messages = inject_slack_board_bootstrap_message(
+                    messages,
+                    WebClient(token=token),
+                    self.config,
+                    task=task,
+                    data_dir=self._data_dir_path(),
+                    auto_create=False,
+                )
+
+        if skill.name == "html_slides":
+            from backend.ai.base import Message
+            from backend.routing.html_slides_delivery import (
+                html_slides_system_addendum,
+                inject_html_slides_bootstrap_message,
+            )
+
+            if messages and messages[0].role == "system":
+                messages[0] = Message(
+                    role="system",
+                    content=f"{messages[0].content.rstrip()}{html_slides_system_addendum(task, session=session, config=self.config, data_dir=self._data_dir_path())}",
+                )
+            messages = inject_html_slides_bootstrap_message(messages, task, session=session)
 
         if skill.mode in ("investigation", "workflow") and skill.name != "plan_task":
             from backend.orchestrator.planning import generate_initial_plan, plan_exists_for_task
@@ -878,7 +1947,69 @@ class TaskProcessor:
                     return AssistantResponse.from_text(prose), patch
                 return structured, patch
 
+        if skill.name == "html_slides":
+            from backend.routing.html_slides_delivery import (
+                format_artifact_tool_reply,
+                html_deck_session_metadata_patch,
+                resolve_html_slides_reply,
+                salvage_html_deck_from_prose,
+            )
+
+            public_base = (self.config.artifacts.public_base_url or "").strip()
+            artifact_reply, _, artifact_patch = resolve_html_slides_reply(
+                registry,
+                task=task,
+                public_base_url=public_base,
+            )
+            if artifact_reply:
+                merged_patch = {**(patch or {}), **(artifact_patch or {})}
+                return AssistantResponse.from_text(artifact_reply), merged_patch or None
+
+            if prose:
+                salvaged = salvage_html_deck_from_prose(
+                    prose,
+                    registry,
+                    allowed_tools=allowed_tools,
+                )
+                if salvaged and salvaged.kind in ("html_deck_saved", "html_artifact_published"):
+                    salvaged_reply = format_artifact_tool_reply(
+                        salvaged,
+                        task=task,
+                        public_base_url=public_base,
+                    )
+                    salvaged_patch = (
+                        html_deck_session_metadata_patch(salvaged.data)
+                        if salvaged.kind == "html_deck_saved"
+                        else {
+                            "pending_publish": False,
+                            "last_published_slug": str(salvaged.data.get("slug") or ""),
+                            "last_published_url": str(
+                                salvaged.data.get("share_url") or salvaged.data.get("slug_url") or ""
+                            ),
+                        }
+                    )
+                    return (
+                        AssistantResponse.from_text(salvaged_reply),
+                        {**(patch or {}), **salvaged_patch},
+                    )
+
         if prose:
+            from backend.routing.grounding_gate import ToolTraceEntry, validate_agent_result
+
+            trace = [
+                ToolTraceEntry(
+                    tool=str(item.get("tool") or ""),
+                    success=bool(item.get("success")),
+                    result_kind=str(item.get("result_kind") or ""),
+                    observation=str(item.get("observation") or ""),
+                )
+                for item in registry.tool_trace
+            ]
+            if trace or goal_spec:
+                validation = validate_agent_result(prose, trace, goal_spec)
+                if not validation.passed:
+                    logger.warning("Grounding gate rejected reply: %s", validation.issues)
+                    return AssistantResponse.from_text(validation.fallback), patch
             return AssistantResponse.from_text(prose), patch
 
         if looks_like_tool_json(raw_stripped):
@@ -944,7 +2075,13 @@ class TaskProcessor:
         extra_system: str = "",
         model_name: str | None = None,
     ) -> list[Message]:
-        system_parts = [build_alfred_system_prompt(self.config, model_name=model_name)]
+        system_parts = [
+            build_alfred_system_prompt(
+                self.config,
+                model_name=model_name,
+                include_slack_rules=task.source == "slack",
+            )
+        ]
         if task.source == "git":
             system_parts.append(GITHUB_COMMENT_RULES)
         if playbook_prompt:
@@ -973,7 +2110,14 @@ class TaskProcessor:
         else:
             user_content = task.cleaned_intent
 
-        messages.append(Message(role="user", content=user_content))
+        already_has_current_user = (
+            session
+            and session.turns
+            and session.turns[-1].role == "user"
+            and (session.turns[-1].content or "").strip() == user_content.strip()
+        )
+        if not already_has_current_user:
+            messages.append(Message(role="user", content=user_content))
         return messages
 
 
@@ -998,6 +2142,59 @@ def _tool_result_to_response(result: ToolResult) -> AssistantResponse | None:
         from backend.integrations.identity.user_identity import format_user_identity_result
 
         return AssistantResponse.from_text(format_user_identity_result(result.data))
+    if result.kind == "slack_messages":
+        text = str(result.data.get("text") or "").strip()
+        if text:
+            return AssistantResponse.from_text(text)
+        count = int(result.data.get("message_count") or 0)
+        return AssistantResponse.from_text(f"Fetched {count} Slack message(s).")
+    if result.kind == "slack_board_task":
+        from backend.routing.slack_board_direct import (
+            format_board_task_created,
+            format_board_task_updated,
+        )
+
+        data = result.data or {}
+        if data.get("updated"):
+            return AssistantResponse.from_text(format_board_task_updated(data))
+        return AssistantResponse.from_text(
+            format_board_task_created(
+                data,
+                severity=str(data.get("severity") or ""),
+                assignee_user_id=str(data.get("assignee_user_id") or ""),
+            )
+        )
+    if result.kind == "slack_board_search":
+        rows = list((result.data or {}).get("results") or [])
+        if not rows:
+            return AssistantResponse.from_text("No matching board tasks found.")
+        lines = [f"Found **{len(rows)}** board task(s):"]
+        for row in rows[:10]:
+            if not isinstance(row, dict):
+                continue
+            display = row.get("display_id") or row.get("record_id") or "Task"
+            title = row.get("title") or row.get("formatted") or ""
+            status = row.get("status") or ""
+            line = f"- **{display}**"
+            if title:
+                line += f" — {title}"
+            if status:
+                line += f" (`{status}`)"
+            lines.append(line)
+        return AssistantResponse.from_text("\n".join(lines))
+    if result.kind == "slack_board_comment":
+        return AssistantResponse.from_text("Posted comment on the board task thread.")
+    if result.kind == "html_artifact_published":
+        from backend.artifacts.formatting import format_published_artifact_slack
+
+        public_base = ""
+        return AssistantResponse.from_text(
+            format_published_artifact_slack(result.data, public_base_url=public_base)
+        )
+    if result.kind == "html_deck_saved":
+        from backend.artifacts.formatting import format_saved_html_deck_slack
+
+        return AssistantResponse.from_text(format_saved_html_deck_slack(result.data))
     if result.kind in STRUCTURED_TOOL_KINDS:
         return AssistantResponse.structured(result.kind, result.data)
     if result.kind == "error":
@@ -1039,5 +2236,21 @@ def _unified_metadata_patch(
     # Git tools patch
     from backend.routing.git_context import metadata_patch_for_tool_result
     git_patch = metadata_patch_for_tool_result(tool_name, args, result) or {}
+
+    if tool_name == "save_html_deck" and getattr(result, "kind", "") == "html_deck_saved":
+        from backend.routing.html_slides_delivery import html_deck_session_metadata_patch
+
+        deck_patch = html_deck_session_metadata_patch(getattr(result, "data", {}) or {})
+        return {**jira_patch, **git_patch, **deck_patch}
+
+    if tool_name == "publish_html_artifact" and getattr(result, "kind", "") == "html_artifact_published":
+        data = getattr(result, "data", {}) or {}
+        return {
+            **jira_patch,
+            **git_patch,
+            "pending_publish": False,
+            "last_published_slug": str(data.get("slug") or ""),
+            "last_published_url": str(data.get("share_url") or data.get("slug_url") or ""),
+        }
 
     return {**jira_patch, **git_patch}
