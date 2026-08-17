@@ -102,6 +102,7 @@ def run_company_script(
         script_catalog_roots(data_dir, config=config) + [script.package_dir],
         existing=env.get("PYTHONPATH", ""),
     )
+    apply_alfred_aws_env(config, env)
 
     try:
         result = subprocess.run(
@@ -136,6 +137,34 @@ def run_company_script(
         payload["json"] = parsed
 
     return payload
+
+
+def apply_alfred_aws_env(config: AlfredConfig, env: dict[str, str]) -> None:
+    """Copy Alfred AWS/Athena settings into a company-script subprocess.
+
+    Wrappers used to hardcode ``dataops-limited``. That ignored ``aws.profile``
+    in config and any leftover ``AWS_PROFILE`` on the Alfred process.
+    """
+    aws = config.aws
+    if not aws.enabled:
+        return
+    if aws.region:
+        env["AWS_REGION"] = aws.region
+        env["AWS_DEFAULT_REGION"] = aws.region
+    if aws.access_key_id and aws.secret_access_key:
+        env["AWS_ACCESS_KEY_ID"] = aws.access_key_id
+        env["AWS_SECRET_ACCESS_KEY"] = aws.secret_access_key
+        env.pop("AWS_PROFILE", None)
+        env.pop("AWS_DEFAULT_PROFILE", None)
+    elif (aws.profile or "").strip():
+        env["AWS_PROFILE"] = aws.profile.strip()
+        env["AWS_DEFAULT_PROFILE"] = aws.profile.strip()
+    if aws.athena_database:
+        env["ATHENA_DATABASE"] = aws.athena_database
+    if aws.athena_workgroup:
+        env["ATHENA_WORKGROUP"] = aws.athena_workgroup
+    if aws.athena_output_location:
+        env["ATHENA_OUTPUT_LOCATION"] = aws.athena_output_location
 
 
 def _try_parse_json_stdout(stdout: str) -> Any | None:

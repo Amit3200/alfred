@@ -228,8 +228,15 @@ docs/build-reference/scratch/
 docs/build-reference/*_ideation_*.md
 
 # Node / admin UI
-frontend/node_modules/
+node_modules/
 frontend/dist/
+
+# Accidental npm install at repo root (the app lives in frontend/)
+/package.json
+/package-lock.json
+
+# Local generated HTML decks
+/one-shot.html
 
 # Local venv
 .venv/

@@ -1,14 +1,5 @@
-import Editor, { loader } from "@monaco-editor/react";
-import * as monaco from "monaco-editor";
-import editorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
+import Editor from "@monaco-editor/react";
 import { useTheme } from "../../theme/ThemeProvider";
-
-if (typeof window !== "undefined") {
-  window.MonacoEnvironment = {
-    getWorker: () => new editorWorker(),
-  };
-  loader.config({ monaco });
-}
 
 function languageForPath(path: string): string {
   const name = path.toLowerCase();
@@ -66,7 +57,7 @@ export function ScriptCodeEditor({ path, value, onChange, readOnly, onSave }: Sc
         glyphMargin: false,
         fixedOverflowWidgets: true,
       }}
-      onMount={(editor) => {
+      onMount={(editor, monaco) => {
         editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, () => {
           onSave?.();
         });

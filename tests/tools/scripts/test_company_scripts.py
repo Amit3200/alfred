@@ -7,8 +7,8 @@ from pathlib import Path
 import pytest
 
 from backend.integrations.company_scripts.catalog import CompanyScriptStore, seed_example_scripts
-from backend.integrations.company_scripts.runner import run_company_script
-from backend.models.config import AlfredConfig, ScriptsConfig
+from backend.integrations.company_scripts.runner import apply_alfred_aws_env, run_company_script
+from backend.models.config import AWSConfig, AlfredConfig, ScriptsConfig
 from backend.tools.scripts.register import register_company_script_tools
 from backend.tools.registry import ToolRegistry
 
@@ -22,6 +22,25 @@ def test_seed_and_list_scripts(tmp_path: Path):
     assert script is not None
     assert script.args
     assert any(a.name == "date" and a.required for a in script.args)
+
+
+def test_apply_alfred_aws_env_overrides_process_profile():
+    env = {"AWS_PROFILE": "dataops-limited", "AWS_DEFAULT_PROFILE": "dataops-limited"}
+    config = AlfredConfig(
+        aws=AWSConfig(
+            enabled=True,
+            profile="dataops",
+            region="ap-south-1",
+            athena_database="dataops",
+            athena_workgroup="primary",
+            athena_output_location="s3://dataops.athena/athena/queries/",
+        )
+    )
+    apply_alfred_aws_env(config, env)
+    assert env["AWS_PROFILE"] == "dataops"
+    assert env["AWS_DEFAULT_PROFILE"] == "dataops"
+    assert env["AWS_REGION"] == "ap-south-1"
+    assert env["ATHENA_OUTPUT_LOCATION"] == "s3://dataops.athena/athena/queries/"
 
 
 def test_run_company_script_echo(tmp_path: Path):
