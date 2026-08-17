@@ -21,6 +21,15 @@ _SCHEDULE_MANAGE_RE = re.compile(
     r")",
     re.I,
 )
+_SCHEDULE_RUN_RE = re.compile(
+    r"(?:"
+    r"\brun\s+scheduled[_ ]|"
+    r"\brun\s+scheduled\s+job\b|"
+    r"\bmanually\s+triggered\s+job\b|"
+    r"\btrigger(?:ed)?\s+(?:the\s+)?(?:scheduled\s+)?job\b"
+    r")",
+    re.I,
+)
 
 _CRON_FIELD = r"(?:\*(?:/\d+)?|\d{1,2}(?:-\d{1,2})?(?:/\d+)?(?:,\d{1,2}(?:-\d{1,2})?(?:/\d+)?)*)"
 _CRON_DOW = rf"(?:{_CRON_FIELD}|[A-Za-z]{{3}}(?:-[A-Za-z]{{3}})?)"
@@ -33,7 +42,10 @@ _TZ_RE = re.compile(r"\b(UTC|Asia/Kolkata|America/New_York|Europe/London|US/Paci
 
 def looks_like_schedule_request(text: str) -> bool:
     """True when the user wants to create or manage a cron job, not run it now."""
-    return bool(_SCHEDULE_MANAGE_RE.search(text or ""))
+    raw = text or ""
+    if _SCHEDULE_RUN_RE.search(raw):
+        return False
+    return bool(_SCHEDULE_MANAGE_RE.search(raw))
 
 
 def extract_cron_expression(text: str) -> str:

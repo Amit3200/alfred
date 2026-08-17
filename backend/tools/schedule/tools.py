@@ -31,6 +31,25 @@ _SCHEDULE_PLAYBOOK_TOOLS = (
     "save_html_deck",
     "publish_html_artifact",
 )
+_GENERATED_SCHEDULE_PREFIX = "scheduled_"
+
+
+def _is_generated_schedule_skill(skill_name: str) -> bool:
+    return str(skill_name or "").startswith(_GENERATED_SCHEDULE_PREFIX)
+
+
+def _existing_runnable_playbook(data_dir: Path, slug: str):
+    """Reuse a real playbook (e.g. daily_metrics_oneshot) instead of a wrapper."""
+    from backend.routing.playbook_store_registry import get_playbook_store
+
+    store = get_playbook_store(data_dir)
+    for candidate in (slug, slug.replace("_", "-")):
+        found = store.get_by_name(candidate)
+        if found is None or not found.allowed_tools:
+            continue
+        if found.plan_template or found.use_workflow_chain or found.scripts:
+            return found
+    return None
 
 
 def _schedule_playbook_frontmatter(skill_name: str, title: str) -> str:
@@ -201,20 +220,28 @@ def create_schedule(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
     if not slug:
         slug = f"job_{uuid.uuid4().hex[:8]}"
 
-    skill_name = f"scheduled_{slug}"
+    reused = _existing_runnable_playbook(data_dir, slug)
+    skill_name = reused.name if reused is not None else f"{_GENERATED_SCHEDULE_PREFIX}{slug}"
     job_id = f"job_{uuid.uuid4().hex[:12]}"
+    p_file: Path | None = None
 
-    try:
-        p_dir = playbooks_dir(data_dir)
-        p_dir.mkdir(parents=True, exist_ok=True)
-        p_file = p_dir / f"{skill_name}.md"
-        content = _schedule_playbook_frontmatter(skill_name, name) + "\n" + _schedule_playbook_body(
-            instructions
-        )
-        p_file.write_text(content, encoding="utf-8")
-        logger.info("Created scheduled skill playbook at %s", p_file)
-    except Exception as exc:
-        return ToolResult.error(f"Failed to generate playbook skill file: {exc}")
+    if reused is None:
+        try:
+            p_dir = playbooks_dir(data_dir)
+            p_dir.mkdir(parents=True, exist_ok=True)
+            p_file = p_dir / f"{skill_name}.md"
+            content = _schedule_playbook_frontmatter(skill_name, name) + "\n" + _schedule_playbook_body(
+                instructions
+            )
+            p_file.write_text(content, encoding="utf-8")
+            from backend.routing.playbook_store_registry import invalidate_playbook_store
+
+            invalidate_playbook_store(data_dir)
+            logger.info("Created scheduled skill playbook at %s", p_file)
+        except Exception as exc:
+            return ToolResult.error(f"Failed to generate playbook skill file: {exc}")
+    else:
+        logger.info("Reusing existing playbook %s for schedule %s", skill_name, name)
 
     try:
         jobs = db_list_schedules(data_dir)
@@ -234,7 +261,7 @@ def create_schedule(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
             timezone=timezone,
         )
     except Exception as exc:
-        if p_file.exists():
+        if p_file is not None and p_file.exists():
             p_file.unlink()
         return ToolResult.error(f"Failed to save schedule to database: {exc}")
 
@@ -291,10 +318,11 @@ def delete_schedule(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
         if not target_job:
             return ToolResult.error(f"Job ID {job_id} not found.")
         skill_name = target_job["skill_name"]
-        p_file = playbooks_dir(data_dir) / f"{skill_name}.md"
-        if p_file.exists():
-            p_file.unlink()
-            logger.info("Deleted scheduled skill playbook at %s", p_file)
+        if _is_generated_schedule_skill(skill_name):
+            p_file = playbooks_dir(data_dir) / f"{skill_name}.md"
+            if p_file.exists():
+                p_file.unlink()
+                logger.info("Deleted scheduled skill playbook at %s", p_file)
         db_delete_schedule(data_dir, job_id)
         return ToolResult(kind="success", data={"message": f"Successfully deleted scheduled job {job_id}"})
     except Exception as exc:
@@ -333,7 +361,9 @@ def update_schedule(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
             timezone=timezone,
         )
 
-        if instructions is not None or name is not None:
+        if (instructions is not None or name is not None) and _is_generated_schedule_skill(
+            target["skill_name"]
+        ):
             skill_name = target["skill_name"]
             p_file = playbooks_dir(data_dir) / f"{skill_name}.md"
             existing_instructions = ""

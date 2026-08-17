@@ -318,6 +318,7 @@ def trigger_schedule(
             metadata={
                 "job_id": job_id,
                 "job_name": job["name"],
+                "skill_name": skill_name,
                 "manual": True,
             },
         )
@@ -343,11 +344,11 @@ def delete_schedule(
             from fastapi import HTTPException
             raise HTTPException(status_code=404, detail="Job not found")
 
-        # Delete playbook file
         skill_name = target["skill_name"]
-        p_file = playbooks_dir(manager.data_dir) / f"{skill_name}.md"
-        if p_file.exists():
-            p_file.unlink()
+        if str(skill_name or "").startswith("scheduled_"):
+            p_file = playbooks_dir(manager.data_dir) / f"{skill_name}.md"
+            if p_file.exists():
+                p_file.unlink()
 
         db_delete_schedule(manager.data_dir, job_id)
         return {"status": "ok"}

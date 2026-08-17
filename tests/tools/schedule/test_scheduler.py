@@ -183,3 +183,44 @@ def test_schedule_tools():
         # Check deletion reflection
         res_list = registry.run("list_schedules", {}, allowed=["list_schedules"])
         assert len(res_list.data["schedules"]) == 0
+
+
+def test_create_schedule_reuses_existing_playbook(tmp_path: Path):
+    from backend.routing.playbook_store_registry import reset_playbook_store_registry
+
+    reset_playbook_store_registry()
+    playbooks = tmp_path / "playbooks"
+    playbooks.mkdir()
+    (playbooks / "daily_metrics_oneshot.md").write_text(
+        """---
+name: daily_metrics_oneshot
+mode: workflow
+type: plan_template
+scripts:
+  - daily_metrics_oneshot
+allowed_tools:
+  - run_company_script
+  - publish_html_artifact
+---
+# body
+""",
+        encoding="utf-8",
+    )
+    registry = ToolRegistry()
+    register_schedule_tools(registry, tmp_path)
+    result = registry.run(
+        "create_schedule",
+        {
+            "name": "daily_metrics_oneshot",
+            "cron_expression": "0 8 * * *",
+            "instructions": "Run yesterday IST metrics and publish the deck.",
+            "channel_id": "C123",
+            "timezone": "Asia/Kolkata",
+        },
+        allowed=["create_schedule"],
+    )
+    assert result.kind == "success"
+    assert result.data["skill_name"] == "daily_metrics_oneshot"
+    assert not (playbooks / "scheduled_daily_metrics_oneshot.md").exists()
+    assert (playbooks / "daily_metrics_oneshot.md").exists()
+    reset_playbook_store_registry()

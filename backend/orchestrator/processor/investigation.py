@@ -40,16 +40,43 @@ class InvestigationMixin:
         """Bind `run {skill_name}` from cron or chat (spaces or underscores)."""
         from backend.routing.plan_templates import strip_run_date_suffix
 
+        candidates: list[str] = []
+        meta_skill = str((task.metadata or {}).get("skill_name") or "").strip()
+        if meta_skill:
+            candidates.append(meta_skill)
+
         intent = strip_run_date_suffix(task.cleaned_intent or "")
-        if not intent.lower().startswith("run "):
+        if intent.lower().startswith("run "):
+            name = intent[4:].strip()
+            if name:
+                candidates.append(name)
+                if " " in name:
+                    candidates.append(name.replace(" ", "_"))
+
+        seen: set[str] = set()
+        for raw in candidates:
+            key = raw.strip()
+            if not key or key.lower() in seen:
+                continue
+            seen.add(key.lower())
+            preferred = self._prefer_source_playbook(key)
+            if preferred is not None:
+                return preferred
+            found = self._playbooks.get_by_name(key)
+            if found is not None:
+                return found
+        return None
+
+    def _prefer_source_playbook(self, skill_name: str) -> Playbook | None:
+        """Use the original playbook when a generated `scheduled_*` wrapper exists."""
+        if not skill_name.startswith("scheduled_"):
             return None
-        name = intent[4:].strip()
-        if not name:
+        original = self._playbooks.get_by_name(skill_name[len("scheduled_") :])
+        if original is None:
             return None
-        found = self._playbooks.get_by_name(name)
-        if found is None and " " in name:
-            found = self._playbooks.get_by_name(name.replace(" ", "_"))
-        return found
+        if original.plan_template or original.use_workflow_chain or original.scripts:
+            return original
+        return None
 
     def _plan_template_skill(self, route_context: Any) -> Playbook | None:
         """Match `.alfred/playbooks/` plan templates by trigger (cheap, no LLM)."""
@@ -109,13 +136,19 @@ class InvestigationMixin:
         slide_text = f"{task.cleaned_intent}\n{task.raw_text}".strip()
         from backend.routing.schedule_intent import looks_like_schedule_request
 
-        if looks_like_schedule_request(slide_text):
+        if task.source == "scheduler":
+            named = self._scheduled_job_skill(task)
+            if named is not None:
+                logger.info("Scheduler job → skill %s", named.name)
+                return named
+
+        if task.source != "scheduler" and looks_like_schedule_request(slide_text):
             schedule_skill = self._playbooks.get_by_name("schedule_management")
             if schedule_skill is not None:
                 logger.info("Schedule management intent → skill schedule_management")
                 return schedule_skill
 
-        if (
+        if task.source != "scheduler" and (
             looks_like_html_slides_request(slide_text)
             or looks_like_html_slides_followup(task, session)
             or looks_like_html_slides_publish_continuation(task, session)

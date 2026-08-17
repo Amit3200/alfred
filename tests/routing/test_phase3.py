@@ -284,6 +284,93 @@ allowed_tools:
     assert skill.name == "daily_metrics_oneshot"
 
 
+def test_scheduler_trigger_reuses_source_playbook(tmp_path: Path, monkeypatch):
+    playbooks = tmp_path / "playbooks"
+    playbooks.mkdir()
+    (playbooks / "daily_metrics_oneshot.md").write_text(
+        """---
+name: daily_metrics_oneshot
+mode: workflow
+type: plan_template
+triggers:
+  - daily metrics oneshot
+scripts:
+  - daily_metrics_oneshot
+allowed_tools:
+  - run_company_script
+  - publish_html_artifact
+use_workflow_chain: true
+workflow_chain:
+  - run_company_script
+  - publish_html_artifact
+---
+# body
+""",
+        encoding="utf-8",
+    )
+    (playbooks / "scheduled_daily_metrics_oneshot.md").write_text(
+        """---
+name: scheduled_daily_metrics_oneshot
+mode: workflow
+triggers:
+  - run scheduled_daily_metrics_oneshot
+allowed_tools:
+  - create_schedule
+---
+# wrapper
+""",
+        encoding="utf-8",
+    )
+    (playbooks / "investigate_bug.md").write_text(
+        """---
+name: investigate_bug
+mode: investigation
+triggers:
+  - investigate
+allowed_tools:
+  - grep_repo
+  - athena_query
+  - web_search
+---
+# body
+""",
+        encoding="utf-8",
+    )
+    empty_skills = tmp_path / "empty_skills"
+    empty_skills.mkdir()
+    monkeypatch.setattr("backend.routing.playbooks.bundled_skills_dir", lambda: empty_skills)
+    monkeypatch.setattr("backend.routing.playbooks.playbooks_dir", lambda _data: playbooks)
+
+    from backend.orchestrator.processor import TaskProcessor
+    from backend.routing import RouteContext, RouteMode
+
+    processor = TaskProcessor(
+        AlfredConfig(
+            routing=RoutingConfig(
+                plan_first_routing=True,
+                skill_router_fallback=True,
+                planner_strategy="llm_first",
+                phrase_routing_enabled=False,
+            ),
+        )
+    )
+    processor.router = MagicMock()
+    processor.router.get.return_value = MagicMock(is_available=lambda: True)
+    processor._playbooks = PlaybookStore(tmp_path)
+    task = Task(
+        source="scheduler",
+        user_id="scheduler",
+        channel_id="C1",
+        raw_text="Manually triggered job daily_metrics_oneshot",
+        cleaned_intent="run scheduled_daily_metrics_oneshot",
+        metadata={"skill_name": "scheduled_daily_metrics_oneshot"},
+    )
+    ctx = RouteContext(intent=task.cleaned_intent, mode=RouteMode.INVESTIGATION)
+    skill = processor._resolve_investigation_skill(ctx, task)
+    assert skill is not None
+    assert skill.name == "daily_metrics_oneshot"
+
+
 def test_create_schedule_beats_html_slides_and_plan_template(tmp_path: Path, monkeypatch):
     playbooks = tmp_path / "playbooks"
     playbooks.mkdir()
