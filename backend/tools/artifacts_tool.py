@@ -100,6 +100,25 @@ def _safe_html_filename(raw: str | None) -> str:
     return name or "presentation.html"
 
 
+def _reuse_saved_deck_filename(registry: ToolRegistry, explicit: str) -> str | None:
+    """Reuse the export filename when save_html_deck is retried in the same agent run."""
+    if explicit.strip():
+        return None
+    import json
+
+    for entry in reversed(getattr(registry, "tool_trace", []) or []):
+        if str(entry.get("tool") or "") != "save_html_deck" or not entry.get("success"):
+            continue
+        try:
+            payload = json.loads(str(entry.get("observation") or ""))
+        except json.JSONDecodeError:
+            continue
+        filename = str((payload.get("data") or {}).get("filename") or "").strip()
+        if filename:
+            return filename
+    return None
+
+
 def register_artifact_tools(
     registry: ToolRegistry,
     *,
@@ -128,7 +147,10 @@ def register_artifact_tools(
                 + "; ".join(issues)
                 + ". Shorten slide copy or reduce slide count, then call save_html_deck again."
             )
-        filename = _safe_html_filename(str(args.get("filename") or ""))
+        filename = _safe_html_filename(
+            _reuse_saved_deck_filename(registry, str(args.get("filename") or ""))
+            or str(args.get("filename") or "")
+        )
         try:
             dest = exports_dir(data_dir) / filename
             dest.write_text(html, encoding="utf-8")

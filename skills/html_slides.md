@@ -251,4 +251,5 @@ Read JSON field names exactly — do not guess `country_name` when the payload h
 - Guess JSON keys — inspect payload (`country_code` vs `country_name`)
 - Remove confidential footer or Alfred × company attribution
 - Ship multi-file decks (breaks single-file delivery)
+- Output **two** `<!DOCTYPE html>` documents or paste the template twice — one deck only
 - Autoplay slides

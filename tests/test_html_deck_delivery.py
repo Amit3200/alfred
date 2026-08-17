@@ -41,6 +41,16 @@ def test_prepare_slack_delivery_html_when_publish_intent():
     assert "Not published" not in delivery.text
 
 
+def test_prepare_slack_delivery_skips_attach_when_tool_already_saved():
+    delivery = prepare_slack_delivery(
+        "*HTML slide deck saved* (not published to a share URL).\n"
+        f"File: `deck.html`\n\n```html\n{SAMPLE}\n```",
+        "create html slides",
+    )
+    assert not delivery.files
+    assert "HTML slide deck saved" in delivery.text
+
+
 def test_save_html_deck_tool(tmp_path):
     from backend.config_manager import ConfigManager
 
@@ -59,3 +69,35 @@ def test_save_html_deck_tool(tmp_path):
     saved = tmp_path / "exports" / "metrics.html"
     assert saved.is_file()
     assert "Checkout Redirect" in saved.read_text(encoding="utf-8")
+
+
+def test_save_html_deck_reuses_filename_on_retry(tmp_path):
+    import json
+
+    from backend.config_manager import ConfigManager
+
+    manager = ConfigManager(tmp_path)
+    manager.init()
+    config, _ = manager.load_merged()
+    registry = ToolRegistry()
+    register_artifact_tools(registry, config=config, data_dir=tmp_path)
+    first = registry.run(
+        "save_html_deck",
+        {"html": SAMPLE},
+        allowed=["save_html_deck", "publish_html_artifact"],
+    )
+    registry.tool_trace.append(
+        {
+            "tool": "save_html_deck",
+            "success": True,
+            "observation": json.dumps({"kind": "html_deck_saved", "data": first.data}),
+        }
+    )
+    second = registry.run(
+        "save_html_deck",
+        {"html": SAMPLE.replace("Checkout Redirect", "Checkout Redirect v2")},
+        allowed=["save_html_deck", "publish_html_artifact"],
+    )
+    assert second.data["filename"] == first.data["filename"]
+    export_dir = tmp_path / "exports"
+    assert len(list(export_dir.glob("*.html"))) == 1

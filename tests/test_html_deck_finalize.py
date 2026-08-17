@@ -12,6 +12,7 @@ from backend.artifacts.html_deck import (
     has_navigation_script,
     has_required_theme_css,
     has_valid_deck_structure,
+    normalize_single_html_document,
     validate_html_deck,
 )
 
@@ -179,3 +180,28 @@ window.nextSlide = () => {};
     assert "touchstart" in repaired
     assert "touchend" in repaired
     assert deck_navigation_ready(repaired)
+
+
+def test_finalize_collapses_duplicate_html_documents():
+    from backend.paths import bundled_artifacts_static_dir
+
+    template = (bundled_artifacts_static_dir() / "slide-template.html").read_text(encoding="utf-8")
+    double = template + "\n" + template
+    assert double.lower().count("<!doctype html") == 2
+    repaired = finalize_html_deck(double)
+    assert repaired.lower().count("<!doctype html") == 1
+    assert repaired.count('class="deck"') == 1
+    assert count_slides(repaired) == 4
+    assert not validate_html_deck(repaired)
+
+
+def test_normalize_single_html_document_prefers_richer_deck():
+    from backend.paths import bundled_artifacts_static_dir
+
+    template = (bundled_artifacts_static_dir() / "slide-template.html").read_text(encoding="utf-8")
+    extra_slide = '<section class="slide"><h1>Real metrics</h1></section>'
+    rich = template.replace("</main>", f"      {extra_slide}\n    </main>", 1)
+    merged = template + rich
+    normalized = normalize_single_html_document(merged)
+    assert count_slides(normalized) == 5
+    assert "Real metrics" in normalized

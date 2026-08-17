@@ -81,6 +81,14 @@ def _html_filename_from_content(html: str) -> str:
 
 def prepare_slack_delivery(rendered_text: str, intent: str) -> SlackDelivery:
     """Format reply text and optionally attach export files or handle length truncation."""
+    if rendered_text and (
+        "*HTML slide deck saved*" in rendered_text
+        or "*Published HTML slides*" in rendered_text
+        or "**HTML slide deck saved**" in rendered_text
+        or "**Published HTML slides**" in rendered_text
+    ):
+        return SlackDelivery(text=rendered_text)
+
     deck = extract_html_deck(rendered_text)
     if deck:
         html, filename = deck

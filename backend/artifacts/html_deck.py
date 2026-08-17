@@ -17,6 +17,7 @@ _SLIDE_SECTION_FULL_RE = re.compile(
 _SCRIPT_BLOCK_RE = re.compile(r"<script[^>]*>([\s\S]*?)</script>", re.I)
 _FOOTER_TAG_RE = re.compile(r"<footer\s+class=[\"']deck-footer[\"']", re.I)
 _HTML_DOCTYPE_RE = re.compile(r"<!doctype\s+html", re.I)
+_COMPLETE_HTML_DOC_RE = re.compile(r"<!DOCTYPE html[\s\S]*?</html>", re.I)
 _ELEMENT_ID_RE = re.compile(r'\bid=(["\'])([^"\']+)\1', re.I)
 _REQUIRED_NAV_IDS = ("topProgress", "slideCounter", "themeToggle")
 _REQUIRED_THEME_TOKENS = ("--bg:", "--accent:", "--text:", "ul.bullets")
@@ -51,6 +52,55 @@ main.stage { touch-action: pan-y pinch-zoom; }
 """.strip()
 
 HTML_SLIDES_MAX_TOKENS = 16384
+
+_TEMPLATE_PLACEHOLDER_MARKERS = (
+    "checkout redirect",
+    "daily breakdown",
+    "success rate held above 93%",
+    "investigate aug 4 failure spike",
+    "overall success: 94.2%",
+)
+
+
+def normalize_single_html_document(html: str) -> str:
+    """Keep one complete HTML deck when the model concatenates duplicate documents."""
+    text = (html or "").replace("\r\n", "\n").strip()
+    if not text:
+        return text
+
+    docs = _COMPLETE_HTML_DOC_RE.findall(text)
+    if len(docs) > 1:
+        return max(docs, key=lambda doc: (count_slides(doc), len(doc)))
+
+    if docs:
+        text = docs[0]
+    else:
+        close = re.search(r"</html>", text, re.I)
+        if close and close.end() < len(text.strip()):
+            trailing = text[close.end() :].strip()
+            if trailing and (
+                "<!doctype html" in trailing.lower()
+                or _COMPLETE_HTML_DOC_RE.search(trailing)
+            ):
+                docs = _COMPLETE_HTML_DOC_RE.findall(text)
+                if docs:
+                    return max(docs, key=lambda doc: (count_slides(doc), len(doc)))
+            text = text[: close.end()]
+
+    return text.strip()
+
+
+def _is_template_placeholder_slide(slide_html: str) -> bool:
+    lower = (slide_html or "").lower()
+    return any(marker in lower for marker in _TEMPLATE_PLACEHOLDER_MARKERS)
+
+
+def _filter_template_placeholder_slides(slides: list[str]) -> list[str]:
+    """Drop bundled template demo slides when the deck also has real content."""
+    if len(slides) <= 1:
+        return slides
+    kept = [slide for slide in slides if not _is_template_placeholder_slide(slide)]
+    return kept if kept else slides
 
 
 @lru_cache(maxsize=1)
@@ -269,6 +319,7 @@ def _ensure_first_slide_active(slides: list[str]) -> list[str]:
 def _rebuild_deck_shell(html: str) -> str:
     """Extract slide sections and wrap them in the canonical deck shell."""
     slides = [_sanitize_slide_body(s) for s in _extract_slide_sections(html)]
+    slides = _filter_template_placeholder_slides(slides)
     if not slides:
         return html
     slides = _ensure_first_slide_active(slides)
@@ -492,7 +543,8 @@ def finalize_html_deck(
     branding: SlideBrandingContext | None = None,
 ) -> str:
     """Repair truncated decks, inject navigation JS, and apply company branding."""
-    text = ensure_theme_extras((html or "").replace("\r\n", "\n"))
+    text = normalize_single_html_document(html or "")
+    text = ensure_theme_extras(text.replace("\r\n", "\n"))
     if not text.strip() or count_slides(text) < 1:
         return apply_branding(text, branding)
 
@@ -541,4 +593,6 @@ def validate_html_deck(html: str) -> list[str]:
         issues.append("Footer is missing")
     if not has_valid_deck_structure(text):
         issues.append("Deck shell is invalid — slides must live inside main.stage with topbar/footer outside")
+    if _HTML_DOCTYPE_RE.findall(text[:8192].lower()) and len(_COMPLETE_HTML_DOC_RE.findall(text)) > 1:
+        issues.append("Multiple HTML documents in one file")
     return issues
