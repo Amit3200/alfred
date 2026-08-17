@@ -98,7 +98,7 @@ def needs_ticket_create_disambiguation(
     if not is_generic_ticket_create_intent(task.cleaned_intent):
         return False
 
-    from backend.integrations.slack.board_service import board_enabled, resolve_board_for_task
+    from backend.domains.slack_board.operations import board_enabled, resolve_board_for_task
     from backend.integrations.slack.workflow_registry import channel_ticket_system, resolve_data_dir
 
     dd = resolve_data_dir(data_dir)

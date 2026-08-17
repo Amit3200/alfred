@@ -62,9 +62,10 @@ def _session_meta(task: Task, session: Any | None, session_metadata: dict[str, A
 
 
 def is_html_slides_session(meta: dict[str, Any]) -> bool:
-    return str(meta.get("last_intent_class") or "") == "html_slides" or str(
-        meta.get("last_skill_name") or ""
-    ) == "html_slides"
+    from backend.routing.classifier.intent_classes import is_html_slides_intent
+
+    last_intent = str(meta.get("last_intent_class") or "")
+    return is_html_slides_intent(last_intent) or str(meta.get("last_skill_name") or "") == "html_slides"
 
 
 def extract_slug_from_text(text: str) -> str:
@@ -160,12 +161,11 @@ def looks_like_html_slides_followup(
     if not _SLIDES_FOLLOWUP_RE.search(text):
         return False
     meta = _session_meta(task, session, session_metadata)
-    if str(meta.get("last_intent_class") or "") == "html_slides":
-        return True
-    if str(meta.get("last_skill_name") or "") == "html_slides":
+    if is_html_slides_session(meta):
         return True
     if session is not None:
-        for turn in reversed(getattr(session, "turns", []) or [])[-6:]:
+        turns = list(getattr(session, "turns", []) or [])[-6:]
+        for turn in reversed(turns):
             body = (getattr(turn, "content", None) or "").lower()
             if any(
                 token in body

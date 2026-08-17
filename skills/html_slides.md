@@ -11,9 +11,15 @@ trigger_keywords:
 allowed_channels:
   - "*"
 requires_thread_context: false
+allowed_capabilities:
+  - artifact.write.deck
 allowed_tools:
   - save_html_deck
   - publish_html_artifact
+workflow_chain:
+  - save_html_deck
+  - publish_html_artifact
+use_workflow_chain: true
 ---
 
 # HTML Slides

@@ -12,7 +12,7 @@ if TYPE_CHECKING:
 from backend.models.config import AlfredConfig
 from backend.routing.bm25 import route_by_bm25
 from backend.routing.heuristics import create_pr_route_decision, route_by_heuristic
-from backend.routing.jira_direct import jira_create_route_decision
+from backend.routing.jira.direct import jira_create_route_decision
 from backend.routing.keyword import playbook_for_decision, route_by_keyword
 from backend.routing.llm import LLMSkillMatcher
 from backend.routing.tool_availability import playbook_has_runnable_tools

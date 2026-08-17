@@ -37,6 +37,13 @@ allowed_tools:
   - list_repos
   - get_pr
 requires_thread_context: true
+workflow_chain:
+  - git_prepare_branch
+  - write_file
+  - git_commit
+  - git_push_branch
+  - create_pull_request
+use_workflow_chain: true
 ---
 
 # Objective

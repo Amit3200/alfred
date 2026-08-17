@@ -18,6 +18,17 @@ def resolve_playbook_allowed_tools(
     explicit = list(playbook.allowed_tools or [])
     if explicit:
         return explicit
+    from backend.routing.capabilities import tools_for_capability
+
+    cap_tools: list[str] = []
+    seen: set[str] = set()
+    for cap in playbook.allowed_capabilities or []:
+        for name in tools_for_capability(cap, data_dir=data_dir):
+            if name not in seen:
+                seen.add(name)
+                cap_tools.append(name)
+    if cap_tools:
+        return cap_tools
     if playbook.capability_bundle:
         return bundle_tools(playbook.capability_bundle, data_dir=data_dir)
     return []

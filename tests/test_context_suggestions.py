@@ -7,6 +7,7 @@ from pathlib import Path
 
 import pytest
 
+from tests.paths import SAMPLE_REPO
 from backend.context.generator import generate_repo_context
 from backend.context.suggestions import (
     approve_suggestion,
@@ -29,7 +30,7 @@ def _git_config() -> GitConfig:
 
 
 def _seed_context(tmp_path: Path) -> None:
-    fixture = Path(__file__).resolve().parent / "fixtures" / "sample-repo"
+    fixture = SAMPLE_REPO
     mirror = tmp_path / "repos" / "shared" / "acme__backend"
     shutil.copytree(fixture, mirror)
     git = _git_config()

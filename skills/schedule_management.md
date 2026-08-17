@@ -22,6 +22,15 @@ allowed_tools:
   - write_company_script_file
   - create_company_script_package
   - run_company_script
+allowed_capabilities:
+  - schedule.write.create
+  - schedule.read.list
+  - schedule.write.toggle
+  - schedule.write.delete
+  - schedule.write.update
+workflow_chain:
+  - list_schedules
+  - create_schedule
 ---
 
 # Objective

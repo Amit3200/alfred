@@ -67,7 +67,7 @@ def looks_like_repo_doc_question(text: str, *, source: str = "") -> bool:
     """True when the user likely wants indexed repo documentation."""
     stripped = f"{text or ''}".strip()
     if source == "slack":
-        from backend.routing.slack_board_intent import (
+        from backend.routing.slack_board.intent import (
             looks_like_slack_board_config_question,
             looks_like_slack_board_request,
         )
@@ -257,8 +257,9 @@ def plan_tools_rules(
         )
 
     if config is not None and task.source == "slack":
-        from backend.integrations.slack.board_service import board_enabled, resolve_board_for_task
-        from backend.routing.slack_board_intent import (
+        from backend.domains.slack_board.operations import board_enabled, resolve_board_for_task
+        from backend.routing.create_target_precedence import should_route_create_to_jira
+        from backend.routing.slack_board.intent import (
             looks_like_slack_board_config_question,
             looks_like_slack_board_create,
             looks_like_slack_board_request,
@@ -268,6 +269,21 @@ def plan_tools_rules(
 
         if looks_like_slack_board_config_question(text):
             return None
+
+        jira_create = (
+            config.jira.enabled
+            and _ok("jira_create_issue")
+            and should_route_create_to_jira(text, jira_enabled=True)
+        )
+        if jira_create:
+            return ToolPlan(
+                goal="Create JIRA issue from user request",
+                confidence=0.92,
+                tools_needed=["jira_create_issue"],
+                steps=[ToolPlanStep("jira_create_issue", "create issue")],
+                intent_class="jira.write.create",
+                strategy="rules",
+            )
 
         if board_enabled(config, data_dir) and resolve_board_for_task(config, task, data_dir=data_dir):
             if looks_like_slack_board_create(text) and _ok("slack_board_create_task"):
@@ -549,6 +565,24 @@ def resolve_tool_plan(
             slides_plan.intent_class,
         )
         return slides_plan
+
+    if playbook_store is not None and skill_allowed:
+        from backend.routing.workflow_chain import plan_from_playbook_chain
+
+        wanted = set(skill_allowed)
+        for playbook in playbook_store.list_playbooks():
+            if not playbook.workflow_chain or not playbook.use_workflow_chain:
+                continue
+            if set(playbook.allowed_tools or []) != wanted:
+                continue
+            chained = plan_from_playbook_chain(playbook)
+            if chained is not None:
+                logger.info(
+                    "Skill workflow chain: %s tools=%s",
+                    playbook.name,
+                    chained.tools_needed,
+                )
+                return chained
 
     if task.source == "ui":
         from backend.routing.chat_persona import (

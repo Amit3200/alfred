@@ -37,6 +37,12 @@ allowed_tools:
   - grep_repo
   - read_file
   - query_graph
+allowed_capabilities:
+  - repo.docs.qa
+workflow_chain:
+  - search_repo_docs
+  - read_repo_doc
+use_workflow_chain: true
 requires_thread_context: false
 ---
 

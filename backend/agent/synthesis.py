@@ -5,7 +5,7 @@ from __future__ import annotations
 import logging
 
 from backend.ai.base import LLMProvider, Message
-from backend.routing.git_direct import strip_text_tool_markup
+from backend.routing.git.direct import strip_text_tool_markup
 
 logger = logging.getLogger(__name__)
 

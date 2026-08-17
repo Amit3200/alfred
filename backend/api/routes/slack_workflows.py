@@ -22,7 +22,7 @@ from backend.db.slack_workflows_db import (
     db_update_board_binding,
     db_upsert_channel_workflow,
 )
-from backend.routing.slack_board_intent import is_placeholder_list_id
+from backend.routing.slack_board.intent import is_placeholder_list_id
 
 router = APIRouter(prefix="/slack/workflows", tags=["slack-workflows"])
 

@@ -5,6 +5,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 
+from backend.routing.classifier.intent_classes import legacy_intent_class
 from backend.routing.tool_plan_types import ToolPlan
 from backend.tools.catalog import tool_domain
 
@@ -44,15 +45,16 @@ def goal_spec_from_plan(plan: ToolPlan | None) -> GoalSpec | None:
 
     write_domains = {"jira", "google_sheet", "google_doc", "git_write", "slack_write"}
     requires_write = any(tool_domain(t) in write_domains for t in plan.tools_needed)
+    intent = legacy_intent_class(plan.intent_class) or plan.intent_class
 
     criteria = [f"Execute tools: {', '.join(plan.tools_needed)}"]
-    if plan.intent_class.startswith("google.create"):
+    if intent.startswith("google.create"):
         criteria.append("Reply includes spreadsheet or document URL from tool result")
-    if plan.intent_class.startswith("jira."):
+    if intent.startswith("jira."):
         criteria.append("Reply references JIRA issue key or URL from tool result")
-    if plan.intent_class.startswith("slack.summarize"):
+    if intent.startswith("slack.summarize"):
         criteria.append("Summary based on fetched Slack messages, not invented content")
-    if plan.intent_class == "repo.docs.qa":
+    if intent == "repo.docs.qa":
         criteria.extend(
             [
                 "Call search_repo_docs before answering",
@@ -62,7 +64,7 @@ def goal_spec_from_plan(plan: ToolPlan | None) -> GoalSpec | None:
                 "Cite doc paths only from tool results",
             ]
         )
-    if plan.intent_class == "slack.board.create":
+    if intent == "slack.board.create":
         criteria.extend(
             [
                 "Review scoped board tools in manifest before acting",
@@ -72,7 +74,7 @@ def goal_spec_from_plan(plan: ToolPlan | None) -> GoalSpec | None:
                 "Do not invent task ids",
             ]
         )
-    if plan.intent_class == "slack.board.update":
+    if intent == "slack.board.update":
         criteria.extend(
             [
                 "Review scoped board tools in manifest before acting",
@@ -81,21 +83,21 @@ def goal_spec_from_plan(plan: ToolPlan | None) -> GoalSpec | None:
                 "Do not invent task ids",
             ]
         )
-    if plan.intent_class == "slack.board.comment":
+    if intent == "slack.board.comment":
         criteria.extend(
             [
                 "Use read tools to resolve task id when needed",
                 "Call slack_board_comment for the mutation",
             ]
         )
-    if plan.intent_class.startswith("slack.board."):
-        requires_write = requires_write or plan.intent_class in (
+    if intent.startswith("slack.board."):
+        requires_write = requires_write or intent in (
             "slack.board.create",
             "slack.board.update",
             "slack.board.comment",
         )
 
-    if plan.intent_class == "html_slides":
+    if intent == "html_slides":
         criteria.extend(
             [
                 "Call save_html_deck (or publish_html_artifact when user asked to publish)",
@@ -105,17 +107,17 @@ def goal_spec_from_plan(plan: ToolPlan | None) -> GoalSpec | None:
         )
 
     failure = plan.goal
-    if plan.intent_class == "repo.docs.qa":
+    if intent == "repo.docs.qa":
         failure = (
             "I couldn't answer from indexed documentation. "
             "Try rephrasing or check Knowledge bases → FlexyPe/docs is indexed."
         )
-    if plan.intent_class.startswith("slack.board."):
+    if intent.startswith("slack.board."):
         failure = (
             "I couldn't complete that on the Slack List board. "
             "Try `@alfred create task for …` or `@alfred move ST-1 to in progress`."
         )
-    if plan.intent_class == "html_slides":
+    if intent == "html_slides":
         publish_tools = [t for t in plan.tools_needed if t == "publish_html_artifact"]
         if publish_tools:
             failure = (
@@ -134,7 +136,7 @@ def goal_spec_from_plan(plan: ToolPlan | None) -> GoalSpec | None:
         )
 
     return GoalSpec(
-        intent_class=plan.intent_class or "unknown",
+        intent_class=intent or "unknown",
         goal=plan.goal,
         required_tools=list(plan.tools_needed),
         success_criteria=criteria,

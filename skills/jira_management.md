@@ -19,6 +19,16 @@ trigger_keywords:
   - all users
 allowed_channels:
   - "*"
+allowed_capabilities:
+  - jira.write.create
+  - jira.write.assign
+  - jira.write.transition
+  - jira.write.comment
+  - jira.write.update
+  - jira.write.link
+  - jira.read.single
+  - jira.read.list
+  - identity.lookup
 allowed_tools:
   - jira_search
   - jira_update_issue
@@ -31,6 +41,10 @@ allowed_tools:
   - lookup_user_identity
   - build_workspace_identity_map
 requires_thread_context: true
+workflow_chain:
+  - jira_create_issue
+  - jira_assign_issue
+  - jira_add_comment
 ---
 
 # Objective

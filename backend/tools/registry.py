@@ -2,8 +2,8 @@
 
 from __future__ import annotations
 from backend.observability.recorder import get_recorder
-from backend.routing.git_context import enrich_tool_arguments
-from backend.routing.git_direct import normalize_tool_arguments
+from backend.routing.git.context import enrich_tool_arguments
+from backend.routing.git.direct import normalize_tool_arguments
 
 
 import logging
@@ -63,6 +63,35 @@ class ToolRegistry:
         filt = self._registration_filter
         if filt is not None and schema.name not in filt:
             return
+        self._tools[schema.name] = RegisteredTool(schema=schema, handler=handler)
+
+    def register_tool(self, tool: Any, *, extra: dict[str, Any] | None = None) -> None:
+        """Register a BaseTool instance (class-based tools)."""
+        schema = tool.schema()
+        filt = self._registration_filter
+        if filt is not None and schema.name not in filt:
+            return
+
+        def handler(arguments: dict[str, Any]) -> ToolResult:
+            from backend.tools.base.tool import ToolContext
+
+            ctx = ToolContext.from_registry(self)
+            extra_map = dict(ctx.extra or {})
+            if extra:
+                extra_map.update(extra)
+            ctx = ToolContext(
+                config=ctx.config,
+                data_dir=ctx.data_dir,
+                task_id=ctx.task_id,
+                session_key=ctx.session_key,
+                source=ctx.source,
+                channel_id=ctx.channel_id,
+                thread_ts=ctx.thread_ts,
+                user_id=ctx.user_id,
+                extra=extra_map,
+            )
+            return tool.run(ctx, arguments)
+
         self._tools[schema.name] = RegisteredTool(schema=schema, handler=handler)
 
     def get_schemas(self, allowed: list[str]) -> list[ToolSchema]:

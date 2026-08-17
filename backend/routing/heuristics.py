@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import re
 
-from backend.routing.git_direct import looks_like_code_investigation
-from backend.routing.jira_direct import looks_like_jira_question, jira_create_route_decision
+from backend.routing.git.direct import looks_like_code_investigation
+from backend.routing.jira.direct import looks_like_jira_question, jira_create_route_decision
 from backend.integrations.identity.user_identity import is_user_identity_lookup
 
 

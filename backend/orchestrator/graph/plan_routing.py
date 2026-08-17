@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.routing.slack_board_agent import is_slack_board_write_intent
+from backend.routing.classifier.intent_classes import is_html_slides_intent
+from backend.routing.slack_board.agent import is_slack_board_write_intent
 
 
 def resolve_graph_route(plan: Any | None, *, allowed_tools: list[str]) -> str:
@@ -12,7 +13,7 @@ def resolve_graph_route(plan: Any | None, *, allowed_tools: list[str]) -> str:
     if plan and getattr(plan, "missing_capabilities", None) and not allowed_tools:
         return "missing"
     intent_class = getattr(plan, "intent_class", "") if plan else ""
-    if intent_class == "html_slides":
+    if is_html_slides_intent(intent_class):
         if plan and len(getattr(plan, "steps", None) or []) == 1:
             from backend.routing.html_slides_delivery import publish_args_complete
 

@@ -513,6 +513,13 @@ class RoutingConfig(BaseModel):
         le=1.0,
         description="Minimum confidence to accept a matched plan template.",
     )
+    classifier_enabled: bool = Field(
+        default=True,
+        description=(
+            "Hierarchical prompt router (tool parent → capability). "
+            "When the model is unavailable, deterministic rules are the fallback."
+        ),
+    )
 
 
 class AIProviderConfig(BaseModel):

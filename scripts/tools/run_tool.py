@@ -27,7 +27,7 @@ def main() -> int:
 
     from backend.config_manager import ConfigManager
     from backend.paths import get_data_dir
-    from backend.tools.git_api import build_git_tool_registry
+    from backend.tools.builder import build_git_tool_registry
 
     data_dir = Path(args.data_dir) if args.data_dir else get_data_dir(None)
     config, _ = ConfigManager(data_dir).load_merged()

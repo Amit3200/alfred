@@ -7,6 +7,7 @@ import re
 from dataclasses import dataclass, field
 from typing import Any
 
+from backend.routing.classifier.intent_classes import is_html_slides_intent
 from backend.routing.goal_spec import (
     GoalSpec,
     detect_action_claims,
@@ -140,7 +141,7 @@ def _url_grounding_issues(
     if goal and goal.intent_class == "repo.docs.qa" and _doc_read_succeeded(trace):
         return []
 
-    if goal and goal.intent_class == "html_slides" and not _artifact_tools_called(trace):
+    if goal and is_html_slides_intent(goal.intent_class) and not _artifact_tools_called(trace):
         return []
 
     urls_from_tools: set[str] = set()
@@ -288,10 +289,10 @@ def validate_agent_result(
     claims = detect_action_claims(prose)
     successful_tools = {entry.tool for entry in trace if entry.success}
     if claims and not successful_tools and prose:
-        if not (goal and goal.intent_class == "html_slides"):
+        if not (goal and is_html_slides_intent(goal.intent_class)):
             issues.append("Action claims in reply but no successful tools were called")
 
-    if goal and goal.intent_class == "html_slides":
+    if goal and is_html_slides_intent(goal.intent_class):
         issues.extend(_html_slides_grounding_issues(prose, trace))
 
     if goal and goal.intent_class == "repo.docs.qa":
@@ -304,7 +305,7 @@ def validate_agent_result(
                 "Try `@alfred create task for …` or `@alfred move ST-1 to in progress`."
             )
             return ValidationResult(passed=False, issues=issues, fallback=fallback)
-        if goal and goal.intent_class == "html_slides":
+        if goal and is_html_slides_intent(goal.intent_class):
             fallback = _html_slides_failure_response(trace, goal, issues)
             return ValidationResult(passed=False, issues=issues, fallback=fallback)
         fallback_parts = [goal.failure_response if goal else "I couldn't verify that response against tool results."]

@@ -11,7 +11,7 @@ from backend.agent.synthesis import synthesize_final_answer
 from backend.observability.checkpoint import current_data_dir, current_task_id, log_checkpoint
 from backend.orchestrator.prompts import AUTONOMOUS_SYSTEM_INSTRUCTIONS, GROUNDING_CONTRACT
 from backend.orchestrator.task_cancel import raise_if_cancelled
-from backend.routing.git_direct import parse_text_tool_call, strip_text_tool_markup
+from backend.routing.git.direct import parse_text_tool_call, strip_text_tool_markup
 from backend.tools.registry import ToolRegistry
 
 logger = logging.getLogger(__name__)

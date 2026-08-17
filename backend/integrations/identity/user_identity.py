@@ -10,7 +10,7 @@ from slack_sdk import WebClient
 import re
 from typing import Any
 
-from backend.routing.jira_context import resolve_jira_assignee
+from backend.routing.jira.context import resolve_jira_assignee
 from backend.integrations.slack.sanitize import extract_slack_mention_labels, extract_slack_user_ids
 from backend.integrations.slack.users import pick_slack_display_name
 from backend.db.slack_user_cache import SlackUserCache
@@ -43,7 +43,7 @@ _IDENTITY_ACTION_MARKERS = (
     "cross reference",
 )
 
-from backend.routing.jira_intent import (
+from backend.routing.jira.intent import (
     looks_like_jira_create_followup,
     looks_like_jira_create_request,
 )

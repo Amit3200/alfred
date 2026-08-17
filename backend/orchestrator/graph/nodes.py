@@ -22,7 +22,7 @@ from backend.orchestrator.graph.skill_policy import resolve_policy_skill
 from backend.orchestrator.graph.state import AlfredGraphState
 from backend.orchestrator.processor import STRUCTURED_TOOL_KINDS, _tool_result_to_response, _unified_metadata_patch
 from backend.routing.entity_extractor import EntityBag, extract_entities
-from backend.routing.git_direct import looks_like_tool_json, strip_text_tool_markup
+from backend.routing.git.direct import looks_like_tool_json, strip_text_tool_markup
 from backend.routing.goal_spec import goal_spec_from_plan
 from backend.routing.grounding_gate import ToolTraceEntry, validate_agent_result
 from backend.routing.tool_plan_validator import validate_tool_plan
@@ -64,7 +64,7 @@ def plan_tools_node(state: AlfredGraphState, config: RunnableConfig) -> dict[str
     processor = runtime.processor
     skill = runtime.active_skill
 
-    from backend.routing.slack_board_agent import seeded_board_agent_plan
+    from backend.routing.slack_board.agent import seeded_board_agent_plan
 
     plan = seeded_board_agent_plan(runtime.session)
     if plan is None:
@@ -100,7 +100,9 @@ def plan_tools_node(state: AlfredGraphState, config: RunnableConfig) -> dict[str
     if plan and plan.intent_class == "repo.docs.qa":
         log_checkpoint("route_plan", "repo_knowledge", "completed")
 
-    if plan and plan.intent_class == "slack.board.create":
+    from backend.routing.classifier.intent_classes import is_slack_board_create_intent
+
+    if plan and is_slack_board_create_intent(plan.intent_class):
         log_checkpoint("route_plan", "slack_board_management", "completed")
 
     if plan:
@@ -121,7 +123,7 @@ def validate_plan_node(state: AlfredGraphState, config: RunnableConfig) -> dict[
     skill = runtime.active_skill
     plan = tool_plan_from_dict(state.get("tool_plan"))
 
-    from backend.tools.git_api import build_git_tool_registry
+    from backend.tools.builder import build_git_tool_registry
     from backend.models.session import mirror_workspace_key
 
     registry = build_git_tool_registry(
@@ -213,7 +215,7 @@ def run_worker_node(state: AlfredGraphState, config: RunnableConfig) -> dict[str
     goal_spec = goal_spec_from_dict(state.get("goal_spec")) or runtime.goal_spec
     allowed = list(state.get("scoped_tools") or runtime.scoped_tools or skill.allowed_tools or [])
 
-    from backend.tools.git_api import build_git_tool_registry
+    from backend.tools.builder import build_git_tool_registry
     from backend.models.session import mirror_workspace_key
     from backend.observability.checkpoint import log_checkpoint
 
@@ -290,11 +292,12 @@ def run_worker_node(state: AlfredGraphState, config: RunnableConfig) -> dict[str
         log_checkpoint("doc_bootstrap", "search_and_read", "completed")
 
     if plan:
-        from backend.routing.slack_board_agent import is_slack_board_write_intent
+        from backend.routing.slack_board.agent import is_slack_board_write_intent
 
         if is_slack_board_write_intent(plan.intent_class):
-            from backend.routing.slack_board_bootstrap import inject_slack_board_bootstrap_message
-            from backend.routing.slack_board_prompt import slack_board_agentic_addendum
+            from backend.routing.classifier.intent_classes import is_slack_board_create_intent
+            from backend.routing.slack_board.bootstrap import inject_slack_board_bootstrap_message
+            from backend.routing.slack_board.prompt import slack_board_agentic_addendum
             from slack_sdk import WebClient
 
             if messages and messages[0].role == "system":
@@ -307,7 +310,7 @@ def run_worker_node(state: AlfredGraphState, config: RunnableConfig) -> dict[str
                 )
             token = (processor.config.slack.bot_token or "").strip()
             slack_client = WebClient(token=token) if token else None
-            if slack_client and plan.intent_class == "slack.board.create":
+            if slack_client and is_slack_board_create_intent(plan.intent_class):
                 log_checkpoint("board_bootstrap", "thread_context", "started")
                 messages = inject_slack_board_bootstrap_message(
                     messages,

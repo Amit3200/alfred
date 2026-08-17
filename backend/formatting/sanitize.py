@@ -27,7 +27,7 @@ def clean_response_scaffold(text: str) -> str:
     """Strip internal instruction headers and markdown tool scaffolds from assistant output."""
     if not text:
         return text
-    from backend.routing.git_direct import looks_like_tool_json, strip_text_tool_markup
+    from backend.routing.git.direct import looks_like_tool_json, strip_text_tool_markup
     cleaned = strip_text_tool_markup(text)
     if looks_like_tool_json(cleaned):
         cleaned = strip_text_tool_markup(cleaned)
