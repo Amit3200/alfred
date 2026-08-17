@@ -109,7 +109,7 @@ def run_company_script(
             cwd=str(script.package_dir),
             capture_output=True,
             text=True,
-            timeout=max(5, min(timeout, 600)),
+            timeout=max(5, min(timeout, 1800)),
             check=False,
             env=env,
         )

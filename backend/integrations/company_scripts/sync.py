@@ -10,7 +10,11 @@ from pathlib import Path
 from typing import Any
 
 from backend.integrations.company_scripts.catalog import CompanyScriptStore
-from backend.integrations.company_scripts.deps import ensure_scripts_venv, find_requirements_file
+from backend.integrations.company_scripts.deps import (
+    ensure_scripts_venv,
+    find_editable_package,
+    find_requirements_file,
+)
 from backend.integrations.git.api import resolve_repo_slug
 from backend.integrations.git.mirror import WorkspaceMirrorManager, _repo_dir_name
 from backend.models.config import AlfredConfig
@@ -65,7 +69,13 @@ def sync_scripts_repository(
         scripts_root=scripts_root,
         configured=remote.requirements_file,
     )
-    deps_result = ensure_scripts_venv(config, data_dir, requirements_file=requirements_file)
+    editable_package = find_editable_package(repo_root)
+    deps_result = ensure_scripts_venv(
+        config.scripts,
+        data_dir,
+        requirements_file=requirements_file,
+        editable_package=editable_package,
+    )
 
     playbooks_result: dict[str, Any] | None = None
     if remote.playbooks_path.strip():
@@ -105,6 +115,58 @@ def sync_scripts_repository(
         "deps": deps_result,
         "playbooks": playbooks_result,
         "message": _format_sync_message(action, slug, deps_result, playbooks_result),
+    }
+
+
+def setup_scripts_dependencies(
+    config: AlfredConfig,
+    data_dir: Path | None,
+    *,
+    pull: bool = False,
+) -> dict[str, Any]:
+    """Install script-repo deps into `.alfred/scripts-venv` (arsenal `make setup-py`).
+
+    Clones/pulls the remote repo when it is missing or when ``pull`` is true.
+    """
+    remote = config.scripts.remote
+    if not remote.repo.strip():
+        return {"ok": False, "message": "scripts.remote.repo is not configured."}
+    from backend.integrations.company_scripts.paths_helper import remote_repo_root, remote_scripts_root
+
+    repo_root = remote_repo_root(config, data_dir)
+    if pull or repo_root is None:
+        return sync_scripts_repository(config, data_dir)
+
+    scripts_root = remote_scripts_root(config, data_dir)
+    if scripts_root is None:
+        return {"ok": False, "repo": remote.repo, "message": f"Scripts path not found in repo: {remote.path or '.'}"}
+
+    requirements_file = find_requirements_file(
+        repo_root=repo_root,
+        scripts_root=scripts_root,
+        configured=remote.requirements_file,
+    )
+    editable_package = find_editable_package(repo_root)
+    deps_result = ensure_scripts_venv(
+        config.scripts,
+        data_dir,
+        requirements_file=requirements_file,
+        editable_package=editable_package,
+        force=True,
+    )
+    CompanyScriptStore(data_dir, config=config).reload()
+    ok = deps_result.get("ok", True)
+    return {
+        "ok": ok,
+        "repo": remote.repo,
+        "skipped": bool(deps_result.get("skipped")),
+        "scripts_root": str(scripts_root),
+        "requirements": str(requirements_file) if requirements_file else None,
+        "editable": deps_result.get("editable"),
+        "python_mode": remote.python_mode,
+        "python": deps_result.get("python"),
+        "deps": deps_result,
+        "message": str(deps_result.get("message") or "Dependencies ready."),
     }
 
 

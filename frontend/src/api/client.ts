@@ -818,6 +818,8 @@ export const api = {
   listScripts: () => request<ScriptsListResponse>("/api/scripts", {}, true),
   syncScripts: () =>
     request<ScriptsSyncResponse>("/api/scripts/sync", { method: "POST" }, true),
+  setupScripts: () =>
+    request<ScriptsSyncResponse>("/api/scripts/setup", { method: "POST" }, true),
 
   getIntegrationSyncStatus: () =>
     request<IntegrationSyncStatusResponse>("/api/integrations/sync/status", {}, true),
@@ -887,6 +889,20 @@ export const api = {
     request<ArtifactVersionResponse>(
       `/api/artifacts/${encodeURIComponent(slug)}`,
       { headers: getArtifactActorHeaders() },
+      true,
+    ),
+
+  deleteArtifactVersion: (slug: string, sha256: string) =>
+    request<{ ok: boolean; slug: string; slug_removed: boolean; deleted_sha256: string }>(
+      `/api/artifacts/${encodeURIComponent(slug)}/versions/${encodeURIComponent(sha256)}`,
+      { method: "DELETE", headers: getArtifactActorHeaders() },
+      true,
+    ),
+
+  deleteArtifactSlug: (slug: string) =>
+    request<{ ok: boolean; slug: string; slug_removed: boolean }>(
+      `/api/artifacts/${encodeURIComponent(slug)}`,
+      { method: "DELETE", headers: getArtifactActorHeaders() },
       true,
     ),
 
@@ -1665,6 +1681,8 @@ export type ArtifactSummary = {
   sha_url: string;
   owner_key?: string;
   owner_label?: string;
+  version_count?: number;
+  source?: string;
 };
 
 export type ArtifactListResponse = {

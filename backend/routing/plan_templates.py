@@ -2,10 +2,58 @@
 
 from __future__ import annotations
 
+import json
+import re
 from typing import Any
 
 from backend.routing.playbooks import Playbook, PlaybookStore, _best_trigger_len
 from backend.routing.tool_plan_types import ToolPlan, ToolPlanStep
+
+_ISO_DATE_RE = re.compile(r"\b(\d{4}-\d{2}-\d{2})\b")
+_RUN_DATE_SUFFIX_RE = re.compile(
+    r"\s+(?:for|on|dated?)\s+\d{4}-\d{2}-\d{2}\s*$",
+    re.I,
+)
+
+
+def extract_iso_date(intent: str) -> str:
+    """First YYYY-MM-DD in the user text, if any."""
+    match = _ISO_DATE_RE.search(intent or "")
+    return match.group(1) if match else ""
+
+
+def strip_run_date_suffix(intent: str) -> str:
+    """`run daily metrics oneshot for 2026-08-16` → `run daily metrics oneshot`."""
+    return _RUN_DATE_SUFFIX_RE.sub("", (intent or "").strip()).strip()
+
+
+def _inject_script_date(args_hint: dict[str, Any], report_date: str) -> None:
+    if not report_date:
+        return
+    nested = args_hint.get("args")
+    if nested is None:
+        args_hint["args"] = {"date": report_date}
+        return
+    if isinstance(nested, dict) and "date" not in nested:
+        nested["date"] = report_date
+
+
+def planned_args_addendum(plan: ToolPlan | None) -> str:
+    """Tell the worker to pass plan-template args (including a named report date)."""
+    if plan is None:
+        return ""
+    lines: list[str] = []
+    for step in plan.steps or []:
+        if step.args_hint:
+            lines.append(f"- `{step.tool}`: `{json.dumps(step.args_hint, sort_keys=True)}`")
+    if not lines:
+        return ""
+    return (
+        "\n\n## Planned tool arguments\n"
+        "Call each tool with these arguments. If `args.date` is set, the user named that "
+        "YYYY-MM-DD — do not omit it or substitute yesterday.\n"
+        + "\n".join(lines)
+    )
 
 
 def list_plan_templates(store: PlaybookStore) -> list[Playbook]:
@@ -62,6 +110,8 @@ def match_plan_template(
             args_hint.update(item["args"])
         if item.get("title"):
             args_hint.setdefault("title", item["title"])
+        if tool == "run_company_script":
+            _inject_script_date(args_hint, extract_iso_date(intent))
         steps.append(
             ToolPlanStep(
                 tool=tool,
@@ -74,8 +124,12 @@ def match_plan_template(
         return None
 
     confidence = min(0.95, max(min_confidence, 0.72 + min(best_len, 20) * 0.01))
+    report_date = extract_iso_date(intent)
+    goal = str(template.get("goal") or best.description or f"Run plan template {best.name}")
+    if report_date:
+        goal = f"{goal.rstrip('.')} for {report_date}"
     return ToolPlan(
-        goal=str(template.get("goal") or best.description or f"Run plan template {best.name}"),
+        goal=goal,
         confidence=confidence,
         tools_needed=tools,
         steps=steps,

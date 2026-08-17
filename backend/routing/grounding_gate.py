@@ -321,15 +321,124 @@ def validate_agent_result(
     return ValidationResult(passed=True)
 
 
+def _observation_payload(observation: str) -> dict[str, Any]:
+    try:
+        data = json.loads(observation or "")
+    except json.JSONDecodeError:
+        return {}
+    return data if isinstance(data, dict) else {}
+
+
+def _observation_data(observation: str) -> dict[str, Any]:
+    payload = _observation_payload(observation)
+    nested = payload.get("data")
+    if isinstance(nested, dict):
+        return nested
+    return payload
+
+
+def _script_stdout_json(inner: dict[str, Any]) -> dict[str, Any]:
+    parsed = inner.get("json")
+    if isinstance(parsed, dict):
+        return parsed
+    raw = inner.get("stdout")
+    if isinstance(raw, str) and raw.strip().startswith("{"):
+        try:
+            maybe = json.loads(raw)
+        except json.JSONDecodeError:
+            return {}
+        if isinstance(maybe, dict):
+            return maybe
+    return {}
+
+
+def _entry_succeeded(entry: ToolTraceEntry) -> bool:
+    if not entry.success or entry.result_kind == "error":
+        return False
+    inner = _observation_data(entry.observation)
+    if str(inner.get("status") or "").lower() == "error":
+        return False
+    if inner.get("ok") is False:
+        return False
+    exit_code = inner.get("exit_code")
+    if exit_code is not None:
+        try:
+            if int(exit_code) != 0:
+                return False
+        except (TypeError, ValueError):
+            pass
+    parsed = _script_stdout_json(inner)
+    if parsed and str(parsed.get("status") or "").lower() == "error":
+        return False
+    return True
+
+
+def _summarize_tool_entry(entry: ToolTraceEntry) -> str:
+    inner = _observation_data(entry.observation)
+    kind = entry.result_kind or _observation_payload(entry.observation).get("kind") or ""
+    tool = entry.tool
+
+    if kind == "company_script_run" or tool == "run_company_script":
+        name = str(inner.get("script") or "script")
+        parts = [f"`{name}`"]
+        exit_code = inner.get("exit_code")
+        if exit_code is not None:
+            parts.append(f"exited {exit_code}")
+        parsed = _script_stdout_json(inner)
+        report_date = str(parsed.get("report_date") or "").strip()
+        if report_date:
+            parts.append(f"report date {report_date}")
+        err = str(
+            parsed.get("error") or parsed.get("message") or inner.get("stderr") or ""
+        ).strip()
+        if err:
+            parts.append(err.replace("\n", " ")[:160])
+        return " — ".join(parts)
+
+    if kind == "html_artifact_published" or tool == "publish_html_artifact":
+        title = str(inner.get("title") or inner.get("slug") or "deck").strip()
+        url = str(inner.get("share_url") or inner.get("slug_url") or "").strip()
+        if url:
+            return f"{title} → `{url}`"
+        return title or "published"
+
+    if kind == "html_deck_saved" or tool == "save_html_deck":
+        path = str(inner.get("path") or inner.get("filename") or "").strip()
+        return f"saved `{path}`" if path else "deck saved"
+
+    message = str(inner.get("message") or "").strip()
+    if message:
+        return message[:200]
+    if kind:
+        return str(kind)
+    snippet = (entry.observation or "").strip().replace("\n", " ")
+    return (snippet[:160] + "…") if len(snippet) > 160 else snippet
+
+
 def _format_partial_results(trace: list[ToolTraceEntry]) -> str:
-    lines: list[str] = []
-    for entry in trace:
-        if not entry.success:
-            continue
-        snippet = entry.observation.strip()
-        if len(snippet) > 400:
-            snippet = snippet[:400] + "…"
-        lines.append(f"- `{entry.tool}` ({entry.result_kind or 'ok'}): {snippet}")
-    if not lines:
+    if not trace:
         return ""
-    return "**Verified tool results:**\n" + "\n".join(lines[:5])
+    rows: list[str] = []
+    failed = 0
+    succeeded = 0
+    for entry in trace[:8]:
+        ok = _entry_succeeded(entry)
+        if ok:
+            succeeded += 1
+            label = "Succeeded"
+        else:
+            failed += 1
+            label = "Failed"
+        summary = _summarize_tool_entry(entry)
+        rows.append(f"- **{label}** `{entry.tool}` — {summary}")
+    if not rows:
+        return ""
+    counts: list[str] = []
+    if failed:
+        counts.append(f"{failed} failed")
+    if succeeded:
+        counts.append(f"{succeeded} succeeded")
+    heading = "**Tool results**"
+    if counts:
+        heading += " — " + ", ".join(counts)
+    return heading + "\n\n" + "\n".join(rows)

@@ -68,8 +68,14 @@ def resolve_policy_skill(
         return fallback
 
     name = _INTENT_SKILL_MAP.get(plan.intent_class or "")
-    if not name and plan.intent_class.startswith("template."):
-        name = policy_for_tools(plan.tools_needed, data_dir=data_dir)
+    if plan.intent_class.startswith("template."):
+        template_name = plan.intent_class.split(".", 1)[1].strip()
+        if template_name:
+            templated = store.get_by_name(template_name)
+            if templated is not None:
+                return templated
+        if not name:
+            name = policy_for_tools(plan.tools_needed, data_dir=data_dir)
     if not name and plan.tools_needed:
         bundle_name = resolve_bundle_for_tools(plan.tools_needed, data_dir=data_dir)
         if bundle_name:

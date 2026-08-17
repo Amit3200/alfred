@@ -17,7 +17,10 @@ Config and encrypted secrets live in `.alfred/` (not a SaaS). Optional Ollama on
 - [Not built yet](#not-built-yet)
 - [Quick start](#quick-start)
 - [Setup guide](#setup-guide)
+- [Company scripts](#company-scripts)
+- [Logs](#logs)
 - [AWS integration](#aws-integration)
+- [HTML slides](#html-slides)
 - [Slack app](#slack-app)
 - [CLI reference](#cli-reference)
 - [Configuration](#configuration)
@@ -48,8 +51,9 @@ Config and encrypted secrets live in `.alfred/` (not a SaaS). Optional Ollama on
 | **Graphify** | Optional code graphs on sync — `query_graph` when `git.graphify_enabled`. |
 | **Task queue** | Persistent SQLite queue + background worker; checkpoint timeline in Admin → Usage. |
 | **Playbooks** | `.alfred/playbooks/*.md` — company triggers, formatting, investigation tools (local only). |
-| **Company scripts** | Local `.alfred/scripts/` plus optional Git repo (`scripts.remote.repo`, e.g. `FlexyPe/alfred_scripts`); `alfred scripts sync`; isolated venv for deps; playbooks link via `scripts:` + `run_company_script`. See [docs/scripts/remote-repo.md](docs/scripts/remote-repo.md). |
-| **Skills** | Bundled `skills/*.md` — investigate, review PR, git status, JIRA, AWS, summarize alerts. |
+| **Company scripts** | Local `.alfred/scripts/` plus optional Git repo (`scripts.remote.repo`); `alfred scripts sync` / `alfred scripts setup`; isolated venv; playbooks + `run_company_script`. See [Company scripts](#company-scripts). |
+| **HTML slides** | Generate decks, host at `/artifacts/s/{slug}`, version history in Admin → HTML slides. See [HTML slides](#html-slides). |
+| **Skills** | Bundled `skills/*.md` — investigate, review PR, git status, JIRA, AWS, HTML slides, summarize alerts. |
 | **AI** | Ollama, OpenAI-compat, Anthropic, Gemini, Kimi — per-task routing (`investigation`, `skill_matching`, …). |
 | **Task Planning** | Checklist-Based Task Planning Mode — pre-plans complex workflows, executes checklist step-by-step (`.alfred/plans/`). |
 | **Self-Improving** | Meta-Learning loop reflects on completed queries and writes playbooks to `.alfred/playbooks/`. |
@@ -71,9 +75,10 @@ Config and encrypted secrets live in `.alfred/` (not a SaaS). Optional Ollama on
 | `schedule_management.md` | Create/list/toggle/delete cron schedules |
 | `plan_task.md` | Standalone execution plan (`@alfred plan`) |
 | `create_pr.md` | Phase 1 isolated branch → commit → draft PR (`@alfred pr`) |
+| `html_slides.md` | Self-contained HTML decks + `save_html_deck` / `publish_html_artifact` |
 | `summarize_bugs.md` | Operational summaries from Slack context |
 
-Company-specific Athena tables (e.g. event dumps) → **`.alfred/playbooks/`** with `mode: investigation` and `allowed_tools`.
+Company-specific Athena tables (e.g. event dumps) → **`.alfred/playbooks/`** with `mode: investigation` and `allowed_tools`. Long-running jobs → local **script package** + `type: plan_template` playbook so chat/cron actually call `run_company_script`.
 
 ---
 
@@ -112,7 +117,9 @@ alfred token      # view admin username, password, and token for login
 alfred status     # init + Slack readiness
 ```
 
-Then complete [Setup guide](#setup-guide) for Slack, AI, Git, and optional AWS/JIRA.
+Then complete [Setup guide](#setup-guide) for Slack, AI, Git, optional AWS/JIRA, and [company scripts](#company-scripts).
+
+Logs while it boots: `.alfred/alfred.log` and `.alfred/run/alfred.stdout.log` — see [Logs](#logs).
 
 ---
 
@@ -229,9 +236,18 @@ cp docs/playbooks/example-slack-summaries.md .alfred/playbooks/my-alerts.md
 # add investigation playbooks for your Athena tables, alert bots, etc.
 ```
 
-Never commit `.alfred/` — secrets, DB, mirrors, playbooks.
+Never commit `.alfred/` — secrets, DB, mirrors, playbooks, scripts, artifacts.
 
-### 10 — Run
+### 10 — Company scripts (optional)
+
+If the team keeps jobs in a Git repo (Athena reports, metrics oneshots, CSV exports):
+
+1. Enable Git + paste a **git token** in Admin → Secrets
+2. Set `scripts.remote` in `.alfred/config.yaml` (see [Company scripts](#company-scripts))
+3. `alfred scripts sync` then `alfred scripts setup` (or Admin → Scripts → **Install deps**)
+4. Add a local playbook with `type: plan_template` and `allowed_tools: [run_company_script, …]` so chat/cron actually invoke the job
+
+### 11 — Run
 
 ```bash
 ./scripts/up.sh      # dev: API + Slack + Vite
@@ -239,7 +255,7 @@ alfred serve         # production API only
 alfred stop          # stop background processes
 ```
 
-Logs: `.alfred/alfred.log`
+If `alfred up` fails, read `.alfred/run/alfred.stdout.log` first — that is the process supervisor log, not only `.alfred/alfred.log`.
 
 ### Verify
 
@@ -251,7 +267,8 @@ Logs: `.alfred/alfred.log`
 | Git | `@alfred where is X handled in org/repo?` |
 | JIRA | `@alfred status of TECH-123` |
 | AWS | `@alfred query athena for order_id …` (with playbook + config) |
-| Usage | Admin → Usage — tokens, est. cost, tools |
+| Scripts | Admin → Scripts lists packages; say `run {script_or_playbook}` in Chat |
+| Usage | Admin → Usage — tokens, est. cost, tools, checkpoints |
 
 ---
 
@@ -273,6 +290,135 @@ For complex tasks (routed via `investigation` or `workflow` playbooks), Alfred g
 ### Centralized Prompts Registry
 All of Alfred's prompts (system instructions, Slack/GitHub formatting, Hermes loop directives, learning loops, planning checklists) are stored in a single editable file: `backend/orchestrator/prompts.yaml`. 
 You can customize Alfred's personality, formatting layouts, or planning guidelines directly in this file without modifying any code.
+
+---
+
+## Company scripts
+
+Company jobs live **outside Alfred core**: local packages under `.alfred/scripts/`, and/or a Git repo (`scripts.remote.repo`) that Alfred mirrors and runs in an isolated venv.
+
+Full layout and security notes: [`docs/scripts/remote-repo.md`](docs/scripts/remote-repo.md) · local packages: [`docs/scripts/README.md`](docs/scripts/README.md)
+
+### 1 — Config (`.alfred/config.yaml`)
+
+```yaml
+git:
+  enabled: true
+  provider: github
+  # token: set in Admin → Secrets (required to clone/pull)
+
+scripts:
+  enabled: true
+  timeout_seconds: 300          # raise to 1800 for long Athena jobs
+  remote:
+    repo: YourOrg/your-scripts  # e.g. FlexyPe/arsenal
+    branch: main
+    path: scripts               # folder of script.yaml packages (use a real dir, not the whole repo)
+    playbooks_path: ""          # optional: sync playbooks/*.md into .alfred/playbooks/
+    requirements_file: ""       # or py/requirements.txt for arsenal-style repos
+    python_mode: isolated       # isolated | alfred
+    sync_on_startup: true
+    sync_on_git_sync: true
+```
+
+| `python_mode` | Behavior |
+|---------------|----------|
+| **`isolated`** (default) | Create `.alfred/scripts-venv`, then `pip install -e ./py` when `py/pyproject.toml` exists (arsenal `make setup-py`), else `pip install -r requirements.txt`. |
+| **`alfred`** | Run with Alfred's interpreter — only libraries already installed with Alfred. |
+
+Startup sync **pulls git** and skips pip when the venv stamp is unchanged. Use `alfred scripts setup` (or **Install deps** in the UI) after requirements change.
+
+### 2 — Install
+
+```bash
+# Git token must already be in Admin → Secrets
+alfred scripts sync          # clone/pull + refresh catalog (+ install if venv is new)
+alfred scripts setup         # venv + pip (no pull)
+alfred scripts setup --pull  # pull then install
+alfred git sync              # also syncs scripts when sync_on_git_sync is true
+```
+
+Admin → **Scripts**: list packages, edit files, **Sync**, **Install deps**.
+
+Mirror path: `.alfred/repos/shared/{Org}__{repo}/`. Local packages in `.alfred/scripts/` **override** a remote package with the same name (hotfixes).
+
+### 3 — Invoke from chat or Slack
+
+A script listed in the prompt is **not** a tool. Alfred only runs it when a playbook/skill is bound and `run_company_script` is in `allowed_tools`.
+
+Reliable patterns:
+
+| You say | What should happen |
+|---------|-------------------|
+| `run daily_metrics_oneshot` | Bind playbook/script by name |
+| Trigger phrase from the playbook (`daily metrics oneshot`) | Plan template → `run_company_script` then publish/etc. |
+| `@alfred schedule … every day at 6am IST` | Cron enqueues `run {skill_name}` |
+
+Add a **plan template** in `.alfred/playbooks/` (see [`docs/playbooks/example-plan-template.md`](docs/playbooks/example-plan-template.md)):
+
+```yaml
+---
+name: nightly_report
+mode: workflow
+type: plan_template
+triggers:
+  - run nightly_report
+  - nightly report
+scripts:
+  - nightly_report
+allowed_tools:
+  - run_company_script
+  - publish_html_artifact
+plan_template:
+  intent_class: template.nightly_report
+  steps:
+    - tool: run_company_script
+      args: { script: nightly_report }
+    - tool: publish_html_artifact
+      args: { source_filename: report-latest.html, slug: nightly-report }
+---
+```
+
+If Chat replies in ~2 seconds with **LLM only** / ~32% confidence and no tool chips, the job **did not run**. Check [Logs](#logs) for `routed_playbook=None investigation=False`.
+
+### 4 — Long jobs
+
+Athena-style jobs can take many minutes. Raise `scripts.timeout_seconds` (max **1800**). The Chat reply waits until the script exits — there is no live Athena progress stream; use the logs below while it runs.
+
+---
+
+## Logs
+
+| Path | What it is |
+|------|------------|
+| `.alfred/alfred.log` | Application logger (routing, Slack, scripts sync, errors). `alfred status` prints this path. |
+| `.alfred/run/alfred.stdout.log` | Uvicorn + supervisor stdout. **`alfred up` failures** and WatchFiles reloads land here. |
+| `.alfred/run/frontend.stdout.log` | Vite dev server (`alfred up` with UI). |
+| Admin → **Usage** | Token usage, tool events, checkpoint timeline for a task. |
+| Admin → **Routing** | Last routing traces (skill, tool plan, scoped tools). |
+
+```bash
+# Live app log
+tail -f .alfred/alfred.log
+
+# Why did alfred up fail / is the API restarting?
+tail -f .alfred/run/alfred.stdout.log
+
+# Did this chat bind a playbook and call tools?
+rg "run_company_script|Plan template|Named run skill|routed_playbook|investigation=" .alfred/alfred.log | tail
+```
+
+Useful log lines:
+
+| Line | Meaning |
+|------|---------|
+| `Named run skill → nightly_report` / `Plan template → skill …` | Playbook bound; tools should run |
+| `routed_playbook=None investigation=False` | Conversational LLM only — **no script** |
+| `Scripts repo sync: … Scripts venv already installed` | Startup pull; deps skipped (expected) |
+| `Scripts repo … Installed editable py + …` | Fresh pip into `scripts-venv` |
+| `WatchFiles detected changes in '.alfred/scripts-venv/…'` | Should not happen on current `alfred up` (reload watches `backend/` only) |
+
+Docker: `docker compose logs -f alfred`
 
 ---
 
@@ -339,6 +485,25 @@ Admin → Health → **AWS** runs STS `GetCallerIdentity` when enabled.
 
 ---
 
+## HTML slides
+
+Alfred can build a self-contained HTML deck and host it at a stable slug.
+
+| Action | How |
+|--------|-----|
+| Create | Chat / Slack: “make slides …” → `html_slides` skill → `save_html_deck` |
+| Publish | `publish_html_artifact` with `slug` (e.g. `daily-metrics`) |
+| Open | `http://127.0.0.1:8080/artifacts/s/{slug}` (public share link) |
+| Manage | Admin → **HTML slides** — latest per slug; **View details** for older SHA, open/copy/delete |
+
+Set `artifacts.public_base_url` (e.g. `https://alfred.example.com`) so Slack replies include an absolute URL.
+
+Scripts that write HTML should copy the file to `.alfred/exports/` (e.g. `daily-metrics-latest.html`) and pass `source_filename` + `slug` to `publish_html_artifact`.
+
+Details: [`docs/guides/html-slides-artifacts.md`](docs/guides/html-slides-artifacts.md)
+
+---
+
 ## Slack app
 
 Configure at [api.slack.com/apps](https://api.slack.com/apps):
@@ -382,9 +547,11 @@ List shortcodes: `alfred slack emojis` (requires `emoji:read` scope). Custom + b
 | `alfred exec "…"` | Run locally (no Slack post) |
 | `alfred pr [CONTEXT]` | Phase 1 PR flow — same as `@alfred pr` in Slack (use `-i` to prompt) |
 | `alfred plan [TASK]` | Standalone checklist plan — same as `@alfred plan` (use `-i` to prompt) |
-| `alfred git sync` | Clone/update shared mirrors |
+| `alfred git sync` | Clone/update shared mirrors (also scripts repo when `sync_on_git_sync`) |
 | `alfred git workspaces` | List session workspaces |
 | `alfred git cleanup` | Remove expired workspaces |
+| `alfred scripts sync` | Pull `scripts.remote.repo` and refresh the catalog |
+| `alfred scripts setup` | Install deps into `.alfred/scripts-venv` (`--pull` to git-pull first) |
 | `alfred context generate` | Regenerate main-repo markdown context |
 | `alfred slack emojis` | List workspace emoji shortcodes (`-q`, `--yaml`) |
 | `alfred ollama status` | Ollama install/runtime |
@@ -406,9 +573,16 @@ Global: `--data-dir PATH` (default: `ALFRED_DATA_DIR` or `./.alfred`)
 | `secrets.enc` | Encrypted tokens |
 | `.key` | Local encryption key |
 | `alfred.db` | Sessions + observability (SQLite) |
-| `alfred.log` | Runtime logs |
+| `alfred.log` | Application log (see [Logs](#logs)) |
+| `run/alfred.stdout.log` | API process stdout (`alfred up`) |
+| `run/frontend.stdout.log` | Vite stdout |
 | `playbooks/` | **Your** domain playbooks (gitignored) |
-| `repos/shared/` | Git mirror cache |
+| `scripts/` | Local script packages (override remote names) |
+| `scripts-venv/` | Isolated Python for remote script deps |
+| `exports/` | Script/HTML outputs (e.g. `*-latest.html`) |
+| `artifacts/` | Hosted HTML blobs + SQLite index |
+| `plans/` | Checklist plans (`plan_<task_id>.md`) |
+| `repos/shared/` | Git mirror cache (including scripts repo) |
 | `repos/workspaces/` | Per-conversation workspaces |
 | `cache/playbook_urls/` | Fetched live URL cache |
 
@@ -492,6 +666,8 @@ alfred/
 ├── skills/                    # Generic skills (committed)
 ├── docs/
 │   ├── playbooks/             # Example playbooks + README
+│   ├── scripts/               # Local + remote company scripts
+│   ├── guides/                # HTML slides, Slack boards
 │   └── build-reference/       # Architecture + implementation tracker
 ├── tests/
 ├── scripts/                   # setup.sh, up.sh, dev.sh, tunnel.sh
@@ -589,6 +765,8 @@ Format: [`docs/playbooks/README.md`](docs/playbooks/README.md)
 @alfred status of TECH-123
 @alfred query athena checkout_events for order_id abc-123 in the last 24h
 @alfred query cloudwatch logs for checkout-api errors in the last hour
+@alfred run nightly_report
+@alfred schedule nightly report every weekday at 9am IST
 @alfred map all slack users to jira and github
 ```
 
@@ -597,6 +775,8 @@ Format: [`docs/playbooks/README.md`](docs/playbooks/README.md)
 ```bash
 alfred exec "list open PRs on YourOrg/backend"
 alfred git sync
+alfred scripts sync
+alfred scripts setup
 alfred slack emojis --yaml
 alfred slack emojis -q cat
 ```
@@ -656,6 +836,9 @@ Release wheel: `./scripts/build-release.sh`
 | [`docs/build-reference/v0.md`](docs/build-reference/v0.md) | Layer architecture |
 | [`docs/build-reference/idea.md`](docs/build-reference/idea.md) | Original blueprint |
 | [`docs/playbooks/README.md`](docs/playbooks/README.md) | Playbook format |
+| [`docs/scripts/README.md`](docs/scripts/README.md) | Local script packages |
+| [`docs/scripts/remote-repo.md`](docs/scripts/remote-repo.md) | Remote scripts repo + isolated venv |
+| [`docs/guides/html-slides-artifacts.md`](docs/guides/html-slides-artifacts.md) | HTML slides hosting + slugs |
 
 ---
 

@@ -120,6 +120,7 @@ def generate_repo_context(
     *,
     repo: str | None = None,
     ai: AIConfig | None = None,
+    run_graphify: bool = True,
 ) -> dict[str, Any]:
     """Scan shared mirror and write .alfred/context/{repo}/ overview + layout MD."""
     slug = resolve_repo_slug(repo or git.main_repo or "", git) if (repo or git.main_repo) else None
@@ -154,7 +155,7 @@ def generate_repo_context(
     logger.info("Generated repo context for %s at %s", slug, out_dir)
 
     graph_result: dict[str, Any] | None = None
-    if git.graphify_enabled:
+    if run_graphify and git.graphify_enabled:
         from backend.context.graphify import extract_graph
 
         graph_result = extract_graph(data_dir, git, repo=slug, ai=ai)

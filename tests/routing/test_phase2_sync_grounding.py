@@ -52,6 +52,60 @@ def test_grounding_gate_rejects_fabricated_url():
     assert result.fallback
 
 
+def test_format_partial_results_marks_script_fail_and_publish_ok():
+    from backend.routing.grounding_gate import _format_partial_results
+
+    script_obs = json.dumps(
+        {
+            "kind": "company_script_run",
+            "data": {
+                "script": "daily_metrics_oneshot",
+                "runtime": "python3",
+                "entry": "main.py",
+                "exit_code": 1,
+                "stdout": json.dumps(
+                    {"status": "error", "exit_code": 1, "report_date": "2026-08-17"}
+                ),
+            },
+        }
+    )
+    publish_obs = json.dumps(
+        {
+            "kind": "html_artifact_published",
+            "data": {
+                "slug": "daily-metrics",
+                "title": "Daily metrics — 2026-08-17",
+                "share_url": "/artifacts/s/daily-metrics",
+                "slug_url": "/artifacts/s/daily-metrics",
+            },
+        }
+    )
+    text = _format_partial_results(
+        [
+            ToolTraceEntry(
+                tool="run_company_script",
+                success=True,
+                result_kind="company_script_run",
+                observation=script_obs,
+            ),
+            ToolTraceEntry(
+                tool="publish_html_artifact",
+                success=True,
+                result_kind="html_artifact_published",
+                observation=publish_obs,
+            ),
+        ]
+    )
+    assert "**Failed** `run_company_script`" in text
+    assert "exited 1" in text
+    assert "**Succeeded** `publish_html_artifact`" in text
+    assert "/artifacts/s/daily-metrics" in text
+    assert "1 failed" in text
+    assert "1 succeeded" in text
+    assert "Verified tool results" not in text
+    assert script_obs[:80] not in text
+
+
 def test_grounding_gate_allows_matching_url():
     url = "https://docs.google.com/spreadsheets/d/abc123/edit"
     trace = [

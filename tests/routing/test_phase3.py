@@ -121,6 +121,169 @@ body
     assert skill.name == "repo_knowledge"
 
 
+def test_scheduler_binds_playbook_by_skill_name(tmp_path: Path, monkeypatch):
+    playbooks = tmp_path / "playbooks"
+    playbooks.mkdir()
+    (playbooks / "daily_metrics_oneshot.md").write_text(
+        """---
+name: daily_metrics_oneshot
+mode: workflow
+triggers:
+  - run daily_metrics_oneshot
+allowed_tools:
+  - run_company_script
+  - publish_html_artifact
+---
+# body
+""",
+        encoding="utf-8",
+    )
+    empty_skills = tmp_path / "empty_skills"
+    empty_skills.mkdir()
+    monkeypatch.setattr("backend.routing.playbooks.bundled_skills_dir", lambda: empty_skills)
+    monkeypatch.setattr("backend.routing.playbooks.playbooks_dir", lambda _data: playbooks)
+
+    from backend.orchestrator.processor import TaskProcessor
+    from backend.routing import RouteContext, RouteMode
+
+    config = AlfredConfig(
+        routing=RoutingConfig(
+            plan_first_routing=True,
+            skill_router_fallback=False,
+            planner_strategy="llm_first",
+        ),
+    )
+    processor = TaskProcessor(config)
+    processor.router = MagicMock()
+    processor.router.get.return_value = MagicMock(is_available=lambda: True)
+    processor._playbooks = PlaybookStore(tmp_path)
+    task = Task(
+        source="scheduler",
+        user_id="scheduler",
+        channel_id="Cmetrics",
+        raw_text="Run scheduled job daily_metrics_oneshot",
+        cleaned_intent="run daily_metrics_oneshot",
+    )
+    ctx = RouteContext(intent=task.cleaned_intent, mode=RouteMode.INVESTIGATION)
+    skill = processor._resolve_investigation_skill(ctx, task)
+    assert skill is not None
+    assert skill.name == "daily_metrics_oneshot"
+
+
+def test_ui_run_daily_metrics_binds_despite_conversational_classifier(
+    tmp_path: Path, monkeypatch
+):
+    playbooks = tmp_path / "playbooks"
+    playbooks.mkdir()
+    (playbooks / "daily_metrics_oneshot.md").write_text(
+        """---
+name: daily_metrics_oneshot
+mode: workflow
+type: plan_template
+triggers:
+  - run daily_metrics_oneshot
+  - daily metrics oneshot
+allowed_tools:
+  - run_company_script
+  - publish_html_artifact
+plan_template:
+  goal: Run daily metrics
+  intent_class: template.daily_metrics_oneshot
+  steps:
+    - tool: run_company_script
+      args: { script: daily_metrics_oneshot }
+    - tool: publish_html_artifact
+      args: { slug: daily-metrics }
+---
+# body
+""",
+        encoding="utf-8",
+    )
+    empty_skills = tmp_path / "empty_skills"
+    empty_skills.mkdir()
+    monkeypatch.setattr("backend.routing.playbooks.bundled_skills_dir", lambda: empty_skills)
+    monkeypatch.setattr("backend.routing.playbooks.playbooks_dir", lambda _data: playbooks)
+
+    from backend.orchestrator.processor import TaskProcessor
+    from backend.routing import RouteContext, RouteMode
+
+    config = AlfredConfig(
+        routing=RoutingConfig(
+            plan_first_routing=True,
+            skill_router_fallback=True,
+            planner_strategy="llm_first",
+            phrase_routing_enabled=False,
+        ),
+    )
+    processor = TaskProcessor(config)
+    processor.router = MagicMock()
+    processor.router.get.return_value = MagicMock(is_available=lambda: True)
+    processor._playbooks = PlaybookStore(tmp_path)
+    task = Task(
+        source="ui",
+        user_id="u1",
+        channel_id="c1",
+        raw_text="run daily metrics oneshot",
+        cleaned_intent="run daily metrics oneshot",
+        metadata={"turn_plan": {"intent_class": "conversational", "confidence": 0.32}},
+    )
+    ctx = RouteContext(intent=task.cleaned_intent, mode=RouteMode.INVESTIGATION)
+    skill = processor._resolve_investigation_skill(ctx, task)
+    assert skill is not None
+    assert skill.name == "daily_metrics_oneshot"
+
+
+def test_ui_run_daily_metrics_binds_with_explicit_date(tmp_path: Path, monkeypatch):
+    playbooks = tmp_path / "playbooks"
+    playbooks.mkdir()
+    (playbooks / "daily_metrics_oneshot.md").write_text(
+        """---
+name: daily_metrics_oneshot
+mode: workflow
+type: plan_template
+triggers:
+  - daily metrics oneshot
+allowed_tools:
+  - run_company_script
+---
+# body
+""",
+        encoding="utf-8",
+    )
+    empty_skills = tmp_path / "empty_skills"
+    empty_skills.mkdir()
+    monkeypatch.setattr("backend.routing.playbooks.bundled_skills_dir", lambda: empty_skills)
+    monkeypatch.setattr("backend.routing.playbooks.playbooks_dir", lambda _data: playbooks)
+
+    from backend.orchestrator.processor import TaskProcessor
+    from backend.routing import RouteContext, RouteMode
+
+    processor = TaskProcessor(
+        AlfredConfig(
+            routing=RoutingConfig(
+                plan_first_routing=True,
+                skill_router_fallback=True,
+                planner_strategy="llm_first",
+                phrase_routing_enabled=False,
+            ),
+        )
+    )
+    processor.router = MagicMock()
+    processor.router.get.return_value = MagicMock(is_available=lambda: True)
+    processor._playbooks = PlaybookStore(tmp_path)
+    task = Task(
+        source="ui",
+        user_id="u1",
+        channel_id="c1",
+        raw_text="run daily metrics oneshot for 2026-08-16",
+        cleaned_intent="run daily metrics oneshot for 2026-08-16",
+    )
+    ctx = RouteContext(intent=task.cleaned_intent, mode=RouteMode.INVESTIGATION)
+    skill = processor._resolve_investigation_skill(ctx, task)
+    assert skill is not None
+    assert skill.name == "daily_metrics_oneshot"
+
+
 def test_format_doc_search_not_found():
     text = format_doc_search({"query": "missing topic", "results": []})
     assert "No documentation found" in text

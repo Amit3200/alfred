@@ -36,6 +36,42 @@ logger = logging.getLogger(__name__)
 
 
 class InvestigationMixin:
+    def _scheduled_job_skill(self, task: Task) -> Playbook | None:
+        """Bind `run {skill_name}` from cron or chat (spaces or underscores)."""
+        from backend.routing.plan_templates import strip_run_date_suffix
+
+        intent = strip_run_date_suffix(task.cleaned_intent or "")
+        if not intent.lower().startswith("run "):
+            return None
+        name = intent[4:].strip()
+        if not name:
+            return None
+        found = self._playbooks.get_by_name(name)
+        if found is None and " " in name:
+            found = self._playbooks.get_by_name(name.replace(" ", "_"))
+        return found
+
+    def _plan_template_skill(self, route_context: Any) -> Playbook | None:
+        """Match `.alfred/playbooks/` plan templates by trigger (cheap, no LLM)."""
+        from backend.orchestrator.graph.skill_policy import resolve_policy_skill
+        from backend.routing.plan_templates import match_plan_template
+
+        plan = match_plan_template(
+            route_context.intent,
+            self._playbooks,
+            channel_id=getattr(route_context, "channel_id", "") or "",
+            repo=getattr(route_context, "repo", "") or "",
+            min_confidence=self.config.routing.plan_template_min_confidence,
+        )
+        if plan is None:
+            return None
+        return resolve_policy_skill(
+            plan,
+            self._playbooks,
+            fallback=None,
+            data_dir=self._data_dir_path(),
+        )
+
     def _apply_turn_plan_skill(self, investigation: Playbook | None, turn_plan: Any) -> Playbook | None:
         """Prefer classifier skill when JIRA vs Slack List would otherwise collide."""
         from backend.routing.classifier.intent_classes import is_html_slides_intent
@@ -78,6 +114,16 @@ class InvestigationMixin:
             if slides_skill is not None:
                 logger.info("HTML slides intent → skill html_slides")
                 return slides_skill
+
+        named = self._scheduled_job_skill(task)
+        if named is not None:
+            logger.info("Named run skill → %s (source=%s)", named.name, task.source)
+            return named
+
+        templated = self._plan_template_skill(route_context)
+        if templated is not None:
+            logger.info("Plan template → skill %s", templated.name)
+            return templated
 
         if session:
             forced_skill = str(session.metadata.get("force_investigation_skill") or "").strip()

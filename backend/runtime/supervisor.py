@@ -116,6 +116,26 @@ def _start_logged_process(
     return proc
 
 
+def _uvicorn_cmd(*, host: str, port: int, reload: bool) -> list[str]:
+    """API process command. Reload watches only ``backend/`` so ``.alfred/``
+    (scripts-venv, repo mirrors) cannot trigger an infinite WatchFiles loop.
+    """
+    cmd = [
+        sys.executable,
+        "-m",
+        "uvicorn",
+        "backend.api.app:build_app",
+        "--factory",
+        "--host",
+        host,
+        "--port",
+        str(port),
+    ]
+    if reload:
+        cmd.extend(["--reload", "--reload-dir", str(PROJECT_ROOT / "backend")])
+    return cmd
+
+
 def _wait_for_http(url: str, retries: int = 15) -> bool:
     if "://0.0.0.0:" in url:
         url = url.replace("://0.0.0.0:", "://127.0.0.1:")
@@ -166,19 +186,7 @@ def start_all(
 
     env = os.environ.copy()
     env[ENV_DATA_DIR] = str(data_dir)
-    uvicorn_cmd = [
-        sys.executable,
-        "-m",
-        "uvicorn",
-        "backend.api.app:build_app",
-        "--factory",
-        "--host",
-        host,
-        "--port",
-        str(port),
-    ]
-    if with_frontend:
-        uvicorn_cmd.append("--reload")
+    uvicorn_cmd = _uvicorn_cmd(host=host, port=port, reload=with_frontend)
 
     alfred_proc = _start_logged_process(
         uvicorn_cmd,
@@ -189,7 +197,8 @@ def start_all(
     )
 
     api_url = f"http://{host}:{port}"
-    if alfred_proc.poll() is not None or not _wait_for_http(f"{api_url}/api/health"):
+    # Startup can include Slack + a scripts-repo git pull; 7.5s was too tight.
+    if alfred_proc.poll() is not None or not _wait_for_http(f"{api_url}/api/health", retries=40):
         _stop_pid(alfred_proc.pid, "Alfred")
         _clear_service_pid(data_dir, "alfred")
         return {

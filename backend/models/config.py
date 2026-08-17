@@ -389,8 +389,8 @@ class ScriptsConfig(BaseModel):
     timeout_seconds: int = Field(
         default=120,
         ge=5,
-        le=600,
-        description="Max seconds for company script execution.",
+        le=1800,
+        description="Max seconds for company script execution (Athena jobs may need 10–30 min).",
     )
     remote: ScriptsRemoteConfig = Field(default_factory=ScriptsRemoteConfig)
 

@@ -1839,6 +1839,36 @@ body,
   border-bottom: 1px solid var(--alfred-border-subtle);
 }
 
+.alfred-chat-markdown li.alfred-tool-result {
+  padding: 0.55em 0.7em 0.55em 1.15em;
+  margin: 0.35em 0;
+  border-bottom: none;
+  border-radius: 8px;
+  border: 1px solid var(--alfred-border-subtle);
+}
+
+.alfred-chat-markdown li.alfred-tool-result::before {
+  content: none;
+}
+
+.alfred-chat-markdown li.alfred-tool-result-fail {
+  border-color: color-mix(in srgb, #e5484d 45%, var(--alfred-border-subtle));
+  background: color-mix(in srgb, #e5484d 10%, transparent);
+}
+
+.alfred-chat-markdown li.alfred-tool-result-fail strong:first-child {
+  color: #e5484d;
+}
+
+.alfred-chat-markdown li.alfred-tool-result-ok {
+  border-color: color-mix(in srgb, #30a46c 45%, var(--alfred-border-subtle));
+  background: color-mix(in srgb, #30a46c 10%, transparent);
+}
+
+.alfred-chat-markdown li.alfred-tool-result-ok strong:first-child {
+  color: #30a46c;
+}
+
 .alfred-chat-markdown li::before {
   content: "•";
   position: absolute;

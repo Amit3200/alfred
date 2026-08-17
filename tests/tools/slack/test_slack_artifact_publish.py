@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from backend.artifacts.actor import resolve_publish_actor, slack_actor
+from backend.artifacts.actor import resolve_publish_actor, scheduler_actor, slack_actor
 from backend.artifacts.formatting import format_published_artifact_slack
 from backend.config_manager import ConfigManager
 from backend.models.task import Task
@@ -28,6 +28,20 @@ def test_resolve_publish_actor_from_slack_task():
     assert actor.label == "Amit"
     assert source == "slack"
     assert slack_uid == "U012ABC"
+
+
+def test_resolve_publish_actor_from_scheduler_task():
+    task = Task(
+        source="scheduler",
+        user_id="scheduler",
+        channel_id="Cmetrics",
+        raw_text="Run scheduled job daily_metrics_oneshot",
+        cleaned_intent="run daily_metrics_oneshot",
+    )
+    actor, source, slack_uid = resolve_publish_actor(task=task)
+    assert actor == scheduler_actor()
+    assert source == "scheduler"
+    assert slack_uid == ""
 
 
 def test_publish_html_artifact_slack_actor_and_source(tmp_path):
@@ -67,6 +81,41 @@ def test_publish_html_artifact_slack_actor_and_source(tmp_path):
     rows = list_mine(db_path(tmp_path), owner_key="slack:U99")
     assert len(rows) == 1
     assert rows[0]["slug"] == "team-review"
+
+
+def test_scheduler_publish_visible_to_admin_list(tmp_path):
+    manager = ConfigManager(tmp_path)
+    manager.init()
+    config, _ = manager.load_merged()
+    manager.save_merged(config, _)
+
+    registry = ToolRegistry()
+    registry.current_task = Task(
+        source="scheduler",
+        user_id="scheduler",
+        channel_id="Cmetrics",
+        raw_text="Run scheduled job daily_metrics_oneshot",
+        cleaned_intent="run daily_metrics_oneshot",
+    )
+    registry.alfred_config = config
+    register_artifact_tools(registry, config=config, data_dir=tmp_path)
+
+    result = registry.run(
+        "publish_html_artifact",
+        {"html": SAMPLE, "slug": "daily-metrics", "title": "Daily metrics"},
+        allowed=["publish_html_artifact"],
+    )
+    assert result.kind == "html_artifact_published"
+    assert result.data["owner_key"] == "admin:shared"
+    assert result.data["source"] == "scheduler"
+
+    from backend.db.artifacts_db import list_mine
+    from backend.paths import db_path
+
+    rows = list_mine(db_path(tmp_path), owner_key="admin:tester")
+    assert any(row["slug"] == "daily-metrics" for row in rows)
+    slack_rows = list_mine(db_path(tmp_path), owner_key="slack:U99")
+    assert slack_rows == []
 
 
 def test_format_published_artifact_slack_sha_mode():

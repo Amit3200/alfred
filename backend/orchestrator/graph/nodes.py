@@ -238,6 +238,16 @@ def run_worker_node(state: AlfredGraphState, config: RunnableConfig) -> dict[str
             content=f"{messages[0].content.rstrip()}\n\n{manifest}",
         )
 
+    if plan and messages and messages[0].role == "system":
+        from backend.routing.plan_templates import planned_args_addendum
+
+        planned = planned_args_addendum(plan)
+        if planned:
+            messages[0] = Message(
+                role="system",
+                content=f"{messages[0].content.rstrip()}{planned}",
+            )
+
     if plan and should_use_subagents(plan):
         extra = "\n\n".join(
             build_subagent_manifest(domain, steps)

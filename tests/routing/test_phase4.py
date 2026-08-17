@@ -99,6 +99,38 @@ plan_template:
     assert "run_company_script" in plan.tools_needed
 
 
+def test_match_plan_template_injects_named_date(tmp_path: Path, monkeypatch):
+    playbooks_dir = tmp_path / "playbooks"
+    playbooks_dir.mkdir()
+    (playbooks_dir / "daily_metrics_oneshot.md").write_text(
+        """---
+name: daily_metrics_oneshot
+type: plan_template
+triggers:
+  - daily metrics oneshot
+plan_template:
+  goal: Run daily metrics
+  steps:
+    - tool: run_company_script
+      args: { script: daily_metrics_oneshot }
+---
+""",
+        encoding="utf-8",
+    )
+    empty_skills = tmp_path / "empty_skills"
+    empty_skills.mkdir()
+    monkeypatch.setattr("backend.routing.playbooks.bundled_skills_dir", lambda: empty_skills)
+    monkeypatch.setattr("backend.routing.playbooks.playbooks_dir", lambda _data: playbooks_dir)
+
+    store = PlaybookStore(data_dir=tmp_path)
+    plan = match_plan_template("run daily metrics oneshot for 2026-08-16", store)
+    assert plan is not None
+    script_step = next(s for s in plan.steps if s.tool == "run_company_script")
+    assert script_step.args_hint["script"] == "daily_metrics_oneshot"
+    assert script_step.args_hint["args"]["date"] == "2026-08-16"
+    assert "2026-08-16" in plan.goal
+
+
 def test_phrase_routing_disabled_skips_investigation_keyword(tmp_path: Path, monkeypatch):
     empty_skills = tmp_path / "empty_skills"
     empty_skills.mkdir()
@@ -139,3 +171,45 @@ def test_routing_config_defaults():
     routing = RoutingConfig()
     assert routing.phrase_routing_enabled is False
     assert routing.plan_template_min_confidence == 0.7
+
+
+def test_resolve_policy_skill_uses_plan_template_playbook(tmp_path: Path, monkeypatch):
+    playbooks_dir = tmp_path / "playbooks"
+    playbooks_dir.mkdir()
+    (playbooks_dir / "daily_metrics_oneshot.md").write_text(
+        """---
+name: daily_metrics_oneshot
+mode: workflow
+type: plan_template
+allowed_tools:
+  - run_company_script
+  - publish_html_artifact
+plan_template:
+  intent_class: template.daily_metrics_oneshot
+  steps:
+    - tool: run_company_script
+    - tool: publish_html_artifact
+---
+# body
+""",
+        encoding="utf-8",
+    )
+    empty_skills = tmp_path / "empty_skills"
+    empty_skills.mkdir()
+    monkeypatch.setattr("backend.routing.playbooks.bundled_skills_dir", lambda: empty_skills)
+    monkeypatch.setattr("backend.routing.playbooks.playbooks_dir", lambda _data: playbooks_dir)
+
+    from backend.orchestrator.graph.skill_policy import resolve_policy_skill
+    from backend.routing.tool_plan_types import ToolPlan
+
+    store = PlaybookStore(data_dir=tmp_path)
+    plan = ToolPlan(
+        goal="publish daily metrics",
+        confidence=0.9,
+        tools_needed=["run_company_script", "publish_html_artifact"],
+        intent_class="template.daily_metrics_oneshot",
+        strategy="plan_template",
+    )
+    skill = resolve_policy_skill(plan, store, fallback=None)
+    assert skill is not None
+    assert skill.name == "daily_metrics_oneshot"

@@ -566,6 +566,33 @@ def resolve_tool_plan(
         )
         return slides_plan
 
+    if playbook_store is not None:
+        from backend.routing.plan_templates import match_plan_template
+
+        template_plan = match_plan_template(
+            context.intent,
+            playbook_store,
+            channel_id=context.channel_id,
+            repo=context.repo,
+            min_confidence=config.routing.plan_template_min_confidence,
+        )
+        if template_plan:
+            if skill_allowed:
+                allowed = set(skill_allowed)
+                filtered = [t for t in template_plan.tools_needed if t in allowed]
+                if filtered:
+                    template_plan.tools_needed = filtered
+                    template_plan.steps = [s for s in template_plan.steps if s.tool in allowed]
+                else:
+                    template_plan = None
+            if template_plan and template_plan.confidence >= min_conf:
+                logger.info(
+                    "Plan template: intent=%s tools=%s",
+                    template_plan.intent_class,
+                    template_plan.tools_needed,
+                )
+                return template_plan
+
     if playbook_store is not None and skill_allowed:
         from backend.routing.workflow_chain import plan_from_playbook_chain
 
@@ -642,28 +669,6 @@ def resolve_tool_plan(
     )
     if plan and plan.confidence >= min_conf:
         return plan
-
-    if playbook_store is not None:
-        from backend.routing.plan_templates import match_plan_template
-
-        template_plan = match_plan_template(
-            context.intent,
-            playbook_store,
-            channel_id=context.channel_id,
-            repo=context.repo,
-            min_confidence=config.routing.plan_template_min_confidence,
-        )
-        if template_plan:
-            if skill_allowed:
-                allowed = set(skill_allowed)
-                filtered = [t for t in template_plan.tools_needed if t in allowed]
-                if filtered:
-                    template_plan.tools_needed = filtered
-                    template_plan.steps = [s for s in template_plan.steps if s.tool in allowed]
-                else:
-                    template_plan = None
-            if template_plan and template_plan.confidence >= min_conf:
-                return template_plan
 
     if not llm_first and planner_llm_enabled(config) and provider is not None:
         llm_plan = plan_tools_llm(

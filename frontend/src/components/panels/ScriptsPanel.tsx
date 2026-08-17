@@ -1,5 +1,6 @@
 import {
   DeleteOutlined,
+  DownloadOutlined,
   FileAddOutlined,
   PlusOutlined,
   SaveOutlined,
@@ -85,6 +86,7 @@ export function ScriptsPanel() {
   const [exampleAvailable, setExampleAvailable] = useState(false);
   const [remoteInfo, setRemoteInfo] = useState<ScriptsRemoteInfo | null>(null);
   const [syncing, setSyncing] = useState(false);
+  const [settingUp, setSettingUp] = useState(false);
   const [loading, setLoading] = useState(true);
   const [selectedPackage, setSelectedPackage] = useState<string | null>(null);
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
@@ -165,6 +167,25 @@ export function ScriptsPanel() {
     }
   };
 
+  const setupRemoteScripts = async () => {
+    setSettingUp(true);
+    try {
+      const result = await api.setupScripts();
+      if (result.skipped) {
+        notify("info", result.message || "Nothing to install.");
+      } else if (result.ok) {
+        notify("success", result.message || "Script dependencies installed");
+        await loadList();
+      } else {
+        notify("error", result.message || "Scripts setup failed");
+      }
+    } catch (err) {
+      notify("error", err instanceof Error ? err.message : "Scripts setup failed");
+    } finally {
+      setSettingUp(false);
+    }
+  };
+
   const syncButton = (variant: "primary" | "default" = "default") => (
     <Tooltip title={`Pull latest ${remoteBranch} from ${remoteInfo?.repo ?? "remote repo"}`}>
       <Button
@@ -174,6 +195,18 @@ export function ScriptsPanel() {
         onClick={() => void syncRemoteScripts()}
       >
         Sync
+      </Button>
+    </Tooltip>
+  );
+
+  const setupButton = (
+    <Tooltip title="Install Python deps into .alfred/scripts-venv (arsenal make setup-py)">
+      <Button
+        icon={<DownloadOutlined />}
+        loading={settingUp}
+        onClick={() => void setupRemoteScripts()}
+      >
+        Install deps
       </Button>
     </Tooltip>
   );
@@ -376,9 +409,10 @@ export function ScriptsPanel() {
             </div>
             <Space direction="vertical" align="end">
               {syncButton("primary")}
+              {setupButton}
               <Typography.Text type="secondary" style={{ fontSize: 12, maxWidth: 240, textAlign: "right" }}>
-                Pulls latest <Typography.Text code>{remoteBranch}</Typography.Text> — same as{" "}
-                <Typography.Text code>alfred scripts sync</Typography.Text>. Requires Git token in Secrets.
+                Sync pulls git. Install deps is <Typography.Text code>alfred scripts setup</Typography.Text>{" "}
+                (venv + pip, same as arsenal <Typography.Text code>make setup-py</Typography.Text>).
               </Typography.Text>
             </Space>
           </Flex>
@@ -404,7 +438,12 @@ export function ScriptsPanel() {
       )}
 
       <Flex gap={8} wrap="wrap" style={{ marginBottom: 16 }}>
-        {remoteInfo?.repo ? syncButton("default") : null}
+        {remoteInfo?.repo ? (
+          <>
+            {syncButton("default")}
+            {setupButton}
+          </>
+        ) : null}
         <Button type="primary" icon={<PlusOutlined />} onClick={() => setNewOpen(true)}>
           New package
         </Button>

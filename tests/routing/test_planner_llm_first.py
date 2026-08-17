@@ -108,6 +108,71 @@ body
     assert skill.name == "slack_board_management"
 
 
+def test_plan_template_beats_llm_first(tmp_path, monkeypatch):
+    playbooks = tmp_path / "playbooks"
+    playbooks.mkdir()
+    (playbooks / "daily_metrics_oneshot.md").write_text(
+        """---
+name: daily_metrics_oneshot
+mode: workflow
+type: plan_template
+triggers:
+  - run daily_metrics_oneshot
+plan_template:
+  goal: Run daily metrics and publish
+  intent_class: template.daily_metrics_oneshot
+  steps:
+    - tool: run_company_script
+      args: { script: daily_metrics_oneshot }
+    - tool: publish_html_artifact
+      args: { source_filename: daily-metrics-latest.html, slug: daily-metrics }
+---
+# body
+""",
+        encoding="utf-8",
+    )
+    empty_skills = tmp_path / "empty_skills"
+    empty_skills.mkdir()
+    monkeypatch.setattr("backend.routing.playbooks.bundled_skills_dir", lambda: empty_skills)
+    monkeypatch.setattr("backend.routing.playbooks.playbooks_dir", lambda _data: playbooks)
+
+    config = AlfredConfig(routing=RoutingConfig(planner_strategy="llm_first"))
+    task = Task(
+        source="scheduler",
+        user_id="scheduler",
+        channel_id="C1",
+        raw_text="Run scheduled job daily_metrics_oneshot",
+        cleaned_intent="run daily_metrics_oneshot",
+    )
+    context = RouteContext(intent=task.cleaned_intent, channel_id=task.channel_id)
+    provider = MagicMock()
+    provider.chat.return_value = MagicMock(
+        content=json.dumps(
+            {
+                "goal": "Run a company script",
+                "confidence": 0.99,
+                "tools_needed": ["run_company_script"],
+                "steps": [],
+                "missing_capabilities": [],
+                "intent_class": "script.run",
+            }
+        )
+    )
+    plan = resolve_tool_plan(
+        config,
+        task,
+        context,
+        provider=provider,
+        playbook_store=get_playbook_store(tmp_path, disabled_skills=[]),
+        data_dir=tmp_path,
+    )
+    assert plan is not None
+    assert plan.strategy == "plan_template"
+    assert plan.intent_class == "template.daily_metrics_oneshot"
+    assert plan.tools_needed == ["run_company_script", "publish_html_artifact"]
+    provider.chat.assert_not_called()
+
+
 def test_llm_first_doc_question_uses_search_tools(tmp_path):
     config = AlfredConfig(routing=RoutingConfig(planner_strategy="llm_first"))
     task = Task(

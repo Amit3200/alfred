@@ -28,6 +28,8 @@ _SCHEDULE_PLAYBOOK_TOOLS = (
     "athena_query",
     "cloudwatch_query",
     "list_cloudwatch_log_groups",
+    "save_html_deck",
+    "publish_html_artifact",
 )
 
 

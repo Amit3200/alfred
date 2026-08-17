@@ -51,6 +51,13 @@ def test_sync_targets_puts_main_repo_first(tmp_path):
     assert set(targets) == {"acme/backend", "acme/other"}
 
 
+def test_sync_targets_explicit_list_does_not_pull_main(tmp_path):
+    git = _git_config(repos=["acme/other", "acme/backend"], main_repo="acme/backend")
+    manager = WorkspaceMirrorManager(git, tmp_path)
+    targets = manager._sync_targets(["acme/other"])
+    assert targets == ["acme/other"]
+
+
 def test_generate_repo_context_writes_markdown(tmp_path):
     fixture = SAMPLE_REPO
     git = _git_config()

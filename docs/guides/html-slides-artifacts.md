@@ -118,6 +118,7 @@ Set `artifacts.public_base_url` in config so share links are absolute in Slack (
 ## Roadmap (not yet built)
 
 - ~~Admin UI panel for upload/list/preview~~ (v1: **Settings → Automation → HTML slides**)
+- Latest slug in the table; **View details** lists older SHA versions with upload time, open/copy, and delete
 - ~~Alfred tool `publish_html_artifact` for agents (auto-set Slack actor headers)~~
 - ~~Slack publish tracking (`source`, `slack_user_id`)~~
 - Theme packs beyond the bundled herdr snapshot (company scripts repo)

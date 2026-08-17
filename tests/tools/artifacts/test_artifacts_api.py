@@ -175,3 +175,57 @@ def test_requires_actor_header(tmp_path):
     client, token = _client(tmp_path)
     res = client.get("/api/artifacts/mine", headers={"X-Alfred-Token": token})
     assert res.status_code == 400
+
+
+def test_delete_version_promotes_previous_and_keeps_slug(tmp_path):
+    client, token = _client(tmp_path)
+    headers = _actor_headers(token)
+    slug = "daily-metrics"
+    v1 = SAMPLE_HTML.replace("Hello artifacts", "Day one")
+    v2 = SAMPLE_HTML.replace("Hello artifacts", "Day two")
+    r1 = client.post("/api/artifacts", headers=headers, json={"slug": slug, "html": v1})
+    r2 = client.post("/api/artifacts", headers=headers, json={"slug": slug, "html": v2})
+    sha1 = r1.json()["artifact"]["sha256"]
+    sha2 = r2.json()["artifact"]["sha256"]
+
+    mine = client.get("/api/artifacts/mine", headers=headers).json()
+    assert mine["count"] == 1
+    assert mine["artifacts"][0]["version_count"] == 2
+
+    deleted = client.delete(f"/api/artifacts/{slug}/versions/{sha2}", headers=headers)
+    assert deleted.status_code == 200
+    body = deleted.json()
+    assert body["slug_removed"] is False
+    assert body["latest"]["sha256"] == sha1
+
+    latest = client.get(f"/artifacts/s/{slug}")
+    assert latest.status_code == 200
+    assert "Day one" in latest.text
+    assert client.get(f"/artifacts/sha/{sha2}").status_code == 404
+
+
+def test_delete_last_version_removes_slug(tmp_path):
+    client, token = _client(tmp_path)
+    headers = _actor_headers(token)
+    res = client.post(
+        "/api/artifacts",
+        headers=headers,
+        json={"slug": "gone-deck", "html": SAMPLE_HTML},
+    )
+    sha = res.json()["artifact"]["sha256"]
+    deleted = client.delete(f"/api/artifacts/gone-deck/versions/{sha}", headers=headers)
+    assert deleted.status_code == 200
+    assert deleted.json()["slug_removed"] is True
+    assert client.get("/artifacts/s/gone-deck").status_code == 404
+    assert client.get("/api/artifacts/mine", headers=headers).json()["count"] == 0
+
+
+def test_cannot_delete_other_users_version(tmp_path):
+    client, token = _client(tmp_path)
+    alice = _actor_headers(token, user="alice")
+    bob = _actor_headers(token, user="bob")
+    res = client.post("/api/artifacts", headers=alice, json={"slug": "alice-deck", "html": SAMPLE_HTML})
+    sha = res.json()["artifact"]["sha256"]
+    denied = client.delete(f"/api/artifacts/alice-deck/versions/{sha}", headers=bob)
+    assert denied.status_code == 403
+    assert client.get("/artifacts/s/alice-deck").status_code == 200
