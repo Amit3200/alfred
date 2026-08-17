@@ -38,7 +38,6 @@ _INTENT_SKILL_MAP: dict[str, str] = {
     "slack.board.write.update": "slack_board_management",
     "slack.board.write.comment": "slack_board_management",
     "slack.board.read.search": "slack_board_management",
-    "script.run": "investigate_bug",
 }
 
 _DOMAIN_SKILL_MAP: dict[str, str] = {
@@ -49,7 +48,6 @@ _DOMAIN_SKILL_MAP: dict[str, str] = {
     "slack_write": "slack_board_management",
     "repo_docs": "repo_knowledge",
     "artifact": "html_slides",
-    "script": "investigate_bug",
     "git": "git_status",
     "git_write": "create_pr",
     "aws": "aws_query",
@@ -66,6 +64,12 @@ def resolve_policy_skill(
     """Pick governance skill from tool plan intent/domain/bundle; fall back to router skill."""
     if plan is None:
         return fallback
+
+    if fallback is not None and plan.tools_needed:
+        allowed = set(fallback.allowed_tools or [])
+        needed = {tool for tool in plan.tools_needed if tool}
+        if allowed and needed and needed <= allowed:
+            return fallback
 
     name = _INTENT_SKILL_MAP.get(plan.intent_class or "")
     if plan.intent_class.startswith("template."):

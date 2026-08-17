@@ -87,13 +87,16 @@ def plan_tools_node(state: AlfredGraphState, config: RunnableConfig) -> dict[str
             plan.confidence,
         )
 
-    policy_skill = resolve_policy_skill(
-        plan,
-        processor._playbooks,
-        fallback=skill,
-        data_dir=processor._data_dir_path(),
-    )
-    if policy_skill.name != skill.name:
+    if runtime.task.source == "scheduler":
+        policy_skill = skill
+    else:
+        policy_skill = resolve_policy_skill(
+            plan,
+            processor._playbooks,
+            fallback=skill,
+            data_dir=processor._data_dir_path(),
+        )
+    if policy_skill is not None and policy_skill.name != skill.name:
         logger.info("LangGraph skill policy: %s → %s", skill.name, policy_skill.name)
         runtime.set_skill(policy_skill)
 

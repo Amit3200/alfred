@@ -515,6 +515,24 @@ class TaskProcessor(SessionMixin, DirectMixin, InvestigationMixin, ReplyMixin):
 
         investigation = self._apply_turn_plan_skill(investigation, turn_plan)
 
+        if task.source == "scheduler" and investigation is not None:
+            from backend.orchestrator.scheduled_job import run_scheduled_playbook
+
+            scheduled = run_scheduled_playbook(self, investigation, task, session)
+            if scheduled is not None:
+                if session_key and self.session_store:
+                    rendered = render_for_channel(scheduled, channel)
+                    self.session_store.append_exchange(
+                        session_key,
+                        source=task.source,
+                        scope_id=task.channel_id,
+                        thread_id=task.thread_ts or "",
+                        user_content=task.cleaned_intent,
+                        assistant_content=rendered,
+                        assistant_payload=scheduled.payload,
+                    )
+                return self._finish_response(scheduled)
+
         if (
             investigation is None
             and legacy_routing

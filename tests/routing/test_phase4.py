@@ -244,3 +244,53 @@ plan_template:
     skill = resolve_policy_skill(plan, store, fallback=None)
     assert skill is not None
     assert skill.name == "daily_metrics_oneshot"
+
+
+def test_resolve_policy_skill_keeps_script_playbook_for_script_run(tmp_path: Path, monkeypatch):
+    playbooks_dir = tmp_path / "playbooks"
+    playbooks_dir.mkdir()
+    (playbooks_dir / "daily_metrics_oneshot.md").write_text(
+        """---
+name: daily_metrics_oneshot
+mode: workflow
+allowed_tools:
+  - run_company_script
+  - publish_html_artifact
+---
+# body
+""",
+        encoding="utf-8",
+    )
+    (playbooks_dir / "investigate_bug.md").write_text(
+        """---
+name: investigate_bug
+mode: investigation
+allowed_tools:
+  - grep_repo
+  - athena_query
+  - web_search
+---
+# body
+""",
+        encoding="utf-8",
+    )
+    empty_skills = tmp_path / "empty_skills"
+    empty_skills.mkdir()
+    monkeypatch.setattr("backend.routing.playbooks.bundled_skills_dir", lambda: empty_skills)
+    monkeypatch.setattr("backend.routing.playbooks.playbooks_dir", lambda _data: playbooks_dir)
+
+    from backend.orchestrator.graph.skill_policy import resolve_policy_skill
+    from backend.routing.tool_plan_types import ToolPlan
+
+    store = PlaybookStore(data_dir=tmp_path)
+    fallback = store.get_by_name("daily_metrics_oneshot")
+    plan = ToolPlan(
+        goal="Run company script",
+        confidence=0.99,
+        tools_needed=["run_company_script"],
+        intent_class="script.run",
+        strategy="llm",
+    )
+    skill = resolve_policy_skill(plan, store, fallback=fallback)
+    assert skill is not None
+    assert skill.name == "daily_metrics_oneshot"
