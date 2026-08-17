@@ -9,7 +9,6 @@ import {
 import {
   Alert,
   Button,
-  Descriptions,
   Empty,
   Flex,
   Input,
@@ -24,8 +23,7 @@ import {
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { api, type ScriptPackageSummary, type ScriptsRemoteInfo } from "../../api/client";
 import { useApp } from "../../context/AppContext";
-
-const { TextArea } = Input;
+import { ScriptCodeEditor } from "./ScriptCodeEditor";
 
 const RUNTIME_OPTIONS = [
   { value: "python3", label: "Python 3" },
@@ -368,7 +366,7 @@ export function ScriptsPanel() {
   };
 
   return (
-    <div>
+    <div className="alfred-scripts-page">
       <Typography.Title level={3} className="alfred-page-title">
         Scripts
       </Typography.Title>
@@ -382,40 +380,22 @@ export function ScriptsPanel() {
       </Typography.Paragraph>
 
       {remoteInfo?.repo ? (
-        <div className="alfred-panel" style={{ marginBottom: 16, padding: 16 }}>
-          <Flex justify="space-between" align="flex-start" wrap="wrap" gap={12}>
-            <div style={{ flex: 1, minWidth: 280 }}>
-              <Typography.Text strong style={{ display: "block", marginBottom: 8 }}>
-                Remote scripts repo
-              </Typography.Text>
-              <Descriptions size="small" column={1} bordered>
-                <Descriptions.Item label="Repository">
-                  <Typography.Text code>{remoteInfo.repo}</Typography.Text>
-                </Descriptions.Item>
-                <Descriptions.Item label="Branch">
-                  {remoteInfo.branch || "main"}
-                </Descriptions.Item>
-                <Descriptions.Item label="Scripts path">
-                  <Typography.Text code>{remoteInfo.path || "scripts"}</Typography.Text>
-                </Descriptions.Item>
-                <Descriptions.Item label="Python mode">{remoteInfo.python_mode || "isolated"}</Descriptions.Item>
-                <Descriptions.Item label="Last sync">
-                  {formatSyncedAt(remoteInfo.synced?.synced_at)}
-                  {remoteInfo.synced?.action ? (
-                    <Typography.Text type="secondary"> ({remoteInfo.synced.action})</Typography.Text>
-                  ) : null}
-                </Descriptions.Item>
-              </Descriptions>
-            </div>
-            <Space direction="vertical" align="end">
-              {syncButton("primary")}
-              {setupButton}
-              <Typography.Text type="secondary" style={{ fontSize: 12, maxWidth: 240, textAlign: "right" }}>
-                Sync pulls git. Install deps is <Typography.Text code>alfred scripts setup</Typography.Text>{" "}
-                (venv + pip, same as arsenal <Typography.Text code>make setup-py</Typography.Text>).
-              </Typography.Text>
-            </Space>
-          </Flex>
+        <div className="alfred-scripts-remote-bar">
+          <Typography.Text>
+            Remote <Typography.Text code>{remoteInfo.repo}</Typography.Text>
+            {" · "}
+            {remoteInfo.branch || "main"}
+            {" · "}
+            <Typography.Text code>{remoteInfo.path || "scripts"}</Typography.Text>
+            {" · "}
+            {remoteInfo.python_mode || "isolated"}
+            {" · "}
+            {formatSyncedAt(remoteInfo.synced?.synced_at)}
+          </Typography.Text>
+          <Space>
+            {syncButton("primary")}
+            {setupButton}
+          </Space>
         </div>
       ) : (
         <Alert
@@ -461,7 +441,7 @@ export function ScriptsPanel() {
         />
       </Flex>
 
-      <Flex gap={16} align="stretch" className="alfred-playbooks-layout">
+      <Flex gap={16} align="stretch" className="alfred-playbooks-layout alfred-scripts-workspace">
         <div className="alfred-playbooks-list">
           <Typography.Text strong style={{ display: "block", marginBottom: 8 }}>
             Packages
@@ -556,6 +536,7 @@ export function ScriptsPanel() {
                   ) : null}
                 </div>
                 <Space wrap>
+                  {dirty ? <Typography.Text type="warning">Unsaved</Typography.Text> : null}
                   <Button
                     type="primary"
                     icon={<SaveOutlined />}
@@ -623,20 +604,22 @@ export function ScriptsPanel() {
                   })}
                 </div>
 
-                <div style={{ flex: 1, minWidth: 0 }}>
+                <div className="alfred-scripts-monaco-wrap">
                   {selectedFile ? (
                     <>
-                      <Typography.Text type="secondary" style={{ fontSize: 12, display: "block", marginBottom: 8 }}>
+                      <Typography.Text type="secondary" className="alfred-scripts-monaco-path">
                         {selectedFile}
+                        <span className="alfred-scripts-monaco-hint"> ⌘/Ctrl+S to save</span>
                       </Typography.Text>
-                      <TextArea
-                        value={content}
-                        onChange={(event) => setContent(event.target.value)}
-                        autoSize={{ minRows: 22, maxRows: 40 }}
-                        className="alfred-playbooks-textarea"
-                        spellCheck={false}
-                        disabled={editorLoading}
-                      />
+                      <div className="alfred-scripts-monaco">
+                        <ScriptCodeEditor
+                          path={selectedFile}
+                          value={content}
+                          onChange={setContent}
+                          readOnly={editorLoading}
+                          onSave={() => void save()}
+                        />
+                      </div>
                     </>
                   ) : (
                     <Empty description="No files in package" />

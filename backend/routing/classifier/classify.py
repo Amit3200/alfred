@@ -124,6 +124,16 @@ def classify_intent_rules(
     bag = entities or extract_entities(text, thread_context)
     entity_payload = _entity_payload(bag)
 
+    from backend.routing.schedule_intent import looks_like_schedule_request, schedule_intent_class
+
+    if looks_like_schedule_request(text):
+        return IntentClassification(
+            intent_class=schedule_intent_class(text),
+            target_system="schedule",
+            confidence=0.93,
+            entities=entity_payload,
+        )
+
     if looks_like_html_slides_request(text):
         return IntentClassification(
             intent_class="artifact.write.deck",

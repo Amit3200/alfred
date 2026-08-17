@@ -86,6 +86,8 @@ class InvestigationMixin:
                 logger.info("TurnPlan prefers JIRA → skill %s", planned.name)
                 return planned
             return investigation
+        if investigation is not None and investigation.name == "schedule_management":
+            return investigation
         if is_html_slides_intent(turn_plan.intent_class):
             if investigation is None or investigation.name != planned.name:
                 logger.info("TurnPlan HTML slides → skill %s", planned.name)
@@ -105,6 +107,14 @@ class InvestigationMixin:
         from backend.routing.tool_planner import planner_llm_enabled, resolve_tool_plan
 
         slide_text = f"{task.cleaned_intent}\n{task.raw_text}".strip()
+        from backend.routing.schedule_intent import looks_like_schedule_request
+
+        if looks_like_schedule_request(slide_text):
+            schedule_skill = self._playbooks.get_by_name("schedule_management")
+            if schedule_skill is not None:
+                logger.info("Schedule management intent → skill schedule_management")
+                return schedule_skill
+
         if (
             looks_like_html_slides_request(slide_text)
             or looks_like_html_slides_followup(task, session)

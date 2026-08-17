@@ -173,6 +173,63 @@ plan_template:
     provider.chat.assert_not_called()
 
 
+def test_create_schedule_beats_plan_template_and_llm(tmp_path, monkeypatch):
+    playbooks = tmp_path / "playbooks"
+    playbooks.mkdir()
+    (playbooks / "daily_metrics_oneshot.md").write_text(
+        """---
+name: daily_metrics_oneshot
+mode: workflow
+type: plan_template
+triggers:
+  - daily metrics oneshot
+plan_template:
+  goal: Run daily metrics
+  steps:
+    - tool: run_company_script
+      args: { script: daily_metrics_oneshot }
+---
+# body
+""",
+        encoding="utf-8",
+    )
+    empty_skills = tmp_path / "empty_skills"
+    empty_skills.mkdir()
+    monkeypatch.setattr("backend.routing.playbooks.bundled_skills_dir", lambda: empty_skills)
+    monkeypatch.setattr("backend.routing.playbooks.playbooks_dir", lambda _data: playbooks)
+
+    config = AlfredConfig(routing=RoutingConfig(planner_strategy="llm_first"))
+    text = (
+        "Create a schedule for 6 AM IST to call daily metrics oneshot "
+        "the playbook is already created (daily_metrics_oneshot) "
+        "HTML slides -> Slack\n0 6 * * *"
+    )
+    task = Task(
+        source="ui",
+        user_id="u1",
+        channel_id="c1",
+        raw_text=text,
+        cleaned_intent=text,
+    )
+    context = RouteContext(intent=task.cleaned_intent, channel_id=task.channel_id)
+    provider = MagicMock()
+    plan = resolve_tool_plan(
+        config,
+        task,
+        context,
+        provider=provider,
+        playbook_store=get_playbook_store(tmp_path, disabled_skills=[]),
+        skill_allowed=["create_schedule", "list_schedules", "run_company_script"],
+        data_dir=tmp_path,
+    )
+    assert plan is not None
+    assert plan.tools_needed == ["create_schedule"]
+    assert plan.intent_class == "schedule.write.create"
+    assert plan.steps[0].args_hint["cron_expression"] == "0 6 * * *"
+    assert plan.steps[0].args_hint["name"] == "daily_metrics_oneshot"
+    provider.chat.assert_not_called()
+
+
 def test_llm_first_doc_question_uses_search_tools(tmp_path):
     config = AlfredConfig(routing=RoutingConfig(planner_strategy="llm_first"))
     task = Task(

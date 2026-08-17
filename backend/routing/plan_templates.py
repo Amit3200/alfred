@@ -69,6 +69,10 @@ def match_plan_template(
     min_confidence: float = 0.7,
 ) -> ToolPlan | None:
     """Match a plan template by trigger and convert to ToolPlan."""
+    from backend.routing.schedule_intent import looks_like_schedule_request
+
+    if looks_like_schedule_request(intent):
+        return None
     lower = intent.lower()
     repo_lower = repo.strip().lower()
     best: Playbook | None = None

@@ -9,6 +9,9 @@ export default defineConfig({
       "/api": "http://127.0.0.1:8080",
     },
   },
+  optimizeDeps: {
+    include: ["monaco-editor", "@monaco-editor/react"],
+  },
   build: {
     outDir: "dist",
     emptyOutDir: true,

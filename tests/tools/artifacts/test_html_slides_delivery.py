@@ -36,6 +36,10 @@ def test_looks_like_html_slides_request():
     assert looks_like_html_slides_request("create a presentation from this data")
     assert looks_like_html_slides_request("build html slides for Q3")
     assert not looks_like_html_slides_request("what is checkout redirect?")
+    assert not looks_like_html_slides_request(
+        "Create a schedule for 6 AM IST to call daily metrics oneshot "
+        "Daily FlexyPe metrics -> HTML slides -> Slack"
+    )
 
 
 def test_html_slides_plan_routes_to_worker_not_direct():

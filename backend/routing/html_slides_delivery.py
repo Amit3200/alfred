@@ -51,6 +51,10 @@ _ARTIFACT_TOOLS = ARTIFACT_TOOLS
 
 
 def looks_like_html_slides_request(text: str) -> bool:
+    from backend.routing.schedule_intent import looks_like_schedule_request
+
+    if looks_like_schedule_request(text):
+        return False
     return bool(_HTML_SLIDES_RE.search(text or ""))
 
 

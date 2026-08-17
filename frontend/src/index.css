@@ -2495,19 +2495,91 @@ body,
   resize: vertical;
 }
 
+.alfred-scripts-page {
+  display: flex;
+  flex-direction: column;
+  min-height: calc(100vh - 72px);
+}
+
+.alfred-scripts-remote-bar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  margin-bottom: 12px;
+  padding: 10px 12px;
+  background: var(--alfred-surface);
+  border: 1px solid var(--alfred-border-subtle);
+  border-radius: var(--alfred-radius);
+}
+
+.alfred-scripts-workspace {
+  flex: 1;
+  min-height: calc(100vh - 220px);
+}
+
+.alfred-scripts-workspace .alfred-playbooks-list,
+.alfred-scripts-workspace .alfred-playbooks-editor {
+  min-height: calc(100vh - 220px);
+}
+
+.alfred-scripts-workspace .alfred-playbooks-list-scroll {
+  max-height: none;
+}
+
 .alfred-scripts-editor-split {
   flex: 1;
-  min-height: 420px;
+  min-height: 0;
 }
 
 .alfred-scripts-file-list {
-  width: 220px;
+  width: 200px;
   flex-shrink: 0;
   border: 1px solid var(--alfred-border-subtle);
   border-radius: 8px;
   padding: 8px;
   overflow: auto;
-  max-height: 520px;
+}
+
+.alfred-scripts-monaco-wrap {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.alfred-scripts-monaco-path {
+  font-size: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  display: block;
+  margin-bottom: 8px;
+}
+
+.alfred-scripts-monaco-hint {
+  color: var(--alfred-text-faint);
+  font-family: var(--alfred-font);
+  margin-left: 8px;
+}
+
+.alfred-scripts-monaco {
+  flex: 1;
+  min-height: 560px;
+  border: 1px solid var(--alfred-border);
+  border-radius: var(--alfred-radius);
+  overflow: hidden;
+  background: var(--alfred-surface-muted);
+}
+
+.alfred-scripts-monaco-inner,
+.alfred-scripts-monaco .monaco-editor {
+  height: 100%;
+}
+
+.alfred-scripts-monaco-loading {
+  padding: 24px;
+  color: var(--alfred-text-muted);
 }
 
 .alfred-scripts-file-row,

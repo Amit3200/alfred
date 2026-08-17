@@ -284,6 +284,86 @@ allowed_tools:
     assert skill.name == "daily_metrics_oneshot"
 
 
+def test_create_schedule_beats_html_slides_and_plan_template(tmp_path: Path, monkeypatch):
+    playbooks = tmp_path / "playbooks"
+    playbooks.mkdir()
+    (playbooks / "daily_metrics_oneshot.md").write_text(
+        """---
+name: daily_metrics_oneshot
+mode: workflow
+type: plan_template
+triggers:
+  - daily metrics oneshot
+  - daily_metrics_oneshot
+allowed_tools:
+  - run_company_script
+  - publish_html_artifact
+plan_template:
+  goal: Run daily metrics
+  steps:
+    - tool: run_company_script
+      args: { script: daily_metrics_oneshot }
+    - tool: publish_html_artifact
+---
+# body
+""",
+        encoding="utf-8",
+    )
+    (playbooks / "schedule_management.md").write_text(
+        """---
+name: schedule_management
+mode: workflow
+triggers:
+  - create a schedule
+allowed_tools:
+  - create_schedule
+  - list_schedules
+  - run_company_script
+---
+# body
+""",
+        encoding="utf-8",
+    )
+    empty_skills = tmp_path / "empty_skills"
+    empty_skills.mkdir()
+    monkeypatch.setattr("backend.routing.playbooks.bundled_skills_dir", lambda: empty_skills)
+    monkeypatch.setattr("backend.routing.playbooks.playbooks_dir", lambda _data: playbooks)
+
+    from backend.orchestrator.processor import TaskProcessor
+    from backend.routing import RouteContext, RouteMode
+
+    processor = TaskProcessor(
+        AlfredConfig(
+            routing=RoutingConfig(
+                plan_first_routing=True,
+                skill_router_fallback=True,
+                planner_strategy="llm_first",
+                phrase_routing_enabled=False,
+            ),
+        )
+    )
+    processor.router = MagicMock()
+    processor.router.get.return_value = MagicMock(is_available=lambda: True)
+    processor._playbooks = PlaybookStore(tmp_path)
+    text = (
+        "Create a schedule for 6 AM IST to call daily metrics oneshot "
+        "the playbook for it is already created (daily_metrics_oneshot) "
+        "Daily FlexyPe metrics (yesterday IST) -> HTML slides -> Slack\n"
+        "0 6 * * *\nAsia/Kolkata"
+    )
+    task = Task(
+        source="ui",
+        user_id="u1",
+        channel_id="c1",
+        raw_text=text,
+        cleaned_intent=text,
+    )
+    ctx = RouteContext(intent=task.cleaned_intent, mode=RouteMode.INVESTIGATION)
+    skill = processor._resolve_investigation_skill(ctx, task)
+    assert skill is not None
+    assert skill.name == "schedule_management"
+
+
 def test_format_doc_search_not_found():
     text = format_doc_search({"query": "missing topic", "results": []})
     assert "No documentation found" in text

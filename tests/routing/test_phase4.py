@@ -131,6 +131,37 @@ plan_template:
     assert "2026-08-16" in plan.goal
 
 
+def test_match_plan_template_skips_create_schedule_request(tmp_path: Path, monkeypatch):
+    playbooks_dir = tmp_path / "playbooks"
+    playbooks_dir.mkdir()
+    (playbooks_dir / "daily_metrics_oneshot.md").write_text(
+        """---
+name: daily_metrics_oneshot
+type: plan_template
+triggers:
+  - daily metrics oneshot
+plan_template:
+  goal: Run daily metrics
+  steps:
+    - tool: run_company_script
+      args: { script: daily_metrics_oneshot }
+---
+""",
+        encoding="utf-8",
+    )
+    empty_skills = tmp_path / "empty_skills"
+    empty_skills.mkdir()
+    monkeypatch.setattr("backend.routing.playbooks.bundled_skills_dir", lambda: empty_skills)
+    monkeypatch.setattr("backend.routing.playbooks.playbooks_dir", lambda _data: playbooks_dir)
+
+    store = PlaybookStore(data_dir=tmp_path)
+    plan = match_plan_template(
+        "Create a schedule for 6 AM IST to call daily metrics oneshot",
+        store,
+    )
+    assert plan is None
+
+
 def test_phrase_routing_disabled_skips_investigation_keyword(tmp_path: Path, monkeypatch):
     empty_skills = tmp_path / "empty_skills"
     empty_skills.mkdir()

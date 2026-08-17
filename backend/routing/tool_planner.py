@@ -108,6 +108,13 @@ def plan_tools_rules(
         build_html_slides_tool_plan,
         looks_like_html_slides_request,
     )
+    from backend.routing.schedule_intent import build_schedule_tool_plan
+
+    schedule_plan = build_schedule_tool_plan(
+        task, skill_allowed=list(allowed) if allowed else None
+    )
+    if schedule_plan is not None:
+        return schedule_plan
 
     if looks_like_html_slides_request(text) and _ok("save_html_deck"):
         plan = build_html_slides_tool_plan(task, skill_allowed=list(allowed) if allowed else None)
@@ -552,6 +559,16 @@ def resolve_tool_plan(
         build_html_slides_tool_plan,
         looks_like_html_slides_request,
     )
+    from backend.routing.schedule_intent import build_schedule_tool_plan
+
+    schedule_plan = build_schedule_tool_plan(task, skill_allowed=skill_allowed)
+    if schedule_plan is not None:
+        logger.info(
+            "Schedule plan (deterministic): tools=%s intent=%s",
+            schedule_plan.tools_needed,
+            schedule_plan.intent_class,
+        )
+        return schedule_plan
 
     slides_plan = build_html_slides_tool_plan(
         task,

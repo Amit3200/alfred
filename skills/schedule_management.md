@@ -3,6 +3,8 @@ name: schedule_management
 description: Manage background scheduled jobs and trigger automations.
 mode: workflow
 triggers:
+  - create a schedule
+  - create schedule
   - schedule a
   - list schedules
   - delete schedule
