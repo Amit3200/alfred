@@ -82,8 +82,10 @@ Return ONLY valid JSON:
 }
 
 ## Count and order
-- Produce exactly one object per SOURCE ITEM, in the same order.
+- Produce exactly one object per SOURCE ITEM, in the same order. Never add extra tasks.
 - Copy source_title from the source item so we can align results.
+- Ignore Alfred bot replies, governance/approval text, and board confirmation metadata
+  (List/Status/Severity/Assignee/Record/Open List, TS- ids already created).
 
 ## Title (List item Name)
 - 6–120 chars, action-oriented, specific to THAT source item.

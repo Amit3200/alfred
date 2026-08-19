@@ -597,6 +597,129 @@ def test_direct_create_batch_from_numbered_list(tmp_path: Path):
     assert "Summary: Exit reason to be given on Export file" in captured_kwargs[0]["description"]
 
 
+def test_direct_create_batch_ignores_thread_bot_metadata(tmp_path: Path):
+    from backend.db.slack_workflows_db import db_create_board_binding
+
+    db_create_board_binding(
+        tmp_path,
+        board_key="bugs-tracker",
+        list_id="Fbugs001",
+        channel_id="Ctech",
+    )
+    config = AlfredConfig(slack=SlackConfig(enabled=True, bot_token="xoxb-test"))
+    raw = "\n".join(
+        [
+            "can you create all the following tasks, each item is separate task",
+            "• Exit reason to be given on Export file",
+            "• Limit discount on cart - Everaw requirement",
+            "• Disable Partial COD on Coupons - Everaw requirement",
+            "• Multiple customers are being created - Everaw requirement",
+            "• UPI Intent - Mishmash and Everaw requirement",
+            "• Redirection Updates",
+            "• Add Freebie using coupon - AuraByNoureya",
+            "• Snapchat Integration",
+        ]
+    )
+    task = Task(
+        source="slack",
+        user_id="U1",
+        channel_id="Ctech",
+        thread_ts="1.1",
+        raw_text=raw,
+        cleaned_intent="can you create all the following tasks, each item is separate task",
+    )
+    created = []
+
+    def _fake_create(*_args, **kwargs):
+        idx = len(created) + 1
+        row = {
+            "record_id": f"Rec{idx}",
+            "display_id": f"TS-{idx}",
+            "title": kwargs["title"],
+            "status": "Not picked",
+            "board": "bugs-tracker",
+            "list_id": "Fbugs001",
+        }
+        created.append(row)
+        return row
+
+    from backend.routing.slack_board.task_draft import BoardTaskDraft
+
+    def _fake_draft(**kwargs):
+        return [
+            BoardTaskDraft(title=title, description=f"Summary: {title}", severity="Medium")
+            for title in kwargs["item_titles"]
+        ]
+
+    thread_messages = [
+        {
+            "user": "U1",
+            "text": (
+                "1. Exit reason to be given on Export file\n"
+                "2. Limit discount on cart - Everaw requirement"
+            ),
+        },
+        {
+            "bot_id": "B1",
+            "username": "alfred",
+            "user": "UBOT",
+            "text": (
+                "Governance: `slack_board_create_task` requires explicit approval before I can run it.\n"
+                "Planned action: create Slack List tasks"
+            ),
+        },
+        {
+            "bot_id": "B1",
+            "username": "alfred",
+            "user": "UBOT",
+            "text": (
+                "**Task created on your board** — **TS-4** · *Earlier item*\n"
+                "- List: **team-tech Tasks** (`FOBQOMH2LMB`)\n"
+                "- Status: `Not picked`\n"
+                "- Severity: `Medium`\n"
+                "- Assignee: `<@UAZEEM>`\n"
+                "- Record: `Rec0BR4D3N205`\n"
+                "- Open List: https://app.slack.com/client/T1/C1"
+            ),
+        },
+        {
+            "bot_id": "B1",
+            "username": "alfred",
+            "user": "UBOT",
+            "text": "Governance: `jira_create_issue` requires explicit approval before I can run it.",
+        },
+        {"user": "U1", "text": raw},
+    ]
+
+    with patch(
+        "backend.routing.slack_board.direct.create_board_task",
+        side_effect=_fake_create,
+    ) as create_mock, patch(
+        "backend.routing.slack_board.task_draft.draft_board_tasks_batch_from_thread",
+        side_effect=_fake_draft,
+    ), patch(
+        "backend.integrations.slack.context.fetch_thread_messages",
+        return_value=thread_messages,
+    ), patch(
+        "backend.routing.slack_board.bootstrap._bot_user_id",
+        return_value="UBOT",
+    ):
+        response, _meta = try_slack_board_create_direct(task, config, tmp_path)
+
+    assert response is not None
+    text = response.payload.data.get("text") or ""
+    assert "8 tasks created" in text
+    assert create_mock.call_count == 8
+    titles = [row["title"] for row in created]
+    assert titles[0] == "Exit reason to be given on Export file"
+    assert titles[-1] == "Snapchat Integration"
+    joined = " ".join(titles).lower()
+    assert "governance" not in joined
+    assert "assignee" not in joined
+    assert "rec0br4d3n205" not in joined
+    assert "jira_create_issue" not in joined
+
+
 def test_direct_create_pending_batch_on_yes_proceed(tmp_path: Path):
     from backend.db.slack_workflows_db import db_create_board_binding
     from backend.models.config import GovernanceConfig

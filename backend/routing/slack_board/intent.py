@@ -63,6 +63,24 @@ _CREATE_COMMAND_LINE_RE = re.compile(
     r"@alfred\b|\bcreate\s+(?:a\s+)?(?:task|ticket|item)s?\b",
     re.I,
 )
+_BATCH_METADATA_LINE_RE = re.compile(
+    r"^(?:list|board|status|severity|assignee|record|open list|display id|"
+    r"planned action|governance|could not create)\s*:",
+    re.I,
+)
+_BATCH_TITLE_NOISE_RE = re.compile(
+    r"requires explicit approval"
+    r"|slack_board_[a-z_]+"
+    r"|jira_create_issue"
+    r"|tasks? created on your board"
+    r"|write actions approved"
+    r"|yes,\s*proceed",
+    re.I,
+)
+_CREATED_TASK_LINE_RE = re.compile(
+    r"^\*{0,2}(?:[A-Z]{1,8}-\d+|Rec[A-Za-z0-9]+)\*{0,2}\s*[·•]",
+    re.I,
+)
 _TICKET_REF_RE = re.compile(
     r"\b((?:[A-Z]{1,8}-\d+|Rec[A-Za-z0-9]+))\b",
     re.I,
@@ -460,6 +478,30 @@ def looks_like_batch_board_create(intent: str) -> bool:
     return bool(_CREATE_TASK_RE.search(text) and len(extract_numbered_task_titles(text)) >= 2)
 
 
+def is_batch_title_noise(title: str) -> bool:
+    """True for Alfred confirmation/governance lines that look like list items."""
+    cleaned = re.sub(r"[*`_]+", "", title or "")
+    cleaned = re.sub(r"\s+", " ", cleaned).strip(" .,:;-")
+    if not cleaned:
+        return True
+    if _BATCH_METADATA_LINE_RE.search(cleaned):
+        return True
+    if _CREATED_TASK_LINE_RE.search(cleaned):
+        return True
+    return bool(_BATCH_TITLE_NOISE_RE.search(cleaned))
+
+
+def is_bot_message_for_batch_titles(message: dict, bot_user_id: str = "") -> bool:
+    """Skip Alfred/bot posts when harvesting numbered titles from a thread."""
+    bot = (bot_user_id or "").strip()
+    user = str(message.get("user") or "").strip()
+    if bot and user == bot:
+        return True
+    if message.get("bot_id"):
+        return True
+    return "alfred" in str(message.get("username") or "").lower()
+
+
 def extract_numbered_task_titles(*texts: str) -> list[str]:
     """Parse numbered or bulleted lines into distinct Slack List titles."""
     seen: set[str] = set()
@@ -471,7 +513,7 @@ def extract_numbered_task_titles(*texts: str) -> list[str]:
                 continue
             title = match.group(1).strip(" .,:;-")
             title = re.sub(r"^<@[^>]+>\s*", "", title).strip(" .,:;-")
-            if not title or is_weak_board_task_title(title):
+            if not title or is_weak_board_task_title(title) or is_batch_title_noise(title):
                 continue
             if _CREATE_COMMAND_LINE_RE.search(title) and len(title) < 80:
                 continue
@@ -481,6 +523,25 @@ def extract_numbered_task_titles(*texts: str) -> list[str]:
             seen.add(key)
             titles.append(title[:200])
     return titles
+
+
+def extract_batch_board_task_titles(
+    request_text: str,
+    *,
+    thread_text: str = "",
+) -> list[str]:
+    """Titles for a batch create — prefer the current message when it already lists items.
+
+    Thread bullets are only used for 'all the above' / similar, when the command
+    itself has no numbered or bulleted list. That keeps Alfred's own confirmation
+    and governance replies from becoming extra tasks.
+    """
+    from_request = extract_numbered_task_titles(request_text)
+    if len(from_request) >= 2:
+        return from_request
+    if not (thread_text or "").strip():
+        return from_request
+    return extract_numbered_task_titles(request_text, thread_text)
 
 
 def extract_ticket_ref(intent: str) -> str:

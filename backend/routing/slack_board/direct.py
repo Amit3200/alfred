@@ -31,8 +31,9 @@ from backend.routing.slack_board.intent import (
     extract_severity_target,
     extract_status_target,
     extract_task_title,
-    extract_numbered_task_titles,
+    extract_batch_board_task_titles,
     extract_ticket_ref,
+    is_bot_message_for_batch_titles,
     is_placeholder_list_id,
     infer_thread_action_assignee,
     is_weak_board_task_title,
@@ -488,12 +489,18 @@ def try_slack_board_create_direct(
         if pending_creates[0].get("assignee_user_id") and not assignee_user_id:
             assignee_user_id = pending_creates[0]["assignee_user_id"]
     elif not title_followup and not title_override:
-        raw_messages = "\n".join(str(message.get("text") or "") for message in messages)
-        extracted = extract_numbered_task_titles(
-            task.raw_text or "",
-            intent,
-            raw_messages,
-            messages_text,
+        request_text = "\n".join(
+            part for part in (task.raw_text or "", intent) if (part or "").strip()
+        )
+        bot_uid = _bot_user_id(client)
+        thread_text = "\n".join(
+            str(message.get("text") or "")
+            for message in messages
+            if not is_bot_message_for_batch_titles(message, bot_uid)
+        )
+        extracted = extract_batch_board_task_titles(
+            request_text,
+            thread_text=thread_text,
         )
         if looks_like_batch_board_create(intent) or (
             looks_like_slack_board_create(intent) and len(extracted) >= 2

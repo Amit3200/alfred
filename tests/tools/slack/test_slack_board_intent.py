@@ -133,6 +133,79 @@ def test_extract_numbered_task_titles_from_issue_list():
     assert titles[-1] == "Snapchat Integration"
 
 
+def test_batch_titles_ignore_alfred_confirmation_and_governance():
+    from backend.routing.slack_board.intent import (
+        extract_batch_board_task_titles,
+        extract_numbered_task_titles,
+        is_batch_title_noise,
+        is_bot_message_for_batch_titles,
+    )
+
+    request = (
+        "can you create all the following tasks, each item is separate task\n"
+        "• Exit reason to be given on Export file\n"
+        "• Limit discount on cart - Everaw requirement\n"
+        "• Disable Partial COD on Coupons - Everaw requirement\n"
+        "• Multiple customers are being created - Everaw requirement\n"
+        "• UPI Intent - Mishmash and Everaw requirement\n"
+        "• Redirection Updates\n"
+        "• Add Freebie using coupon - AuraByNoureya\n"
+        "• Snapchat Integration"
+    )
+    thread = """
+Governance: `slack_board_create_task` requires explicit approval before I can run it.
+Planned action: create Slack List tasks
+**Task created on your board** — **TS-4** · *Earlier item*
+- List: **team-tech Tasks** (`FOBQOMH2LMB`)
+- Status: `Not picked`
+- Severity: `Medium`
+- Assignee: `<@UAZEEM>`
+- Record: `Rec0BR4D3N205`
+- Open List: https://app.slack.com/client/T1/C1
+Governance: `jira_create_issue` requires explicit approval before I can run it.
+- **TS-4** · *Earlier item*
+"""
+    titles = extract_batch_board_task_titles(request, thread_text=thread)
+    assert titles == [
+        "Exit reason to be given on Export file",
+        "Limit discount on cart - Everaw requirement",
+        "Disable Partial COD on Coupons - Everaw requirement",
+        "Multiple customers are being created - Everaw requirement",
+        "UPI Intent - Mishmash and Everaw requirement",
+        "Redirection Updates",
+        "Add Freebie using coupon - AuraByNoureya",
+        "Snapchat Integration",
+    ]
+    noise_titles = extract_numbered_task_titles(thread)
+    assert noise_titles == []
+    assert is_batch_title_noise("List: **team-tech Tasks** (`FOBQOMH2LMB`)")
+    assert is_batch_title_noise("**TS-4** · *Earlier item*")
+    assert is_bot_message_for_batch_titles({"bot_id": "B1", "text": "Task created"}, "UBOT")
+    assert is_bot_message_for_batch_titles({"user": "UBOT", "text": "ok"}, "UBOT")
+    assert not is_bot_message_for_batch_titles({"user": "U1", "text": "1. Real work"}, "UBOT")
+
+
+def test_batch_titles_from_thread_when_command_has_no_list():
+    from backend.routing.slack_board.intent import extract_batch_board_task_titles
+
+    request = "@alfred create a task for all the above issues"
+    thread = """
+1. Exit reason to be given on Export file
+2. Limit discount on cart - Everaw requirement
+3. Disable Partial COD on Coupons - Everaw requirement
+4. Multiple customers are being created - Everaw requirement
+5. UPI Intent - Mishmash and Everaw requirement
+6. Redirection Updates
+7. Add Freebie using coupon - AuraByNoureya
+8. Snapchat Integration
+- List: **team-tech Tasks** (`FOBQOMH2LMB`)
+- Severity: `Medium`
+"""
+    titles = extract_batch_board_task_titles(request, thread_text=thread)
+    assert len(titles) == 8
+    assert titles[-1] == "Snapchat Integration"
+
+
 def test_board_request_and_ticket_ref():
     intent = "move TS-42 to in progress"
     assert looks_like_slack_board_request(intent)
