@@ -77,6 +77,42 @@ def test_create_task_for_all_the_above_issues_is_slack_board_not_jira():
     assert not looks_like_jira_create_request(intent)
 
 
+def test_create_all_the_following_bullet_tasks_is_batch_slack_board():
+    from backend.routing.create_target_precedence import should_route_create_to_jira
+    from backend.routing.jira.intent import looks_like_jira_create_request
+    from backend.routing.slack_board.intent import (
+        extract_numbered_task_titles,
+        looks_like_batch_board_create,
+    )
+
+    intent = (
+        "can you create all the following tasks, each item is separate task\n"
+        "• Exit reason to be given on Export file\n"
+        "• Limit discount on cart - Everaw requirement\n"
+        "• Disable Partial COD on Coupons - Everaw requirement\n"
+        "• Multiple customers are being created - Everaw requirement\n"
+        "• UPI Intent - Mishmash and Everaw requirement\n"
+        "• Redirection Updates\n"
+        "• Add Freebie using coupon - AuraByNoureya\n"
+        "• Snapchat Integration"
+    )
+    assert looks_like_slack_board_create(intent)
+    assert looks_like_batch_board_create(intent)
+    assert not looks_like_jira_create_request(intent)
+    assert not should_route_create_to_jira(
+        intent,
+        jira_enabled=True,
+        session_turns=(
+            "Governance: jira_create_issue requires explicit approval",
+            "Create 8 separate JIRA tasks",
+        ),
+    )
+    titles = extract_numbered_task_titles(intent)
+    assert len(titles) == 8
+    assert titles[0] == "Exit reason to be given on Export file"
+    assert titles[-1] == "Snapchat Integration"
+
+
 def test_extract_numbered_task_titles_from_issue_list():
     from backend.routing.slack_board.intent import extract_numbered_task_titles
 

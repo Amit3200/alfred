@@ -17,7 +17,7 @@ from backend.domains.slack_board.formatting import (
 from backend.models.task import Task
 
 _CREATE_TASK_RE = re.compile(
-    r"\b(?:create|add|open|file|raise|log)\b.{0,20}\b(?:task|ticket|item|bug)\b",
+    r"\b(?:create|add|open|file|raise|log)\b.{0,48}\b(?:a\s+)?(?:tasks?|tickets?|items?|bugs?)\b",
     re.I,
 )
 _UPDATE_STATUS_RE = re.compile(
@@ -48,9 +48,12 @@ _ABOVE_RE = re.compile(
     re.I,
 )
 _BATCH_CREATE_RE = re.compile(
-    r"\b(?:all|each)\s+(?:of\s+)?(?:the\s+)?(?:above|these|those|them)\b"
+    r"\b(?:all|each)\s+(?:of\s+)?(?:the\s+)?(?:above|these|those|them|following)\b"
     r"|\bthese\s+(?:issues|items|tasks|tickets|bugs)\b"
-    r"|\bcreate\s+tasks\b",
+    r"|\bcreate\s+tasks\b"
+    r"|\bfollowing\s+tasks?\b"
+    r"|\beach\s+(?:item|one|task)\b.{0,32}\bseparate\b"
+    r"|\bseparate\s+tasks?\b",
     re.I,
 )
 _NUMBERED_ITEM_RE = re.compile(
@@ -451,7 +454,10 @@ def references_thread_context(intent: str) -> bool:
 
 def looks_like_batch_board_create(intent: str) -> bool:
     """True when the user asked to create a task for each listed item."""
-    return bool(_BATCH_CREATE_RE.search(intent or ""))
+    text = intent or ""
+    if _BATCH_CREATE_RE.search(text):
+        return True
+    return bool(_CREATE_TASK_RE.search(text) and len(extract_numbered_task_titles(text)) >= 2)
 
 
 def extract_numbered_task_titles(*texts: str) -> list[str]:

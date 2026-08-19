@@ -487,14 +487,18 @@ def try_slack_board_create_direct(
             severity = pending_creates[0]["severity"]
         if pending_creates[0].get("assignee_user_id") and not assignee_user_id:
             assignee_user_id = pending_creates[0]["assignee_user_id"]
-    elif looks_like_batch_board_create(intent) and not title_followup and not title_override:
+    elif not title_followup and not title_override:
         raw_messages = "\n".join(str(message.get("text") or "") for message in messages)
-        batch_titles = extract_numbered_task_titles(
+        extracted = extract_numbered_task_titles(
             task.raw_text or "",
             intent,
             raw_messages,
             messages_text,
         )
+        if looks_like_batch_board_create(intent) or (
+            looks_like_slack_board_create(intent) and len(extracted) >= 2
+        ):
+            batch_titles = extracted
 
     if (confirm_pending and batch_titles) or len(batch_titles) >= 2:
         finalized = finalize_board_create_fields(

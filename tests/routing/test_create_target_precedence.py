@@ -28,6 +28,20 @@ def test_create_task_for_all_the_above_issues_stays_on_slack_board():
     assert not should_route_create_to_jira(intent, jira_enabled=True)
 
 
+def test_create_all_following_tasks_stays_on_slack_board_despite_jira_session():
+    intent = (
+        "can you create all the following tasks, each item is separate task\n"
+        "• Exit reason to be given on Export file\n"
+        "• Snapchat Integration"
+    )
+    assert looks_like_slack_board_create(intent)
+    assert not should_route_create_to_jira(
+        intent,
+        jira_enabled=True,
+        session_turns=("Failed jira_create_issue — Governance: requires explicit approval",),
+    )
+
+
 def test_jira_followup_after_thread_context():
     intent = "yup go ahead and create"
     session = (

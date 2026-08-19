@@ -46,6 +46,21 @@ def should_route_create_to_jira(
         looks_like_jira_create_request,
     )
 
+    meta = session_metadata or {}
+    target = str(meta.get("ticket_create_target") or "").strip().lower()
+    if target == "jira":
+        return True
+
+    # Slack List language wins unless the user named JIRA. Otherwise a prior
+    # failed jira_create_issue in the thread poisons later "create tasks" asks.
+    if not _EXPLICIT_JIRA_RE.search(text):
+        from backend.routing.slack_board.intent import looks_like_batch_board_create
+
+        if looks_like_batch_board_create(text):
+            return False
+        if re.search(r"\b(?:create|add|open|file)\b.{0,48}\b(?:a\s+)?tasks?\b", text, re.I):
+            return False
+
     if looks_like_jira_create_request(text):
         return True
     if looks_like_jira_create_followup(
@@ -53,11 +68,6 @@ def should_route_create_to_jira(
         session_turns=session_turns,
         thread_context=thread_context,
     ):
-        return True
-
-    meta = session_metadata or {}
-    target = str(meta.get("ticket_create_target") or "").strip().lower()
-    if target == "jira":
         return True
 
     if _EXPLICIT_JIRA_RE.search(text) and _CREATE_VERB_RE.search(text):

@@ -17,7 +17,7 @@ _CREATE_JIRA_REFERENCE_RE = re.compile(
     re.I,
 )
 _SLACK_TASK_CREATE_RE = re.compile(
-    r"\b(?:create|add|open|file)\b.{0,20}\b(?:a\s+)?task\b",
+    r"\b(?:create|add|open|file)\b.{0,48}\b(?:a\s+)?tasks?\b",
     re.I,
 )
 
