@@ -67,6 +67,36 @@ def test_create_task_simple():
     assert extract_task_title("create task for merchant sync failure") == "merchant sync failure"
 
 
+def test_create_task_for_all_the_above_issues_is_slack_board_not_jira():
+    from backend.routing.jira.intent import looks_like_jira_create_request
+    from backend.routing.slack_board.intent import looks_like_batch_board_create
+
+    intent = "create a task for all the above issues"
+    assert looks_like_slack_board_create(intent)
+    assert looks_like_batch_board_create(intent)
+    assert not looks_like_jira_create_request(intent)
+
+
+def test_extract_numbered_task_titles_from_issue_list():
+    from backend.routing.slack_board.intent import extract_numbered_task_titles
+
+    text = """
+1. Exit reason to be given on Export file
+2. Limit discount on cart - Everaw requirement
+3. Disable Partial COD on Coupons - Everaw requirement
+4. Multiple customers are being created - Everaw requirement
+5. UPI Intent - Mishmash and Everaw requirement
+6. Redirection Updates
+7. Add Freebie using coupon - AuraByNoureya
+8. Snapchat Integration
+@alfred create a task for all the above issues
+"""
+    titles = extract_numbered_task_titles(text)
+    assert len(titles) == 8
+    assert titles[0] == "Exit reason to be given on Export file"
+    assert titles[-1] == "Snapchat Integration"
+
+
 def test_board_request_and_ticket_ref():
     intent = "move TS-42 to in progress"
     assert looks_like_slack_board_request(intent)

@@ -43,7 +43,10 @@ def slack_board_agentic_addendum(*, intent_class: str = "") -> str:
         "comment, or read-only lookup.\n"
         "2. Use READ tools when the task id, title, or thread context is unclear.\n"
         "3. Call the matching WRITE tool for any mutation — never claim create/update/assign "
-        "in prose without a successful write tool in your trace.\n\n"
+        "in prose without a successful write tool in your trace.\n"
+        "4. If the user asks to create a task for **all** numbered or bulleted items, "
+        "call `slack_board_create_task` once per item. Stop after the first confirmation "
+        "prompt instead of retrying blocked writes.\n\n"
         f"**Planner intent:** `{intent}` — pick the write tool that matches it.\n"
         "Review the tool manifest below before your first tool call."
     )

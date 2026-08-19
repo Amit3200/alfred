@@ -21,6 +21,13 @@ def test_slack_board_create_still_matches_without_jira():
     assert not should_route_create_to_jira(intent, jira_enabled=True)
 
 
+def test_create_task_for_all_the_above_issues_stays_on_slack_board():
+    intent = "create a task for all the above issues"
+    assert looks_like_slack_board_create(intent)
+    assert not looks_like_jira_create_request(intent)
+    assert not should_route_create_to_jira(intent, jira_enabled=True)
+
+
 def test_jira_followup_after_thread_context():
     intent = "yup go ahead and create"
     session = (

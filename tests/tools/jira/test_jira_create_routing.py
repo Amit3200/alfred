@@ -32,6 +32,11 @@ def test_create_above_ticket_matches_create_request():
     assert looks_like_jira_question(intent)
 
 
+def test_create_a_task_for_all_the_above_issues_is_not_jira():
+    intent = "create a task for all the above issues"
+    assert not looks_like_jira_create_request(intent)
+
+
 def test_project_key_followup_without_ticket_word():
     intent = "i mentioned the project key is TS and remember #tech-support is always TS"
     session = (

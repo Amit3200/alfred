@@ -513,6 +513,157 @@ def test_direct_create_title_followup(tmp_path: Path):
     assert create_mock.call_args.kwargs["title"] == "Talk to CottonThreads"
 
 
+def test_direct_create_batch_from_numbered_list(tmp_path: Path):
+    from backend.db.slack_workflows_db import db_create_board_binding
+
+    db_create_board_binding(
+        tmp_path,
+        board_key="bugs-tracker",
+        list_id="Fbugs001",
+        channel_id="Ctech",
+    )
+    config = AlfredConfig(slack=SlackConfig(enabled=True, bot_token="xoxb-test"))
+    raw = "\n".join(
+        [
+            "1. Exit reason to be given on Export file",
+            "2. Limit discount on cart - Everaw requirement",
+            "3. Disable Partial COD on Coupons - Everaw requirement",
+            "4. Multiple customers are being created - Everaw requirement",
+            "5. UPI Intent - Mishmash and Everaw requirement",
+            "6. Redirection Updates",
+            "7. Add Freebie using coupon - AuraByNoureya",
+            "8. Snapchat Integration",
+            "@alfred create a task for all the above issues",
+        ]
+    )
+    task = Task(
+        source="slack",
+        user_id="U1",
+        channel_id="Ctech",
+        raw_text=raw,
+        cleaned_intent="create a task for all the above issues",
+    )
+    created = []
+    captured_kwargs = []
+
+    def _fake_create(*_args, **kwargs):
+        captured_kwargs.append(kwargs)
+        idx = len(created) + 1
+        row = {
+            "record_id": f"Rec{idx}",
+            "display_id": f"TS-{idx}",
+            "title": kwargs["title"],
+            "status": "Not picked",
+            "board": "bugs-tracker",
+            "list_id": "Fbugs001",
+        }
+        created.append(row)
+        return row
+
+    from backend.routing.slack_board.task_draft import BoardTaskDraft
+
+    def _fake_draft(**kwargs):
+        return [
+            BoardTaskDraft(
+                title=title,
+                description=(
+                    f"Summary: {title}\n"
+                    "Slack thread: https://slack.example/thread\n"
+                    f"Context:\n• Work item: {title}\n"
+                    "Requested by: @Azeem"
+                ),
+                severity="Medium",
+            )
+            for title in kwargs["item_titles"]
+        ]
+
+    with patch(
+        "backend.routing.slack_board.direct.create_board_task",
+        side_effect=_fake_create,
+    ) as create_mock, patch(
+        "backend.routing.slack_board.task_draft.draft_board_tasks_batch_from_thread",
+        side_effect=_fake_draft,
+    ):
+        response, meta = try_slack_board_create_direct(task, config, tmp_path)
+    assert response is not None
+    text = response.payload.data.get("text") or ""
+    assert "8 tasks created" in text
+    assert "Snapchat Integration" in text
+    assert create_mock.call_count == 8
+    assert [row["title"] for row in created][0] == "Exit reason to be given on Export file"
+    assert meta.get("pending_board_creates") == []
+    assert "Summary: Snapchat Integration" in captured_kwargs[-1]["description"]
+    assert "Exit reason" not in captured_kwargs[-1]["description"]
+    assert "Summary: Exit reason to be given on Export file" in captured_kwargs[0]["description"]
+
+
+def test_direct_create_pending_batch_on_yes_proceed(tmp_path: Path):
+    from backend.db.slack_workflows_db import db_create_board_binding
+    from backend.models.config import GovernanceConfig
+
+    db_create_board_binding(
+        tmp_path,
+        board_key="bugs-tracker",
+        list_id="Fbugs001",
+        channel_id="Ctech",
+    )
+    config = AlfredConfig(
+        slack=SlackConfig(enabled=True, bot_token="xoxb-test"),
+        governance=GovernanceConfig(enabled=True, require_confirmation=True),
+    )
+    session = MagicMock()
+    session.metadata = {
+        "pending_board_creates": [
+            {"title": "Exit reason to be given on Export file"},
+            {"title": "Snapchat Integration"},
+        ]
+    }
+    task = Task(
+        source="slack",
+        user_id="U1",
+        channel_id="Ctech",
+        raw_text="yes, proceed",
+        cleaned_intent="yes, proceed",
+    )
+    created = []
+
+    def _fake_create(*_args, **kwargs):
+        idx = len(created) + 1
+        row = {
+            "record_id": f"Rec{idx}",
+            "display_id": f"TS-{idx}",
+            "title": kwargs["title"],
+            "status": "Not picked",
+            "board": "bugs-tracker",
+            "list_id": "Fbugs001",
+        }
+        created.append(row)
+        return row
+
+    from backend.routing.slack_board.task_draft import BoardTaskDraft
+
+    with patch(
+        "backend.routing.slack_board.direct.create_board_task",
+        side_effect=_fake_create,
+    ) as create_mock, patch(
+        "backend.routing.slack_board.task_draft.draft_board_tasks_batch_from_thread",
+        side_effect=lambda **kwargs: [
+            BoardTaskDraft(title=title, description=f"Summary: {title}", severity="Medium")
+            for title in kwargs["item_titles"]
+        ],
+    ):
+        response, meta = try_slack_board_create_direct(
+            task, config, tmp_path, session=session
+        )
+    assert response is not None
+    assert create_mock.call_count == 2
+    assert [row["title"] for row in created] == [
+        "Exit reason to be given on Export file",
+        "Snapchat Integration",
+    ]
+    assert meta.get("pending_board_creates") == []
+
+
 def test_board_skill_keeps_full_tool_manifest():
     registry = ToolRegistry()
     for name in (

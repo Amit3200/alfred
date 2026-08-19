@@ -31,10 +31,12 @@ from backend.routing.slack_board.intent import (
     extract_severity_target,
     extract_status_target,
     extract_task_title,
+    extract_numbered_task_titles,
     extract_ticket_ref,
     is_placeholder_list_id,
     infer_thread_action_assignee,
     is_weak_board_task_title,
+    looks_like_batch_board_create,
     looks_like_board_create_title_followup,
     looks_like_board_where_question,
     looks_like_slack_board_create,
@@ -115,6 +117,35 @@ def format_board_task_created(result: dict[str, Any], *, severity: str = "", ass
     open_url = (result.get("open_url") or "").strip()
     if open_url:
         lines.append(f"- Open List: {open_url}")
+    return "\n".join(lines)
+
+
+def format_board_tasks_created(
+    results: list[dict[str, Any]],
+    *,
+    failures: list[str] | None = None,
+    severity: str = "",
+    assignee_user_id: str = "",
+) -> str:
+    created = [row for row in results if row.get("record_id") or row.get("display_id")]
+    lines = [f"**{len(created)} tasks created on your board**"]
+    for result in created:
+        display_id = result.get("display_id") or result.get("record_id") or ""
+        title = result.get("title") or "Task"
+        lines.append(f"- **{display_id}** · *{title}*")
+    if created:
+        list_id = created[0].get("list_id") or ""
+        list_name = created[0].get("list_name") or created[0].get("board") or "board"
+        lines.append(f"- List: **{list_name}** (`{list_id}`)" if list_id else f"- Board: `{list_name}`")
+        if severity:
+            lines.append(f"- Severity: `{severity}`")
+        if assignee_user_id:
+            lines.append(f"- Assignee: `<@{assignee_user_id}>`")
+        open_url = (created[0].get("open_url") or "").strip()
+        if open_url:
+            lines.append(f"- Open List: {open_url}")
+    for error in failures or []:
+        lines.append(f"- Could not create: {error}")
     return "\n".join(lines)
 
 
@@ -200,6 +231,103 @@ def _resolve_board_for_create(
     return board, None
 
 
+def _create_board_tasks_batch(
+    *,
+    client: Any,
+    config: AlfredConfig,
+    store: Any,
+    board: Any,
+    binding: dict[str, Any] | None,
+    items: list[dict[str, str]],
+    channel_id: str,
+    thread_ts: str,
+) -> tuple[AssistantResponse, dict[str, Any]]:
+    from backend.integrations.slack.lists_client import list_open_url
+    from backend.routing.slack_board.pending import (
+        PENDING_BOARD_CREATES_KEY,
+        clear_pending_board_creates_patch,
+    )
+
+    results: list[dict[str, Any]] = []
+    failures: list[str] = []
+    list_name = str((binding or {}).get("list_name") or board.name or "")
+    open_url = ""
+    last_severity = ""
+    last_assignee = ""
+    for item in items:
+        cleaned = str(item.get("title") or "").strip()[:200]
+        if not cleaned:
+            continue
+        description = str(item.get("description") or "").strip() or f"Summary: {cleaned}"
+        severity = str(item.get("severity") or "").strip()
+        assignee_user_id = str(item.get("assignee_user_id") or "").strip()
+        try:
+            result = create_board_task(
+                client,
+                config,
+                store,
+                board,
+                title=cleaned,
+                description=description,
+                severity=severity,
+                assignee_user_id=assignee_user_id,
+                channel_id=channel_id,
+                thread_ts=thread_ts,
+            )
+        except Exception as exc:
+            logger.exception("Direct Slack board batch create failed for %r", cleaned)
+            failures.append(f"{cleaned}: {exc}")
+            continue
+        if not open_url and result.get("list_id"):
+            open_url = list_open_url(client, result.get("list_id") or "")
+        last_severity = severity
+        last_assignee = assignee_user_id
+        results.append(
+            {
+                **result,
+                "title": result.get("title") or cleaned,
+                "list_name": list_name,
+                "open_url": open_url,
+            }
+        )
+
+    if not results:
+        detail = "; ".join(failures) if failures else "no titles"
+        return AssistantResponse.error(f"Could not create board tasks: {detail}"), {}
+
+    body = format_board_tasks_created(
+        results,
+        failures=failures,
+        severity=last_severity,
+        assignee_user_id=last_assignee,
+    )
+    last = results[-1]
+    metadata = {
+        "pending_board_create": False,
+        PENDING_BOARD_CREATES_KEY: [],
+        **clear_pending_board_creates_patch(),
+        "last_board_task": {
+            "display_id": last.get("display_id"),
+            "record_id": last.get("record_id"),
+            "title": last.get("title"),
+            "status": last.get("status"),
+            "board": last.get("board"),
+            "list_id": last.get("list_id"),
+            "list_name": last.get("list_name"),
+            "open_url": last.get("open_url"),
+        },
+        "last_board_tasks": [
+            {
+                "display_id": row.get("display_id"),
+                "record_id": row.get("record_id"),
+                "title": row.get("title"),
+            }
+            for row in results
+        ],
+    }
+    return AssistantResponse.from_text(body), metadata
+
+
 def try_slack_board_create_direct(
     task: Task,
     config: AlfredConfig,
@@ -216,7 +344,14 @@ def try_slack_board_create_direct(
 
     intent = task.cleaned_intent or task.raw_text or ""
     session_meta = dict((session.metadata if session else {}) or {})
-    if force_intent_class != "slack.board.create":
+    from backend.governance.confirmation import is_confirmation_phrase
+    from backend.routing.slack_board.pending import get_pending_board_creates
+
+    pending_creates = get_pending_board_creates(session)
+    confirm_pending = bool(pending_creates) and is_confirmation_phrase(
+        intent, config.governance
+    )
+    if force_intent_class != "slack.board.create" and not confirm_pending:
         from backend.routing.create_target_precedence import should_route_create_to_jira
 
         if should_route_create_to_jira(
@@ -231,7 +366,7 @@ def try_slack_board_create_direct(
         session_turns=session_turns,
         session_metadata=session_meta,
     )
-    if not looks_like_slack_board_create(intent) and not title_followup:
+    if not looks_like_slack_board_create(intent) and not title_followup and not confirm_pending:
         if force_intent_class != "slack.board.create":
             return None, {}
 
@@ -244,11 +379,20 @@ def try_slack_board_create_direct(
             {},
         )
 
-    if not title_followup and not title_override and force_intent_class != "slack.board.create":
+    if (
+        not confirm_pending
+        and not title_followup
+        and not title_override
+        and force_intent_class != "slack.board.create"
+    ):
         preliminary_title = extract_task_title(intent)
         if not preliminary_title:
             preliminary_title = extract_task_title(task.raw_text or "")
-        if not preliminary_title and not references_thread_context(intent):
+        if (
+            not preliminary_title
+            and not references_thread_context(intent)
+            and not looks_like_batch_board_create(intent)
+        ):
             return (
                 AssistantResponse.from_text(
                     "What should the task be called? Reply with the title, for example: "
@@ -335,6 +479,79 @@ def try_slack_board_create_direct(
                 )
         except Exception as exc:
             logger.warning("Thread fetch for direct board create failed: %s", exc)
+
+    batch_titles: list[str] = []
+    if confirm_pending:
+        batch_titles = [item["title"] for item in pending_creates]
+        if pending_creates[0].get("severity") and not severity:
+            severity = pending_creates[0]["severity"]
+        if pending_creates[0].get("assignee_user_id") and not assignee_user_id:
+            assignee_user_id = pending_creates[0]["assignee_user_id"]
+    elif looks_like_batch_board_create(intent) and not title_followup and not title_override:
+        raw_messages = "\n".join(str(message.get("text") or "") for message in messages)
+        batch_titles = extract_numbered_task_titles(
+            task.raw_text or "",
+            intent,
+            raw_messages,
+            messages_text,
+        )
+
+    if (confirm_pending and batch_titles) or len(batch_titles) >= 2:
+        finalized = finalize_board_create_fields(
+            severity=severity,
+            assignee_user_id=assignee_user_id,
+            requester_user_id=task.user_id or "",
+            bot_user_id=_bot_user_id(client),
+            default_assignee_to_requester=not bool(messages_text),
+        )
+        severity = finalized["severity"]
+        assignee_user_id = finalized["assignee_user_id"]
+        from backend.routing.slack_board.task_draft import draft_board_tasks_batch_from_thread
+
+        drafts = draft_board_tasks_batch_from_thread(
+            config=config,
+            task=task,
+            item_titles=batch_titles,
+            messages_text=messages_text,
+            request_text=intent,
+            thread_url=thread_url,
+            hint_assignee_user_id=assignee_user_id,
+            mention_labels=mention_labels,
+            default_severity=severity,
+            data_dir=data_dir,
+        )
+        items = [
+            {
+                "title": (draft.title or source)[:200],
+                "description": humanize_board_task_text(draft.description, mention_labels),
+                "severity": draft.severity or severity,
+                "assignee_user_id": draft.assignee_user_id or assignee_user_id,
+            }
+            for draft, source in zip(drafts, batch_titles)
+        ]
+        if len(items) < len(batch_titles):
+            for source in batch_titles[len(items) :]:
+                items.append(
+                    {
+                        "title": source[:200],
+                        "description": humanize_board_task_text(
+                            f"Summary: {source}",
+                            mention_labels,
+                        ),
+                        "severity": severity,
+                        "assignee_user_id": assignee_user_id,
+                    }
+                )
+        return _create_board_tasks_batch(
+            client=client,
+            config=config,
+            store=store,
+            board=board,
+            binding=binding,
+            items=items,
+            channel_id=task.channel_id or "",
+            thread_ts=task.thread_ts or "",
+        )
 
     if in_slack_thread and references_thread_context(intent):
         title = ""

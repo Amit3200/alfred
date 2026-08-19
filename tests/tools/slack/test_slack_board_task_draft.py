@@ -178,3 +178,111 @@ def test_parse_draft_json_codeblock():
     assert parsed is not None
     assert parsed["title"] == "Call Azeem about pipeline"
     assert parsed["confidence"] == 0.9
+
+
+def test_parse_batch_draft_rows():
+    from backend.routing.slack_board.task_draft import _parse_batch_task_rows
+
+    content = """{
+      "tasks": [
+        {"source_title": "Snapchat Integration", "title": "Add Snapchat integration", "description": "Summary: Add Snapchat integration"},
+        {"source_title": "UPI Intent", "title": "Enable UPI Intent", "description": "Summary: Enable UPI Intent for Mishmash and Everaw"}
+      ]
+    }"""
+    rows = _parse_batch_task_rows(content)
+    assert len(rows) == 2
+    assert rows[0]["title"] == "Add Snapchat integration"
+
+
+def test_batch_draft_fallback_without_llm():
+    from unittest.mock import patch
+
+    from backend.models.config import AlfredConfig
+    from backend.models.task import Task
+    from backend.routing.slack_board.task_draft import draft_board_tasks_batch_from_thread
+
+    task = Task(
+        source="slack",
+        user_id="U1",
+        channel_id="C1",
+        raw_text="create a task for all the above issues",
+        cleaned_intent="create a task for all the above issues",
+    )
+    with patch(
+        "backend.routing.slack_board.task_draft.LLMRouter.from_config",
+        side_effect=RuntimeError("no llm"),
+    ):
+        drafts = draft_board_tasks_batch_from_thread(
+            config=AlfredConfig(),
+            task=task,
+            item_titles=["Exit reason to be given on Export file", "Snapchat Integration"],
+            thread_url="https://slack.example/thread",
+            mention_labels={"U1": "Azeem"},
+            default_severity="Medium",
+        )
+    assert len(drafts) == 2
+    assert drafts[0].title == "Exit reason to be given on Export file"
+    assert "Summary: Snapchat Integration" in drafts[1].description
+    assert "Exit reason" not in drafts[1].description
+    assert "Requested by: @Azeem" in drafts[0].description
+
+
+def test_batch_draft_uses_llm_per_item_descriptions():
+    from unittest.mock import MagicMock, patch
+
+    from backend.ai.base import LLMResponse
+    from backend.models.config import AlfredConfig
+    from backend.models.task import Task
+    from backend.routing.slack_board.task_draft import draft_board_tasks_batch_from_thread
+
+    task = Task(
+        source="slack",
+        user_id="U1",
+        channel_id="C1",
+        raw_text="create a task for all the above issues",
+        cleaned_intent="create a task for all the above issues",
+    )
+    provider = MagicMock()
+    provider.chat.return_value = LLMResponse(
+        content="""{
+          "tasks": [
+            {
+              "source_title": "Exit reason to be given on Export file",
+              "title": "Add exit reason to export file",
+              "description": "Summary: Add the exit reason field on export files.\\nRequested by: @Azeem",
+              "assignee_user_id": "",
+              "severity": "Medium"
+            },
+            {
+              "source_title": "Snapchat Integration",
+              "title": "Integrate Snapchat ads",
+              "description": "Summary: Integrate Snapchat for ads tracking.\\nRequested by: @Azeem",
+              "assignee_user_id": "",
+              "severity": "Low"
+            }
+          ]
+        }"""
+    )
+    router = MagicMock()
+    with patch(
+        "backend.routing.slack_board.task_draft.LLMRouter.from_config",
+        return_value=router,
+    ), patch(
+        "backend.ai.routing.resolve_llm_route",
+        return_value=("openai", provider, "test-model"),
+    ):
+        drafts = draft_board_tasks_batch_from_thread(
+            config=AlfredConfig(),
+            task=task,
+            item_titles=["Exit reason to be given on Export file", "Snapchat Integration"],
+            mention_labels={"U1": "Azeem"},
+            default_severity="Medium",
+        )
+    assert [d.title for d in drafts] == [
+        "Add exit reason to export file",
+        "Integrate Snapchat ads",
+    ]
+    assert "exit reason field" in drafts[0].description.lower()
+    assert "Snapchat" in drafts[1].description
+    assert "exit reason field" not in drafts[1].description.lower()
+    assert drafts[1].severity == "Low"

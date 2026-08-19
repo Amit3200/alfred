@@ -87,6 +87,25 @@ def _update_plan_progress(task_id: str, data_dir: Any, session: Any, tool_name: 
         logger.exception("Failed to update plan progress in agent loop")
 
 
+def _is_confirmation_block(observation: str) -> bool:
+    return "requires explicit approval" in (observation or "").lower()
+
+
+def _remember_board_creates_from_calls(session: Any, tool_calls: list[ToolCall]) -> None:
+    from backend.routing.slack_board.pending import remember_pending_board_create
+
+    for tool_call in tool_calls:
+        if tool_call.name != "slack_board_create_task":
+            continue
+        args = tool_call.arguments or {}
+        remember_pending_board_create(
+            session,
+            title=str(args.get("title") or ""),
+            severity=str(args.get("severity") or ""),
+            assignee_user_id=str(args.get("assignee_user_id") or args.get("assignee") or ""),
+        )
+
+
 def run_agent(
     provider: LLMProvider,
     messages: list[Message],
@@ -142,7 +161,21 @@ def run_agent(
 
         if response.tool_calls:
             conversation.append(_assistant_tool_message(response))
+            confirmation_observation = ""
             for tool_call in response.tool_calls:
+                if confirmation_observation:
+                    if tool_call.name == "slack_board_create_task":
+                        _remember_board_creates_from_calls(session, [tool_call])
+                    if tool_call.name != "slack_fetch_thread":
+                        conversation.append(
+                            Message(
+                                role="tool",
+                                content="Skipped: waiting for write approval.",
+                                tool_call_id=tool_call.id,
+                                name=tool_call.name,
+                            )
+                        )
+                        continue
                 observation = execute_tool(
                     registry,
                     tool_call.name,
@@ -170,6 +203,21 @@ def run_agent(
                         tool_call.arguments,
                         observation,
                     )
+                if _is_confirmation_block(observation):
+                    confirmation_observation = observation
+                    _remember_board_creates_from_calls(session, [tool_call])
+            if confirmation_observation:
+                from backend.governance.confirmation import confirmation_required_board_batch_message
+                from backend.routing.slack_board.pending import get_pending_board_creates
+
+                pending = get_pending_board_creates(session)
+                if len(pending) >= 2:
+                    log_checkpoint(iter_checkpoint, f"iteration_{iteration + 1}_confirmation", "completed")
+                    return confirmation_required_board_batch_message(
+                        [item["title"] for item in pending]
+                    )
+                log_checkpoint(iter_checkpoint, f"iteration_{iteration + 1}_confirmation", "completed")
+                return confirmation_observation
             log_checkpoint(iter_checkpoint, f"iteration_{iteration + 1}_tool_called", "completed")
             continue
 
@@ -209,6 +257,9 @@ def run_agent(
                     )
                     if task_id and data_dir:
                         _update_plan_progress(task_id, data_dir, session, name, arguments, observation)
+                    if _is_confirmation_block(observation):
+                        log_checkpoint(iter_checkpoint, f"iteration_{iteration + 1}_confirmation", "completed")
+                        return observation
                     log_checkpoint(iter_checkpoint, f"iteration_{iteration + 1}_text_tool_called", "completed")
                     continue
 

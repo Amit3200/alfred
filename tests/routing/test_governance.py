@@ -171,6 +171,27 @@ def test_registry_governance_blocks_and_audits(tmp_path: Path):
     assert rows[0]["blocked"] is True
 
 
+def test_slack_board_create_records_pending_on_confirmation(tmp_path: Path):
+    from backend.routing.slack_board.pending import get_pending_board_creates
+
+    config = _config()
+    task = _task()
+    session = ConversationSession(
+        key="slack:C456:111.222",
+        source="slack",
+        scope_id="C456",
+        thread_id="111.222",
+    )
+    ctx = GovernanceContext(config, task, session=session, data_dir=tmp_path)
+    blocked = ctx.check_before_run(
+        "slack_board_create_task",
+        {"title": "Snapchat Integration"},
+    )
+    assert blocked is not None
+    pending = get_pending_board_creates(session)
+    assert [item["title"] for item in pending] == ["Snapchat Integration"]
+
+
 def test_registry_audits_successful_staging_write(tmp_path: Path):
     registry = ToolRegistry()
     registry.register(

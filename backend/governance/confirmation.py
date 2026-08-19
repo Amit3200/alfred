@@ -101,6 +101,18 @@ def confirmation_required_message(tool_name: str, summary: str) -> str:
     )
 
 
+def confirmation_required_board_batch_message(titles: list[str]) -> str:
+    cleaned = [t.strip() for t in titles if (t or "").strip()]
+    if not cleaned:
+        return confirmation_required_message("slack_board_create_task", "create Slack List tasks")
+    listed = "\n".join(f"- {title}" for title in cleaned)
+    return (
+        "Governance: `slack_board_create_task` requires explicit approval before I can run it.\n"
+        f"I'll create **{len(cleaned)}** Slack List tasks:\n{listed}\n"
+        "Reply *yes, proceed* in this thread and I'll create them."
+    )
+
+
 def confirmation_granted_message(ttl_minutes: int) -> str:
     return (
         f"*Write actions approved* for this thread for the next {ttl_minutes} minutes.\n"

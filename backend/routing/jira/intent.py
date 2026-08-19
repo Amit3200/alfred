@@ -16,6 +16,10 @@ _CREATE_JIRA_REFERENCE_RE = re.compile(
     r"|\b(?:create|file|raise|open|log|submit)\b.{0,20}\b(?:above|these|them|those|it)\b",
     re.I,
 )
+_SLACK_TASK_CREATE_RE = re.compile(
+    r"\b(?:create|add|open|file)\b.{0,20}\b(?:a\s+)?task\b",
+    re.I,
+)
 
 _PROJECT_KEY_HINT_RE = re.compile(
     r"\b(?:project\s+key|use|remember|always)\b.{0,40}\b(?:TS|TECH)\b"
@@ -59,6 +63,12 @@ _TRANSITION_RE = re.compile(
 def looks_like_jira_create_request(intent: str) -> bool:
     """True when the user wants a new JIRA issue, not identity lookup."""
     text = intent or ""
+    if not text:
+        return False
+    # "@alfred create a task for all the above issues" is Slack List language.
+    # The "create … above" JIRA follow-up regex must not steal it unless JIRA is explicit.
+    if _SLACK_TASK_CREATE_RE.search(text) and not re.search(r"\bjira\b", text, re.I):
+        return False
     return bool(_CREATE_JIRA_RE.search(text) or _CREATE_JIRA_REFERENCE_RE.search(text))
 
 

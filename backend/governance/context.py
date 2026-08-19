@@ -53,6 +53,17 @@ class GovernanceContext:
                     if not session_has_write_approval(self.session, self._gov):
                         summary = tool_action_summary(tool_name, arguments)
                         msg = confirmation_required_message(tool_name, summary)
+                        if tool_name == "slack_board_create_task":
+                            from backend.routing.slack_board.pending import remember_pending_board_create
+
+                            remember_pending_board_create(
+                                self.session,
+                                title=str(arguments.get("title") or ""),
+                                severity=str(arguments.get("severity") or ""),
+                                assignee_user_id=str(
+                                    arguments.get("assignee_user_id") or arguments.get("assignee") or ""
+                                ),
+                            )
                         self._audit(
                             tool_name,
                             arguments,

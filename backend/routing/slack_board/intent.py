@@ -47,6 +47,19 @@ _ABOVE_RE = re.compile(
     r"\b(?:for\s+)?(?:the\s+)?(?:above|this|below|here|same\s+thread|in\s+this\s+thread)\b",
     re.I,
 )
+_BATCH_CREATE_RE = re.compile(
+    r"\b(?:all|each)\s+(?:of\s+)?(?:the\s+)?(?:above|these|those|them)\b"
+    r"|\bthese\s+(?:issues|items|tasks|tickets|bugs)\b"
+    r"|\bcreate\s+tasks\b",
+    re.I,
+)
+_NUMBERED_ITEM_RE = re.compile(
+    r"^\s*(?:(?:\d+|[A-Za-z])[\.\)\-]\s+|[-*•]\s+)(.+)$",
+)
+_CREATE_COMMAND_LINE_RE = re.compile(
+    r"@alfred\b|\bcreate\s+(?:a\s+)?(?:task|ticket|item)s?\b",
+    re.I,
+)
 _TICKET_REF_RE = re.compile(
     r"\b((?:[A-Z]{1,8}-\d+|Rec[A-Za-z0-9]+))\b",
     re.I,
@@ -434,6 +447,34 @@ def extract_board_create_assignee(
 
 def references_thread_context(intent: str) -> bool:
     return bool(_ABOVE_RE.search(intent or ""))
+
+
+def looks_like_batch_board_create(intent: str) -> bool:
+    """True when the user asked to create a task for each listed item."""
+    return bool(_BATCH_CREATE_RE.search(intent or ""))
+
+
+def extract_numbered_task_titles(*texts: str) -> list[str]:
+    """Parse numbered or bulleted lines into distinct Slack List titles."""
+    seen: set[str] = set()
+    titles: list[str] = []
+    for text in texts:
+        for raw_line in (text or "").splitlines():
+            match = _NUMBERED_ITEM_RE.match(raw_line)
+            if not match:
+                continue
+            title = match.group(1).strip(" .,:;-")
+            title = re.sub(r"^<@[^>]+>\s*", "", title).strip(" .,:;-")
+            if not title or is_weak_board_task_title(title):
+                continue
+            if _CREATE_COMMAND_LINE_RE.search(title) and len(title) < 80:
+                continue
+            key = re.sub(r"\s+", " ", title.lower())
+            if key in seen:
+                continue
+            seen.add(key)
+            titles.append(title[:200])
+    return titles
 
 
 def extract_ticket_ref(intent: str) -> str:

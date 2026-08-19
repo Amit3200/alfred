@@ -202,15 +202,13 @@ class TaskProcessor(SessionMixin, DirectMixin, InvestigationMixin, ReplyMixin):
                     )
                 return self._finish_response(followup_response)
 
-            create_response, board_meta = (None, {})
-            if not turn_plan.prefers_jira:
-                create_response, board_meta = try_slack_board_create_direct(
-                    task,
-                    self.config,
-                    self._data_dir_path(),
-                    session=session,
-                    session_turns=session_turns,
-                )
+            create_response, board_meta = try_slack_board_create_direct(
+                task,
+                self.config,
+                self._data_dir_path(),
+                session=session,
+                session_turns=session_turns,
+            )
             if create_response is not None:
                 if board_meta and session:
                     session.metadata.update(board_meta)
@@ -898,16 +896,19 @@ class TaskProcessor(SessionMixin, DirectMixin, InvestigationMixin, ReplyMixin):
                     else:
                         response = AssistantResponse.from_text(content)
 
+        from backend.routing.slack_board.pending import pending_board_creates_patch
+
+        pending_patch = pending_board_creates_patch(session)
+        finish_patch = {
+            **(metadata_patch or {}),
+            **(session_meta_patch or {}),
+            **pending_patch,
+        }
         response = self._finish_response(
             response,
             tool_plan=tool_plan,
             skill=active_skill,
-            metadata_patch={
-                **(metadata_patch or {}),
-                **(session_meta_patch or {}),
-            }
-            if metadata_patch or session_meta_patch
-            else None,
+            metadata_patch=finish_patch or None,
         )
 
         if session_key and self.session_store:
@@ -925,12 +926,7 @@ class TaskProcessor(SessionMixin, DirectMixin, InvestigationMixin, ReplyMixin):
                 assistant_content=rendered,
                 assistant_payload=response.payload,
                 context_snapshot=slack_context if include_context else None,
-                metadata_patch={
-                    **(metadata_patch or {}),
-                    **(session_meta_patch or {}),
-                }
-                if metadata_patch or session_meta_patch
-                else None,
+                metadata_patch=finish_patch or None,
             )
             logger.info("Session updated: %s", session_key)
 
