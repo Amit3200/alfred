@@ -89,7 +89,7 @@ class SlackBoardProfile(BaseModel):
     default_status: str = Field(default="Not picked", description="Status for new tasks.")
     auto_approve_writes: bool = Field(
         default=False,
-        description="Skip yes/proceed for board write tools in bound channels.",
+        description="Skip yes/proceed for Slack List writes and jira_create_issue in bound channels.",
     )
     columns: SlackBoardColumnMap = Field(default_factory=SlackBoardColumnMap)
 
@@ -441,6 +441,52 @@ class JiraConfig(BaseModel):
     )
 
 
+class PeriskopeConfig(BaseModel):
+    """WhatsApp inbox via Periskope — feeds Slack Lists / JIRA through the connector platform."""
+
+    enabled: bool = False
+    base_url: str = Field(
+        default="https://api.periskope.app/v1",
+        description="Periskope API base URL.",
+    )
+    org_phone: str = Field(
+        default="",
+        description="Connected WhatsApp number for the x-phone header, e.g. 919876543210.",
+    )
+    allowed_chat_ids: list[str] = Field(
+        default_factory=list,
+        description="If set, only these WhatsApp chat_ids (@g.us / @c.us) are pulled or replicated.",
+    )
+    summary_channel_id: str = Field(
+        default="",
+        description="Optional Slack channel for daily group summaries.",
+    )
+    summary_timezone: str = Field(default="Asia/Kolkata")
+    replicate_tickets: bool = True
+    replicate_tasks: bool = True
+    ticket_create_target: Literal["slack_board", "jira", "both"] = Field(
+        default="slack_board",
+        description="Where new Periskope tickets/tasks are created in Alfred.",
+    )
+    slack_board_key: str = Field(
+        default="",
+        description="Slack List board key. Empty uses the first linked board.",
+    )
+    jira_project: str = Field(
+        default="",
+        description="JIRA project key when ticket_create_target includes jira.",
+    )
+    sync_on_update: bool = True
+    api_token: str = ""
+    webhook_secret: str = ""
+
+
+class ConnectorsConfig(BaseModel):
+    """Inbound connectors that normalize into Slack Lists, JIRA, and summaries."""
+
+    periskope: PeriskopeConfig = Field(default_factory=PeriskopeConfig)
+
+
 class RepoKnowledgeConfig(BaseModel):
     enabled: bool = Field(
         default=True,
@@ -740,6 +786,7 @@ class AlfredConfig(BaseModel):
     git: GitConfig = Field(default_factory=GitConfig)
     aws: AWSConfig = Field(default_factory=AWSConfig)
     jira: JiraConfig = Field(default_factory=JiraConfig)
+    connectors: ConnectorsConfig = Field(default_factory=ConnectorsConfig)
     google: GoogleConfig = Field(default_factory=GoogleConfig)
     web_search: WebSearchConfig = Field(default_factory=WebSearchConfig)
     scripts: ScriptsConfig = Field(default_factory=ScriptsConfig)
@@ -769,6 +816,10 @@ class AlfredSecrets(BaseModel):
     google_credentials_json: str = ""
     google_oauth_refresh_token: str = ""
     web_search_api_key: str = ""
+    connectors: dict[str, dict[str, str]] = Field(
+        default_factory=dict,
+        description="Per-connector secrets, e.g. {periskope: {api_token, webhook_secret}}.",
+    )
     ai_api_keys: dict[str, str] = Field(default_factory=dict)
     server_admin_token: str = ""
     server_admin_username: str = ""

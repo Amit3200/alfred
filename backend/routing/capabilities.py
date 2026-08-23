@@ -19,6 +19,7 @@ from backend.tools.catalog import (
     IDENTITY_TOOLS,
     JIRA_TOOLS,
     REPO_DOC_TOOLS,
+    CONNECTOR_TOOLS,
     SCHEDULE_TOOLS,
     SLACK_TOOLS,
     WEB_TOOLS,
@@ -37,6 +38,7 @@ DEFAULT_BUNDLE_POLICY: dict[str, str] = {
     "schedule": "schedule_management",
     "web": "web_research",
     "git": "git_status",
+    "connector": "connector_management",
 }
 
 
@@ -122,6 +124,11 @@ def _default_bundles() -> dict[str, CapabilityBundle]:
             name="schedule",
             tools=SCHEDULE_TOOLS,
             policy_name="schedule_management",
+        ),
+        "connector": CapabilityBundle(
+            name="connector",
+            tools=CONNECTOR_TOOLS,
+            policy_name="connector_management",
         ),
         "web": CapabilityBundle(
             name="web",

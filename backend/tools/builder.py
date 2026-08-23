@@ -9,6 +9,7 @@ from backend.tools.catalog import (
     ARTIFACT_TOOLS,
     AWS_TOOLS,
     COMPANY_SCRIPT_TOOLS,
+    CONNECTOR_TOOLS,
     GIT_TOOLS,
     GOOGLE_TOOLS,
     JIRA_MODULE_TOOLS,
@@ -71,6 +72,11 @@ def build_tool_registry(
         from backend.tools.web.register import register_web_search_tools
 
         register_web_search_tools(registry, config)
+
+    if wants_module(CONNECTOR_TOOLS, allowed):
+        from backend.tools.connectors.register import register_connector_tools
+
+        register_connector_tools(registry, config)
 
     if wants_module(SCHEDULE_TOOLS, allowed):
         from backend.tools.schedule.register import register_schedule_tools

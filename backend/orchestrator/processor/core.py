@@ -794,7 +794,11 @@ class TaskProcessor(SessionMixin, DirectMixin, InvestigationMixin, ReplyMixin):
             )
 
             if investigation and (
-                self.config.git.enabled or self.config.jira.enabled or self.config.google.enabled
+                self.config.git.enabled
+                or self.config.jira.enabled
+                or self.config.google.enabled
+                or self.config.slack.enabled
+                or investigation.name == "connector_management"
             ):
                 set_call_kind("investigation")
                 response, inv_patch = self._run_investigation(

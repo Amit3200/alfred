@@ -8,6 +8,7 @@ from backend.tools.catalog import (
     ARTIFACT_TOOLS,
     AWS_TOOLS,
     COMPANY_SCRIPT_TOOLS,
+    CONNECTOR_TOOLS,
     GIT_API_TOOLS,
     GIT_LOCAL_TOOLS,
     GIT_WRITE_TOOLS,
@@ -16,6 +17,7 @@ from backend.tools.catalog import (
     JIRA_MODULE_TOOLS,
     REPO_DOC_TOOLS,
     SCHEDULE_TOOLS,
+    SLACK_TOOLS,
     WEB_TOOLS,
 )
 
@@ -42,6 +44,15 @@ def configured_tool_names(config: AlfredConfig) -> frozenset[str]:
 
     if config.web_search.enabled:
         names |= WEB_TOOLS
+
+    if getattr(config.slack, "enabled", False):
+        names |= SLACK_TOOLS
+
+    connectors = getattr(config, "connectors", None)
+    if connectors is not None:
+        payload = connectors.model_dump() if hasattr(connectors, "model_dump") else {}
+        if any(isinstance(value, dict) and value.get("enabled") for value in payload.values()):
+            names |= CONNECTOR_TOOLS
 
     names |= COMPANY_SCRIPT_TOOLS | SCHEDULE_TOOLS | ARTIFACT_TOOLS
     return frozenset(names)

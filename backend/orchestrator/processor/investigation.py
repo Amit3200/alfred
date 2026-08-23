@@ -115,6 +115,8 @@ class InvestigationMixin:
             return investigation
         if investigation is not None and investigation.name == "schedule_management":
             return investigation
+        if investigation is not None and investigation.name == "connector_management":
+            return investigation
         if is_html_slides_intent(turn_plan.intent_class):
             if investigation is None or investigation.name != planned.name:
                 logger.info("TurnPlan HTML slides → skill %s", planned.name)
@@ -147,6 +149,14 @@ class InvestigationMixin:
             if schedule_skill is not None:
                 logger.info("Schedule management intent → skill schedule_management")
                 return schedule_skill
+
+        from backend.routing.connector_intent import looks_like_connector_request
+
+        if task.source != "scheduler" and looks_like_connector_request(slide_text):
+            connector_skill = self._playbooks.get_by_name("connector_management")
+            if connector_skill is not None:
+                logger.info("Connector intent → skill connector_management")
+                return connector_skill
 
         if task.source != "scheduler" and (
             looks_like_html_slides_request(slide_text)

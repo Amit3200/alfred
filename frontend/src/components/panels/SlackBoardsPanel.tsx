@@ -570,7 +570,12 @@ export function SlackBoardsPanel() {
           <Form.Item name="display_id_column" label="Display id column (optional)">
             <Input placeholder="Leave empty to skip writing TS-N to list" />
           </Form.Item>
-          <Form.Item name="auto_approve_writes" label="Auto-approve board writes" valuePropName="checked">
+          <Form.Item
+            name="auto_approve_writes"
+            label="Auto-approve board writes"
+            extra="Skip yes/proceed for Slack List writes and creating the matching JIRA issue in this channel."
+            valuePropName="checked"
+          >
             <Switch />
           </Form.Item>
           <Form.Item name="enabled" label="Enabled" valuePropName="checked">

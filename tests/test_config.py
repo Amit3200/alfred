@@ -42,6 +42,33 @@ def test_secrets_not_in_config_yaml(data_dir: Path) -> None:
     assert loaded_config.slack.bot_token == "xoxb-test-token"
 
 
+def test_connector_secrets_stay_encrypted(data_dir: Path) -> None:
+    manager = ConfigManager(data_dir)
+    manager.init()
+    config = manager.load_config()
+    config.connectors.periskope.enabled = True
+    config.connectors.periskope.org_phone = "919876543210"
+    secrets = manager.load_secrets()
+    secrets.connectors = {
+        "periskope": {"api_token": "pk-secret-token", "webhook_secret": "hook-secret"},
+    }
+    manager.save_merged(config, secrets)
+
+    raw = (data_dir / "config.yaml").read_text()
+    assert "pk-secret-token" not in raw
+    assert "hook-secret" not in raw
+
+    loaded_config, loaded_secrets = manager.load_merged()
+    assert loaded_config.connectors.periskope.api_token == "pk-secret-token"
+    assert loaded_config.connectors.periskope.webhook_secret == "hook-secret"
+    assert loaded_secrets.connectors["periskope"]["api_token"] == "pk-secret-token"
+
+    public = manager.public_config()
+    assert public["connectors"]["periskope"]["api_token"] == ""
+    assert public["connectors"]["periskope"]["webhook_secret"] == ""
+    assert public["_secrets_configured"]["connectors"]["periskope"]["api_token"] is True
+
+
 def test_public_config_strips_secrets(data_dir: Path) -> None:
     manager = ConfigManager(data_dir)
     manager.init()

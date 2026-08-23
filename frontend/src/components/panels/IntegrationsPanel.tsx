@@ -2,7 +2,7 @@ import { ReloadOutlined, PlusOutlined, DeleteOutlined, ApiOutlined, CheckCircleO
 import { Button, Col, Flex, Input, Row, Select, Switch, Typography, Modal } from "antd";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, type AlfredConfig, type GoogleOAuthStatus, type IntegrationSyncStatusResponse } from "../../api/client";
+import { api, type AlfredConfig, type ConnectorPollResponse, type GoogleOAuthStatus, type IntegrationSyncStatusResponse } from "../../api/client";
 import { useApp } from "../../context/AppContext";
 import { integrationDotClass, integrationHealth, type HealthCheck } from "../../health";
 import { JsonCredentialField } from "../ui/JsonCredentialField";
@@ -44,8 +44,32 @@ const DEFAULT_WEB_SEARCH: NonNullable<AlfredConfig["web_search"]> = {
   max_results: 8,
 };
 
+const DEFAULT_PERISKOPE: NonNullable<NonNullable<AlfredConfig["connectors"]>["periskope"]> = {
+  enabled: false,
+  base_url: "https://api.periskope.app/v1",
+  org_phone: "",
+  allowed_chat_ids: [],
+  summary_channel_id: "",
+  summary_timezone: "Asia/Kolkata",
+  replicate_tickets: true,
+  replicate_tasks: true,
+  ticket_create_target: "slack_board",
+  slack_board_key: "",
+  jira_project: "",
+  sync_on_update: true,
+};
+
 function webSearchConfig(config: AlfredConfig) {
   return config.web_search ?? DEFAULT_WEB_SEARCH;
+}
+
+function periskopeConfig(config: AlfredConfig) {
+  return { ...DEFAULT_PERISKOPE, ...(config.connectors?.periskope ?? {}) };
+}
+
+function connectorWebhookUrl(connectorId: string) {
+  if (typeof window === "undefined") return `/api/v1/connectors/${connectorId}/webhook`;
+  return `${window.location.origin.replace(/\/$/, "")}/api/v1/connectors/${connectorId}/webhook`;
 }
 
 function integrationStatusLabel(
@@ -159,6 +183,13 @@ function getLogo(name: string) {
       </svg>
     );
   }
+  if (n === "periskope") {
+    return (
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ width: 34, height: 34, color: "#25D366" }}>
+        <path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z" />
+      </svg>
+    );
+  }
   return (
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ width: 34, height: 34, color: "var(--alfred-accent)" }}>
       <path d="M12 2v8M18 12H6v2a6 6 0 0 0 12 0v-2ZM12 14v6M16 2v2M8 2v2"/>
@@ -200,6 +231,7 @@ export function IntegrationsPanel() {
   const [savingGoogleCredentials, setSavingGoogleCredentials] = useState(false);
   const [syncStatus, setSyncStatus] = useState<IntegrationSyncStatusResponse | null>(null);
   const [syncLoading, setSyncLoading] = useState<string | null>(null);
+  const [pollPreview, setPollPreview] = useState<ConnectorPollResponse | null>(null);
 
   const loadSyncStatus = useCallback(async () => {
     try {
@@ -214,7 +246,7 @@ export function IntegrationsPanel() {
   }, [loadSyncStatus]);
 
   useEffect(() => {
-    if (activeModal === "slack" || activeModal === "jira") {
+    if (activeModal === "slack" || activeModal === "jira" || activeModal === "periskope") {
       void loadSyncStatus();
     }
   }, [activeModal, loadSyncStatus]);
@@ -262,6 +294,36 @@ export function IntegrationsPanel() {
       await loadSyncStatus();
     } catch (err) {
       notify("error", err instanceof Error ? err.message : "JIRA context sync failed");
+    } finally {
+      setSyncLoading(null);
+    }
+  };
+
+  const runPeriskopePoll = async (replicate: boolean) => {
+    setSyncLoading(replicate ? "periskope-replicate" : "periskope");
+    try {
+      const result = await api.pollConnector("periskope", {
+        replicate,
+        kinds: ["tickets", "tasks", "chats"],
+        limit: 50,
+      });
+      setPollPreview(result);
+      if (!result.ok) {
+        notify("error", result.error ?? "Periskope poll failed");
+        return;
+      }
+      const tickets = result.preview?.ticket_count ?? 0;
+      const tasks = result.preview?.task_count ?? 0;
+      const chats = result.preview?.chat_count ?? 0;
+      notify(
+        "success",
+        replicate
+          ? `Pulled ${tickets} tickets / ${tasks} tasks · created ${result.created ?? 0} · already mapped ${result.already_mapped ?? 0}`
+          : `Preview (no webhook): ${tickets} tickets, ${tasks} tasks, ${chats} chats`,
+      );
+      await loadSyncStatus();
+    } catch (err) {
+      notify("error", err instanceof Error ? err.message : "Periskope poll failed");
     } finally {
       setSyncLoading(null);
     }
@@ -356,6 +418,7 @@ export function IntegrationsPanel() {
   const jiraStatus = integrationStatusLabel(checks, "jira", Boolean(config.jira?.enabled));
   const googleStatus = integrationStatusLabel(checks, "google", Boolean(config.google?.enabled));
   const webSearchStatus = integrationStatusLabel(checks, "web_search", webSearchConfig(config).enabled);
+  const periskopeStatus = integrationStatusLabel(checks, "periskope", periskopeConfig(config).enabled);
 
   const openConfigModal = (type: string, data: any) => {
     setInitialSectionData(JSON.parse(JSON.stringify(data)));
@@ -373,6 +436,9 @@ export function IntegrationsPanel() {
     const modal = activeModal;
     setActiveModal(null);
     if (modal === "web_search" && (secrets.web_search_api_key ?? "").trim()) {
+      await saveSecrets();
+    }
+    if (modal === "periskope") {
       await saveSecrets();
     }
     setTimeout(() => {
@@ -549,6 +615,22 @@ export function IntegrationsPanel() {
           </div>
           <div className="alfred-integration-card-title">JIRA</div>
           <div className="alfred-integration-card-subtitle">Ticket retrieval, commenting & identity resolution</div>
+        </div>
+
+        {/* Periskope Card */}
+        <div
+          className="alfred-integration-card"
+          onClick={() => openConfigModal("periskope", periskopeConfig(config))}
+        >
+          <div className="alfred-integration-card-status">
+            <div className={`alfred-integration-card-dot ${periskopeStatus.dotClass}`} />
+            <span style={{ fontSize: 11, color: "var(--alfred-text-faint)" }}>{periskopeStatus.label}</span>
+          </div>
+          <div className="alfred-integration-card-logo">{getLogo("periskope")}</div>
+          <div className="alfred-integration-card-title">Periskope</div>
+          <div className="alfred-integration-card-subtitle">
+            WhatsApp groups, tickets, and tasks into Slack Lists or JIRA
+          </div>
         </div>
 
         {/* Google Workspace Card */}
@@ -1212,6 +1294,231 @@ export function IntegrationsPanel() {
                 Sync & merge assignee map
               </Button>
             </Flex>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Periskope Modal */}
+      <Modal
+        title="Periskope Configuration"
+        open={activeModal === "periskope"}
+        width={620}
+        onCancel={() => {
+          if (initialSectionData) {
+            updateConfig({
+              connectors: {
+                ...(config.connectors ?? {}),
+                periskope: initialSectionData,
+              },
+            });
+          }
+          setActiveModal(null);
+        }}
+        footer={[
+          <Button key="test" onClick={() => testIntegration("periskope")}>
+            Test connection
+          </Button>,
+          <Button
+            key="cancel"
+            onClick={() => {
+              if (initialSectionData) {
+                updateConfig({
+                  connectors: {
+                    ...(config.connectors ?? {}),
+                    periskope: initialSectionData,
+                  },
+                });
+              }
+              setActiveModal(null);
+            }}
+          >
+            Cancel
+          </Button>,
+          <Button key="save" type="primary" onClick={handleSaveStandard}>
+            Save changes
+          </Button>,
+        ]}
+      >
+        <div style={{ padding: "12px 0" }}>
+          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
+            <Typography.Text>Enable Periskope WhatsApp connector</Typography.Text>
+            <Switch
+              checked={periskopeConfig(config).enabled}
+              onChange={(v) =>
+                updateConfig({
+                  connectors: {
+                    ...(config.connectors ?? {}),
+                    periskope: { ...periskopeConfig(config), enabled: v },
+                  },
+                })
+              }
+            />
+          </div>
+          <Typography.Paragraph type="secondary" style={{ fontSize: 12 }}>
+            Polling needs only the API token and org phone — no webhook. Use Pull now to preview
+            tickets/tasks, then optionally replicate into Slack Lists or JIRA.
+            <br />
+            Live webhook URL (optional, must be publicly reachable):{" "}
+            <Typography.Text code copyable>
+              {connectorWebhookUrl("periskope")}
+            </Typography.Text>
+          </Typography.Paragraph>
+          <Row gutter={[16, 16]}>
+            <Col span={12}>
+              <label className="alfred-field-label">Org phone (x-phone)</label>
+              <Input
+                placeholder="919876543210"
+                value={periskopeConfig(config).org_phone}
+                onChange={(e) =>
+                  updateConfig({
+                    connectors: {
+                      ...(config.connectors ?? {}),
+                      periskope: { ...periskopeConfig(config), org_phone: e.target.value },
+                    },
+                  })
+                }
+              />
+            </Col>
+            <Col span={12}>
+              <label className="alfred-field-label">Replicate into</label>
+              <Select
+                style={{ width: "100%" }}
+                value={periskopeConfig(config).ticket_create_target}
+                onChange={(v) =>
+                  updateConfig({
+                    connectors: {
+                      ...(config.connectors ?? {}),
+                      periskope: { ...periskopeConfig(config), ticket_create_target: v },
+                    },
+                  })
+                }
+                options={[
+                  { value: "slack_board", label: "Slack List board" },
+                  { value: "jira", label: "JIRA" },
+                  { value: "both", label: "Slack List and JIRA" },
+                ]}
+              />
+            </Col>
+            <Col span={12}>
+              <label className="alfred-field-label">Slack board key (optional)</label>
+              <Input
+                placeholder="First linked board if empty"
+                value={periskopeConfig(config).slack_board_key}
+                onChange={(e) =>
+                  updateConfig({
+                    connectors: {
+                      ...(config.connectors ?? {}),
+                      periskope: { ...periskopeConfig(config), slack_board_key: e.target.value },
+                    },
+                  })
+                }
+              />
+            </Col>
+            <Col span={12}>
+              <label className="alfred-field-label">JIRA project (optional)</label>
+              <Input
+                placeholder="Default JIRA project if empty"
+                value={periskopeConfig(config).jira_project}
+                onChange={(e) =>
+                  updateConfig({
+                    connectors: {
+                      ...(config.connectors ?? {}),
+                      periskope: { ...periskopeConfig(config), jira_project: e.target.value },
+                    },
+                  })
+                }
+              />
+            </Col>
+            <Col span={24}>
+              <label className="alfred-field-label">Allowed chat ids</label>
+              <Input
+                placeholder="1203...@g.us, 9198...@c.us (empty = all)"
+                value={periskopeConfig(config).allowed_chat_ids.join(", ")}
+                onChange={(e) =>
+                  updateConfig({
+                    connectors: {
+                      ...(config.connectors ?? {}),
+                      periskope: {
+                        ...periskopeConfig(config),
+                        allowed_chat_ids: e.target.value.split(",").map((s) => s.trim()).filter(Boolean),
+                      },
+                    },
+                  })
+                }
+              />
+            </Col>
+            <Col span={12}>
+              <label className="alfred-field-label">API token</label>
+              <Input.Password
+                placeholder={
+                  config._secrets_configured?.connectors?.periskope?.api_token ? "••••••••" : "Periskope API key"
+                }
+                value={secrets.connectors?.periskope?.api_token ?? ""}
+                onChange={(e) =>
+                  setSecrets((s) => ({
+                    ...s,
+                    connectors: {
+                      ...(s.connectors || {}),
+                      periskope: { ...(s.connectors?.periskope || {}), api_token: e.target.value },
+                    },
+                  }))
+                }
+              />
+            </Col>
+            <Col span={12}>
+              <label className="alfred-field-label">Webhook signing key</label>
+              <Input.Password
+                placeholder={
+                  config._secrets_configured?.connectors?.periskope?.webhook_secret
+                    ? "••••••••"
+                    : "HMAC signing key"
+                }
+                value={secrets.connectors?.periskope?.webhook_secret ?? ""}
+                onChange={(e) =>
+                  setSecrets((s) => ({
+                    ...s,
+                    connectors: {
+                      ...(s.connectors || {}),
+                      periskope: { ...(s.connectors?.periskope || {}), webhook_secret: e.target.value },
+                    },
+                  }))
+                }
+              />
+            </Col>
+          </Row>
+          <div style={{ marginTop: 20, paddingTop: 16, borderTop: "1px solid var(--alfred-border)" }}>
+            <Typography.Text strong>Pull without webhook</Typography.Text>
+            <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginBottom: 8 }}>
+              Last pull: {formatSyncWhen(syncStatus?.connectors?.periskope?.last_sync_at)} ·{" "}
+              {syncStatus?.connectors?.periskope?.ticket_count ?? 0} tickets ·{" "}
+              {syncStatus?.connectors?.periskope?.task_count ?? 0} tasks
+            </Typography.Paragraph>
+            <Flex gap={8} wrap="wrap">
+              <Button
+                icon={<SyncOutlined />}
+                loading={syncLoading === "periskope"}
+                onClick={() => void runPeriskopePoll(false)}
+              >
+                Pull now (preview)
+              </Button>
+              <Button
+                loading={syncLoading === "periskope-replicate"}
+                onClick={() => void runPeriskopePoll(true)}
+              >
+                Pull and replicate
+              </Button>
+            </Flex>
+            {pollPreview?.preview && (
+              <Typography.Paragraph type="secondary" style={{ fontSize: 12, marginTop: 12 }}>
+                {(pollPreview.preview.tickets ?? []).slice(0, 8).map((ticket) => (
+                  <span key={ticket.external_id || ticket.title}>
+                    {ticket.external_id}: {ticket.title}
+                    <br />
+                  </span>
+                ))}
+                {(pollPreview.preview.tickets?.length ?? 0) > 8 ? "…" : null}
+              </Typography.Paragraph>
+            )}
           </div>
         </div>
       </Modal>

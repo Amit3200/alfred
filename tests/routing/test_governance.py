@@ -97,6 +97,61 @@ def test_auto_approve_tools_skips_jira_create_confirmation(tmp_path: Path):
     ) is None
 
 
+def test_explicit_jira_create_skips_confirmation(tmp_path: Path):
+    config = _config()
+    task = _task(
+        raw_text="@alfred create the same task on JIRA on TECH board",
+        cleaned_intent="create the same task on JIRA on TECH board",
+    )
+    ctx = GovernanceContext(config, task, data_dir=tmp_path)
+    assert ctx.check_before_run(
+        "jira_create_issue",
+        {"project": "TECH", "summary": "Show COD disable reason", "issue_type": "Task"},
+    ) is None
+
+
+def test_jira_create_still_requires_confirmation_without_explicit_ask(tmp_path: Path):
+    config = _config()
+    task = _task(raw_text="what is TS-23?", cleaned_intent="what is TS-23?")
+    ctx = GovernanceContext(config, task, data_dir=tmp_path)
+    blocked = ctx.check_before_run(
+        "jira_create_issue",
+        {"project": "TECH", "summary": "Show COD disable reason", "issue_type": "Task"},
+    )
+    assert blocked is not None
+    assert "requires explicit approval" in blocked.data["message"]
+
+
+def test_board_auto_approve_writes_skips_jira_create(tmp_path: Path):
+    from backend.models.config import SlackBoardProfile, SlackBoardWorkflowsConfig
+
+    config = AlfredConfig(
+        governance=GovernanceConfig(),
+        slack=SlackConfig(
+            enabled=True,
+            allowed_channels=["*"],
+            board_workflows=SlackBoardWorkflowsConfig(
+                enabled=True,
+                boards=[
+                    SlackBoardProfile(
+                        name="tech",
+                        list_id="F123",
+                        channel_ids=["C456"],
+                        auto_approve_writes=True,
+                    )
+                ],
+            ),
+        ),
+        jira=JiraConfig(enabled=True),
+    )
+    task = _task(cleaned_intent="mirror this onto the TECH board", raw_text="mirror this onto the TECH board")
+    ctx = GovernanceContext(config, task, data_dir=tmp_path)
+    assert ctx.check_before_run(
+        "jira_create_issue",
+        {"project": "TECH", "summary": "Show COD disable reason", "issue_type": "Task"},
+    ) is None
+
+
 def test_list_jira_sync_auto_approves_jira_create_in_watched_channel(tmp_path: Path):
     config = AlfredConfig(
         governance=GovernanceConfig(),

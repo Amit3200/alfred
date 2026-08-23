@@ -8,6 +8,7 @@ from backend.tools.registry import ToolRegistry
 
 _SLACK_BOARD_SKILL = "slack_board_management"
 _HTML_SLIDES_SKILL = "html_slides"
+_CONNECTOR_SKILL = "connector_management"
 _SLACK_BOARD_TOOLS = (
     "slack_fetch_thread",
     "slack_board_create_task",
@@ -15,6 +16,14 @@ _SLACK_BOARD_TOOLS = (
     "slack_board_search_tasks",
     "slack_board_get_task",
     "slack_board_comment",
+)
+_CONNECTOR_READ_TOOLS = (
+    "connector_list",
+    "connector_list_chats",
+    "connector_list_tickets",
+    "connector_list_tasks",
+    "connector_get_messages",
+    "connector_poll",
 )
 
 
@@ -108,6 +117,13 @@ def validate_tool_plan(
         validated = [
             t
             for t in _SLACK_BOARD_TOOLS
+            if t in skill_allowed and t in registered
+        ] or validated
+
+    if skill_name == _CONNECTOR_SKILL and skill_allowed:
+        validated = [
+            t
+            for t in _CONNECTOR_READ_TOOLS
             if t in skill_allowed and t in registered
         ] or validated
 

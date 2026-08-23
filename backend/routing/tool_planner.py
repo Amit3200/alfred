@@ -104,6 +104,7 @@ def plan_tools_rules(
     def _ok(name: str) -> bool:
         return not allowed or name in allowed
 
+    from backend.routing.connector_intent import build_connector_tool_plan
     from backend.routing.html_slides_delivery import (
         build_html_slides_tool_plan,
         looks_like_html_slides_request,
@@ -115,6 +116,12 @@ def plan_tools_rules(
     )
     if schedule_plan is not None:
         return schedule_plan
+
+    connector_plan = build_connector_tool_plan(
+        task, skill_allowed=list(allowed) if allowed else None
+    )
+    if connector_plan is not None:
+        return connector_plan
 
     if looks_like_html_slides_request(text) and _ok("save_html_deck"):
         plan = build_html_slides_tool_plan(task, skill_allowed=list(allowed) if allowed else None)
@@ -555,6 +562,7 @@ def resolve_tool_plan(
     llm_first = config.routing.planner_strategy == "llm_first"
     entity_direct_only = llm_first
 
+    from backend.routing.connector_intent import build_connector_tool_plan
     from backend.routing.html_slides_delivery import (
         build_html_slides_tool_plan,
         looks_like_html_slides_request,
@@ -569,6 +577,15 @@ def resolve_tool_plan(
             schedule_plan.intent_class,
         )
         return schedule_plan
+
+    connector_plan = build_connector_tool_plan(task, skill_allowed=skill_allowed)
+    if connector_plan is not None:
+        logger.info(
+            "Connector plan (deterministic): tools=%s intent=%s",
+            connector_plan.tools_needed,
+            connector_plan.intent_class,
+        )
+        return connector_plan
 
     slides_plan = build_html_slides_tool_plan(
         task,

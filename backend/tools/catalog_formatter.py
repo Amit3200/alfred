@@ -7,6 +7,7 @@ from backend.tools.catalog import (
     SLACK_BOARD_WRITE_TOOLS,
     AWS_TOOLS,
     COMPANY_SCRIPT_TOOLS,
+    CONNECTOR_TOOLS,
     GIT_TOOLS,
     GOOGLE_DOC_TOOLS,
     GOOGLE_SHEET_TOOLS,
@@ -52,6 +53,12 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
     "web_search": "Web search",
     "save_html_deck": "REQUIRED: save self-contained HTML slide deck (.alfred/exports/) — call after building HTML",
     "publish_html_artifact": "Publish HTML deck — /artifacts/s/{slug} with slug, or /artifacts/sha/{sha256} without",
+    "connector_list": "List inbound connectors (Periskope)",
+    "connector_list_chats": "List Periskope WhatsApp chats/groups",
+    "connector_list_tickets": "List Periskope WhatsApp tickets",
+    "connector_list_tasks": "List Periskope WhatsApp tasks",
+    "connector_get_messages": "Fetch Periskope WhatsApp messages (optional chat_id; start_time/end_time for a day)",
+    "connector_poll": "Poll Periskope over REST (no webhook); replicate=true creates Slack/JIRA cards",
 }
 
 
@@ -247,6 +254,7 @@ def all_plannable_tool_names() -> list[str]:
         | AWS_TOOLS
         | WEB_TOOLS
         | COMPANY_SCRIPT_TOOLS
+        | CONNECTOR_TOOLS
         | SCHEDULE_TOOLS
         | ARTIFACT_TOOLS
     )

@@ -183,6 +183,9 @@ class ConfigManager:
         config.google.credentials_json = secrets_obj.google_credentials_json
         config.google.oauth_refresh_token = secrets_obj.google_oauth_refresh_token
         config.web_search.api_key = secrets_obj.web_search_api_key
+        from backend.integrations.platform.secrets import apply_connector_secrets
+
+        apply_connector_secrets(config, secrets_obj)
         for name, provider in config.ai.providers.items():
             if key := secrets_obj.ai_api_keys.get(name):
                 provider.api_key = key
@@ -222,6 +225,9 @@ class ConfigManager:
             secrets_obj.google_oauth_refresh_token = config.google.oauth_refresh_token
         if config.web_search.api_key:
             secrets_obj.web_search_api_key = config.web_search.api_key
+        from backend.integrations.platform.secrets import extract_connector_secrets
+
+        extract_connector_secrets(config, secrets_obj)
         for name, provider in config.ai.providers.items():
             if provider.api_key:
                 secrets_obj.ai_api_keys[name] = provider.api_key
@@ -260,6 +266,8 @@ class ConfigManager:
         return f"{value[:prefix_len]}…{value[-4:]}"
 
     def _secrets_status(self) -> dict:
+        from backend.integrations.platform.secrets import connector_secrets_status
+
         secrets_obj = self.load_secrets()
         bot = secrets_obj.slack_bot_token
         google_raw = secrets_obj.google_credentials_json
@@ -295,6 +303,7 @@ class ConfigManager:
             "google_credentials_type": google_cred_type,
             "google_oauth_connected": google_connected,
             "web_search_api_key": bool(secrets_obj.web_search_api_key.strip()),
+            "connectors": connector_secrets_status(secrets_obj),
             "server_admin_token": bool(secrets_obj.server_admin_token),
             "server_admin_username": bool(secrets_obj.server_admin_username),
             "server_admin_password": bool(secrets_obj.server_admin_password),

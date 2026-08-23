@@ -38,6 +38,13 @@ _INTENT_SKILL_MAP: dict[str, str] = {
     "slack.board.write.update": "slack_board_management",
     "slack.board.write.comment": "slack_board_management",
     "slack.board.read.search": "slack_board_management",
+    "connector.read": "connector_management",
+    "connector.read.list": "connector_management",
+    "connector.read.chats": "connector_management",
+    "connector.read.tickets": "connector_management",
+    "connector.read.tasks": "connector_management",
+    "connector.read.messages": "connector_management",
+    "connector.read.poll": "connector_management",
 }
 
 _DOMAIN_SKILL_MAP: dict[str, str] = {
@@ -51,6 +58,7 @@ _DOMAIN_SKILL_MAP: dict[str, str] = {
     "git": "git_status",
     "git_write": "create_pr",
     "aws": "aws_query",
+    "connector": "connector_management",
 }
 
 
@@ -89,6 +97,9 @@ def resolve_policy_skill(
     if not name and plan.tools_needed:
         domain = tool_domain(plan.tools_needed[0])
         name = _DOMAIN_SKILL_MAP.get(domain, "")
+
+    if not name and (plan.intent_class or "").startswith("connector."):
+        name = "connector_management"
 
     if name:
         candidate = store.get_by_name(name)

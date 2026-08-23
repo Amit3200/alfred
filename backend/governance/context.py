@@ -79,22 +79,36 @@ class GovernanceContext:
     def _tool_auto_approved(self, tool_name: str) -> bool:
         if tool_name in self._gov.auto_approve_tools:
             return True
-        sync = self.config.slack.list_jira_sync
-        if (
-            sync.enabled
-            and sync.auto_approve_jira_create
-            and tool_name == "jira_create_issue"
-        ):
-            from backend.integrations.slack.list_jira_sync import sync_channel_allowed
-
-            return sync_channel_allowed(self.task.channel_id or "", self.config)
-        if tool_name.startswith("slack_board_") and self.config.slack.board_workflows.enabled:
-            from backend.domains.slack_board.operations import resolve_board_for_task
-
-            board = resolve_board_for_task(self.config, self.task, data_dir=self.data_dir)
+        if tool_name == "jira_create_issue" and self._jira_create_auto_approved():
+            return True
+        if tool_name.startswith("slack_board_"):
+            board = self._resolved_board()
             if board and board.auto_approve_writes:
                 return True
         return False
+
+    def _resolved_board(self):
+        from backend.domains.slack_board.operations import resolve_board_for_task
+
+        return resolve_board_for_task(self.config, self.task, data_dir=self.data_dir)
+
+    def _jira_create_auto_approved(self) -> bool:
+        """Skip yes/proceed when the user already asked to create a JIRA issue."""
+        sync = self.config.slack.list_jira_sync
+        if sync.enabled and sync.auto_approve_jira_create:
+            from backend.integrations.slack.list_jira_sync import sync_channel_allowed
+
+            if sync_channel_allowed(self.task.channel_id or "", self.config):
+                return True
+        board = self._resolved_board()
+        if board and board.auto_approve_writes:
+            return True
+        from backend.routing.jira.intent import looks_like_jira_create_followup, looks_like_jira_create_request
+
+        intent = self.task.cleaned_intent or self.task.raw_text or ""
+        if looks_like_jira_create_request(intent):
+            return True
+        return looks_like_jira_create_followup(intent)
 
     def _confirmation_required_for_source(self) -> bool:
         if not self._gov.require_confirmation:

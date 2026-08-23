@@ -42,6 +42,10 @@ export function SecretsPanel() {
     configured?.aws_access_key_id || configured?.aws_secret_access_key
   );
   const jiraConfigured = !!configured?.jira_api_token;
+  const periskopeConfigured = !!(
+    configured?.connectors?.periskope?.api_token ||
+    configured?.connectors?.periskope?.webhook_secret
+  );
   const googleConfigured = !!configured?.google_credentials_json;
   const webSearchConfigured = !!configured?.web_search_api_key;
 
@@ -196,6 +200,44 @@ export function SecretsPanel() {
           </AddableSection>
         )}
 
+        {integrations.isVisible("periskope") && (
+          <AddableSection
+            title="Periskope"
+            info={renderHelpContent(SECRETS_HELP.periskope)}
+            visible
+            configured={periskopeConfigured}
+            onAdd={() => integrations.add("periskope")}
+            onRemove={() => integrations.remove("periskope")}
+          >
+            <SecretField
+              label="API token"
+              configured={configured?.connectors?.periskope?.api_token}
+              onChange={(v) =>
+                setSecrets((s) => ({
+                  ...s,
+                  connectors: {
+                    ...(s.connectors || {}),
+                    periskope: { ...(s.connectors?.periskope || {}), api_token: v },
+                  },
+                }))
+              }
+            />
+            <SecretField
+              label="Webhook signing key"
+              configured={configured?.connectors?.periskope?.webhook_secret}
+              onChange={(v) =>
+                setSecrets((s) => ({
+                  ...s,
+                  connectors: {
+                    ...(s.connectors || {}),
+                    periskope: { ...(s.connectors?.periskope || {}), webhook_secret: v },
+                  },
+                }))
+              }
+            />
+          </AddableSection>
+        )}
+
         {integrations.isVisible("google") && (
           <AddableSection
             title="Google Workspace"
@@ -239,7 +281,7 @@ export function SecretsPanel() {
 
       <AddableSectionList
         label={
-          slackConfigured || gitConfigured || githubConfigured || awsConfigured || jiraConfigured || googleConfigured || webSearchConfigured
+          slackConfigured || gitConfigured || githubConfigured || awsConfigured || jiraConfigured || periskopeConfigured || googleConfigured || webSearchConfigured
             ? "Integrations"
             : "Add integration"
         }
@@ -291,6 +333,16 @@ export function SecretsPanel() {
             visible={false}
             configured={jiraConfigured}
             onAdd={() => integrations.add("jira")}
+            onRemove={() => {}}
+          />
+        )}
+        {!integrations.isVisible("periskope") && (
+          <AddableSection
+            title="Periskope"
+            info={renderHelpContent(SECRETS_HELP.periskope)}
+            visible={false}
+            configured={periskopeConfigured}
+            onAdd={() => integrations.add("periskope")}
             onRemove={() => {}}
           />
         )}

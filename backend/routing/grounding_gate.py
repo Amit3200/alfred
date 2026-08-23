@@ -141,6 +141,11 @@ def _url_grounding_issues(
     if goal and goal.intent_class == "repo.docs.qa" and _doc_read_succeeded(trace):
         return []
 
+    if goal and str(goal.intent_class or "").startswith("connector."):
+        # WhatsApp / connector summaries quote URLs that appeared in chat text.
+        # Truncated tool payloads often drop the exact string; do not fail the reply.
+        return []
+
     if goal and is_html_slides_intent(goal.intent_class) and not _artifact_tools_called(trace):
         return []
 

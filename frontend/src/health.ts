@@ -16,6 +16,7 @@ export const HEALTH_CHECK_ORDER = [
   "jira",
   "google",
   "web_search",
+  "periskope",
   "ai",
 ] as const;
 
@@ -29,6 +30,7 @@ export const SERVICE_LABELS: Record<string, string> = {
   jira: "JIRA",
   google: "Google Workspace",
   web_search: "Web search",
+  periskope: "Periskope",
   ai: "AI",
 };
 
@@ -40,6 +42,7 @@ export const INTEGRATION_HEALTH_KEYS: Record<string, string | string[]> = {
   jira: "jira",
   google: "google",
   web_search: "web_search",
+  periskope: "periskope",
 };
 
 export type HealthStatusKind = "inactive" | "unknown" | "skipped" | "ok" | "warn" | "fail";

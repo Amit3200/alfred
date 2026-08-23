@@ -25,6 +25,7 @@ def iter_tool_bundles() -> Iterator[ToolBundle]:
     from backend.tools.slack.board_tools import SlackBoardToolBundle
     from backend.tools.slack.register import SlackReadToolBundle
     from backend.tools.web.bundle import WebToolBundle
+    from backend.tools.connectors.bundle import ConnectorToolBundle
 
     yield JiraToolBundle()
     yield IdentityToolBundle()
@@ -39,6 +40,7 @@ def iter_tool_bundles() -> Iterator[ToolBundle]:
     yield AwsToolBundle()
     yield ScriptToolBundle()
     yield WebToolBundle()
+    yield ConnectorToolBundle()
     yield ScheduleToolBundle()
     yield RepoDocsToolBundle()
     yield ArtifactToolBundle()

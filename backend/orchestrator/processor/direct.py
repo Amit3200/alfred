@@ -286,6 +286,12 @@ class DirectMixin:
             # Slides require the LLM to synthesize HTML before calling the tool.
             return None, None
 
+        if tool_name == "connector_get_messages" or str(plan.intent_class or "").startswith(
+            "connector.read.messages"
+        ):
+            # Message windows need the worker so the model can summarize per chat.
+            return None, None
+
         if tool_name == "publish_html_artifact":
             from backend.routing.html_slides_delivery import (
                 publish_args_complete,

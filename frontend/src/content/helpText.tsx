@@ -83,6 +83,22 @@ export const SECRETS_HELP: Record<string, HelpGuide> = {
       { label: "JIRA REST API", href: "https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/" },
     ],
   },
+  periskope: {
+    title: "Periskope",
+    summary:
+      "API token and webhook signing key let Alfred pull WhatsApp groups, tickets, and tasks from Periskope, then replicate them onto Slack Lists or JIRA.",
+    steps: [
+      "In Periskope: Settings → API → generate an API key (shown once).",
+      "Copy the connected WhatsApp number as digits only (country code + number) for the x-phone header.",
+      "Settings → Webhooks → generate a signing key and point the hook URL at Alfred: /api/v1/connectors/periskope/webhook",
+      "Paste the API token and signing key here. They are encrypted and never written to config.yaml.",
+      "Enable Periskope in Integrations, set org phone, then Test connection.",
+    ],
+    links: [
+      { label: "Periskope API", href: "https://docs.periskope.app/api-reference/introduction" },
+      { label: "Webhooks", href: "https://docs.periskope.app/api-reference/webhooks/introduction" },
+    ],
+  },
   google: {
     title: "Google Workspace",
     summary:

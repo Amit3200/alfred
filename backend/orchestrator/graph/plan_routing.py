@@ -25,6 +25,12 @@ def resolve_graph_route(plan: Any | None, *, allowed_tools: list[str]) -> str:
         return "worker"
     if intent_class in ("repo.docs.qa",) or is_slack_board_write_intent(intent_class):
         return "worker"
+    if str(intent_class or "").startswith("connector.read.messages"):
+        # Needs the LLM to call GET /chats/messages then summarize per chat.
+        return "worker"
+    steps = list(getattr(plan, "steps", None) or []) if plan else []
+    if any(getattr(step, "tool", "") == "connector_get_messages" for step in steps):
+        return "worker"
     if plan and len(getattr(plan, "steps", None) or []) == 1:
         step = plan.steps[0]
         if getattr(step, "tool", "") == "save_html_deck":

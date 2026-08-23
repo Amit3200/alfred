@@ -52,6 +52,29 @@ def test_grounding_gate_rejects_fabricated_url():
     assert result.fallback
 
 
+def test_connector_summary_does_not_fail_on_quoted_chat_urls():
+    result = validate_agent_result(
+        "Paytm webhook discussed: https://api.flexype.in/v1/public/pg/paytm/webhook",
+        [
+            ToolTraceEntry(
+                tool="connector_get_messages",
+                success=True,
+                result_kind="connector_messages",
+                observation='{"kind":"connector_messages","data":{"message_count":12,"chat_count":3}}',
+            )
+        ],
+        goal_spec_from_plan(
+            ToolPlan(
+                goal="Fetch Periskope WhatsApp messages and summarize by chat",
+                confidence=0.96,
+                tools_needed=["connector_get_messages"],
+                intent_class="connector.read.messages",
+            )
+        ),
+    )
+    assert result.passed
+
+
 def test_format_partial_results_marks_script_fail_and_publish_ok():
     from backend.routing.grounding_gate import _format_partial_results
 
