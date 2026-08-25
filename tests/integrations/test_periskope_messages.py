@@ -59,7 +59,7 @@ def test_normalize_message_uses_sender_phone():
             "timestamp": "2026-08-22 10:00:00+00",
         }
     )
-    assert row["sender_name"] == "9198@c.us"
+    assert row["sender_name"] == "9198"
     assert row["body"] == "hello"
 
 
@@ -199,6 +199,17 @@ def test_enrich_ticket_appends_last_chat_messages(monkeypatch):
 
     monkeypatch.setattr(PeriskopeApiClient, "get_ticket", fake_get_ticket)
     monkeypatch.setattr(PeriskopeConnector, "list_messages", fake_list)
+
+    from backend.integrations.periskope.summarize import TicketIntake
+
+    monkeypatch.setattr(
+        "backend.integrations.periskope.connector.summarize_ticket",
+        lambda *_args, **_kwargs: TicketIntake(
+            title="COD disable reason",
+            problem="Merchant asked why COD was disabled.",
+            action_items=["Reply in the WhatsApp group with the COD policy."],
+        ),
+    )
     entity = ExternalEntity(
         connector_id="periskope",
         kind="ticket",
@@ -207,7 +218,13 @@ def test_enrich_ticket_appends_last_chat_messages(monkeypatch):
         chat_id="1203@g.us",
     )
     enriched = PeriskopeConnector().enrich(config, entity)
-    assert "Recent WhatsApp messages:" in enriched.description
-    assert enriched.description.index("older") < enriched.description.index("newer")
-    assert "Merchant" in enriched.description
+    assert enriched.title == "COD disable reason"
+    assert "Raised by:" in enriched.description
+    assert "Merchant: Nmpc" in enriched.description
+    assert "Issue:" in enriched.description
+    assert "Merchant asked why COD was disabled." in enriched.description
+    assert "Action items:" in enriched.description
+    assert "Recent messages:" not in enriched.description
+    assert enriched.extra.get("raised_by")
+    assert enriched.extra.get("intake", {}).get("problem")
 

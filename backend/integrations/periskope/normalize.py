@@ -5,6 +5,8 @@ from __future__ import annotations
 import json
 from typing import Any
 
+from backend.integrations.periskope.copy import human_text, person_label
+from backend.integrations.periskope.summarize import clean_ticket_id
 from backend.integrations.platform.types import ConnectorEvent, ExternalEntity
 
 CONNECTOR_ID = "periskope"
@@ -65,13 +67,17 @@ def _chat_payload(data: dict[str, Any]) -> dict[str, Any]:
 def _message_bodies(data: dict[str, Any]) -> str:
     chunks: list[str] = []
     message = data.get("message")
-    if isinstance(message, dict) and message.get("body"):
-        chunks.append(str(message.get("body") or "").strip())
+    if isinstance(message, dict):
+        body = human_text(message.get("body") or message)
+        if body:
+            chunks.append(body)
     attached = data.get("attached_messages")
     if isinstance(attached, list):
         for item in attached:
-            if isinstance(item, dict) and item.get("body"):
-                chunks.append(str(item.get("body") or "").strip())
+            if isinstance(item, dict):
+                body = human_text(item.get("body") or item)
+                if body:
+                    chunks.append(body)
     return "\n".join(part for part in chunks if part)[:4000]
 
 
@@ -79,16 +85,15 @@ def entity_from_ticket(data: dict[str, Any], *, action: str = "upsert") -> Exter
     ticket = _ticket_payload(data)
     chat = _chat_payload(data)
     message = data.get("message") if isinstance(data.get("message"), dict) else {}
-    ticket_id = str(
-        ticket.get("ticket_id")
-        or data.get("ticket_id")
-        or message.get("ticket_id")
-        or ticket.get("id")
-        or ""
-    ).strip()
-    title = str(ticket.get("subject") or data.get("subject") or "").strip()
+    ticket_id = (
+        clean_ticket_id(ticket.get("ticket_id"))
+        or clean_ticket_id(data.get("ticket_id"))
+        or clean_ticket_id(message.get("ticket_id"))
+        or clean_ticket_id(ticket.get("id"))
+    )
+    title = human_text(ticket.get("subject") or data.get("subject") or "")
     if not title:
-        title = str(message.get("body") or "").strip()[:120]
+        title = human_text(message.get("body") or message)
     if not ticket_id:
         return None
     if not title:
@@ -97,6 +102,23 @@ def entity_from_ticket(data: dict[str, Any], *, action: str = "upsert") -> Exter
     entity_action = "close" if action == "close" or status.lower() in {"closed", "deleted"} else "upsert"
     if ticket.get("is_deleted"):
         entity_action = "close"
+    raised = person_label(
+        ticket.get("raised_by")
+        or ticket.get("created_by")
+        or ticket.get("customer_name")
+        or message.get("sender_name")
+        or message.get("performed_by")
+        or message.get("author")
+    )
+    chat_id = str(
+        chat.get("chat_id")
+        or ticket.get("chat_id")
+        or message.get("chat_id")
+        or (message.get("id") or {}).get("remote")
+        or ""
+    ).strip()
+    if isinstance(message.get("id"), dict) and not chat_id:
+        chat_id = str(message["id"].get("remote") or "").strip()
     return ExternalEntity(
         connector_id=CONNECTOR_ID,
         kind="ticket",
@@ -107,10 +129,10 @@ def entity_from_ticket(data: dict[str, Any], *, action: str = "upsert") -> Exter
         priority=_priority_label(ticket.get("priority")),
         assignee_hint=str(ticket.get("assignee") or "").strip(),
         labels=_labels(ticket.get("ticket_labels") or ticket.get("labels")),
-        chat_id=str(chat.get("chat_id") or ticket.get("chat_id") or "").strip(),
-        chat_name=str(chat.get("chat_name") or "").strip(),
+        chat_id=chat_id,
+        chat_name=str(chat.get("chat_name") or chat.get("name") or "").strip(),
         action=entity_action,  # type: ignore[arg-type]
-        extra={"raw_status": status},
+        extra={"raw_status": status, "raised_by": raised},
     )
 
 

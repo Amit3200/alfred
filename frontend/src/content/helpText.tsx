@@ -17,7 +17,7 @@ export const SECRETS_HELP: Record<string, HelpGuide> = {
       "Basic Information → enable Socket Mode → create App-Level Token with connections:write (xapp-).",
       "OAuth & Permissions → Bot Token Scopes: app_mentions:read, channels:history, channels:read, chat:write, im:history, im:write, groups:history, groups:read, users:read, users:read.email, assistant:write (Agents & AI Apps). users:read.email is required for Slack emails in workspace identity maps.",
       "Enable Agents & AI Apps in app settings for native thinking status (no edited placeholder message).",
-      "Event Subscriptions → Subscribe to bot events → add app_mention.",
+      "Event Subscriptions → Subscribe to bot events → add app_mention. Also add message.channels and message.groups if you turn on Docs search for a Slack board channel.",
       "Install to workspace → copy Bot User OAuth Token (xoxb-) and Signing Secret.",
       "Save all three tokens in Secrets, enable Slack in Integrations, then restart alfred serve.",
       "Invite the bot to a channel: /invite @Alfred — then @mention it to chat.",

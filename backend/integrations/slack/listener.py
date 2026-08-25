@@ -84,61 +84,79 @@ def build_slack_bolt_app(
             thread_ts,
             task.cleaned_intent[:120],
         )
+        _dispatch_slack_task(
+            task,
+            queue=queue,
+            client=client,
+            processor=processor,
+            config=config,
+            on_task_complete=on_task_complete,
+            log_name=f"alfred-slack-{task.id[:8]}",
+        )
 
-        if queue is not None:
-            # Enqueue the task for async processing
-            task_dict = task.model_dump()
-            queue.push(task_dict)
-        else:
-            # Fallback to direct thread processing (backward compatibility / standalone tests)
-            indicator = ThinkingIndicator(
-                client,
-                channel=channel,
-                thread_ts=thread_ts,
-                loading_messages=config.slack.loading_messages or None,
+    @app.event("message")
+    def handle_channel_message(event: dict, client: Any, logger: Any) -> None:  # noqa: ARG001
+        from backend.integrations.slack.docs_listen import should_handle_docs_search_message
+
+        if should_handle_docs_search_message(
+            event,
+            bot_user_id=bot_user_id,
+            slack_config=config.slack,
+            data_dir=data_dir,
+        ):
+            task = sanitize_slack_mention(event, config.slack)
+            if task is None:
+                return
+            task.metadata["channel_docs_search"] = True
+            logger.info(
+                "channel_docs_search user=%s channel=%s thread=%s intent=%r",
+                task.user_id,
+                task.channel_id,
+                task.thread_ts,
+                task.cleaned_intent[:120],
             )
-            indicator.start()
-
-            worker = threading.Thread(
-                target=_process_mention,
-                args=(task, processor, indicator, app.client, on_task_complete),
-                daemon=True,
-                name=f"alfred-slack-{task.id[:8]}",
+            _dispatch_slack_task(
+                task,
+                queue=queue,
+                client=client,
+                processor=processor,
+                config=config,
+                on_task_complete=on_task_complete,
+                log_name=f"alfred-docs-{task.id[:8]}",
             )
-            worker.start()
+            return
 
-    if config.slack.list_jira_sync.enabled:
+        if not config.slack.list_jira_sync.enabled:
+            return
         from backend.integrations.slack.list_jira_sync import (
             announce_sync_result,
             should_handle_message_event,
             try_sync_list_message,
         )
 
-        @app.event("message")
-        def handle_list_jira_sync_message(event: dict, client: Any, logger: Any) -> None:  # noqa: ARG001
-            if not should_handle_message_event(event, bot_user_id=bot_user_id):
-                return
-            if data_dir is None:
-                return
+        if not should_handle_message_event(event, bot_user_id=bot_user_id):
+            return
+        if data_dir is None:
+            return
 
-            def _run_sync() -> None:
-                try:
-                    result = try_sync_list_message(event, config, data_dir=data_dir)
-                    if result.created or result.error:
-                        announce_sync_result(
-                            client,
-                            event,
-                            result,
-                            config.slack.list_jira_sync,
-                        )
-                except Exception:
-                    logger.exception("list_jira_sync handler failed")
+        def _run_sync() -> None:
+            try:
+                result = try_sync_list_message(event, config, data_dir=data_dir)
+                if result.created or result.error:
+                    announce_sync_result(
+                        client,
+                        event,
+                        result,
+                        config.slack.list_jira_sync,
+                    )
+            except Exception:
+                logger.exception("list_jira_sync handler failed")
 
-            threading.Thread(
-                target=_run_sync,
-                daemon=True,
-                name="alfred-list-jira-sync",
-            ).start()
+        threading.Thread(
+            target=_run_sync,
+            daemon=True,
+            name="alfred-list-jira-sync",
+        ).start()
 
     @app.action("feedback_good")
     def handle_feedback_good(ack: Any, body: dict, respond: Any) -> None:
@@ -172,6 +190,34 @@ def build_slack_bolt_app(
     )
 
     return app
+
+
+def _dispatch_slack_task(
+    task: Any,
+    *,
+    queue: Any,
+    client: Any,
+    processor: TaskProcessor,
+    config: AlfredConfig,
+    on_task_complete: Callable[[], None] | None,
+    log_name: str,
+) -> None:
+    if queue is not None:
+        queue.push(task.model_dump())
+        return
+    indicator = ThinkingIndicator(
+        client,
+        channel=task.channel_id,
+        thread_ts=task.thread_ts,
+        loading_messages=config.slack.loading_messages or None,
+    )
+    indicator.start()
+    threading.Thread(
+        target=_process_mention,
+        args=(task, processor, indicator, client, on_task_complete),
+        daemon=True,
+        name=log_name,
+    ).start()
 
 
 def _process_mention(

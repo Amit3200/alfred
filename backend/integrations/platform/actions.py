@@ -12,8 +12,14 @@ from backend.models.config import AlfredConfig, SlackBoardProfile
 
 logger = logging.getLogger(__name__)
 
+logger = logging.getLogger(__name__)
+
 
 def _entity_description(entity: ExternalEntity) -> str:
+    from backend.integrations.periskope.copy import list_item_details
+
+    if entity.connector_id == "periskope":
+        return list_item_details(entity, entity.extra.get("recent_messages") or [])
     lines = [
         f"Summary: {entity.title}",
         f"{entity.connector_id} {entity.kind}: `{entity.external_id}`",
@@ -74,6 +80,7 @@ def _create_slack_board_item(
 
     from backend.db.slack_board_store import SlackBoardStore
     from backend.domains.slack_board.operations import create_board_task
+    from backend.integrations.periskope.copy import group_label
 
     settings = getattr(getattr(config, "connectors", None), entity.connector_id, None)
     board, channel_id = resolve_connector_board(config, data_dir, settings)
@@ -100,14 +107,30 @@ def _create_slack_board_item(
         title=entity.title[:200],
         description=_entity_description(entity),
         severity=entity.priority,
+        merchant=group_label(entity),
         channel_id=channel_id,
     )
+    open_url = ""
+    try:
+        from backend.integrations.slack.lists_client import list_open_url
+
+        base = list_open_url(client, result.get("list_id") or board.list_id)
+        record_id = str(result.get("record_id") or "")
+        if base and record_id:
+            sep = "&" if "?" in base else "?"
+            open_url = f"{base}{sep}record_id={record_id}"
+        else:
+            open_url = base
+    except Exception:
+        logger.debug("Could not build Slack List URL for connector replica", exc_info=True)
     return {
         "record_id": result.get("record_id") or "",
         "display_id": result.get("display_id") or "",
         "list_id": result.get("list_id") or board.list_id,
         "channel_id": channel_id,
-        "open_url": result.get("open_url") or "",
+        "open_url": open_url or result.get("url_hint") or "",
+        "board_name": board.name,
+        "status": board.default_status or "Not picked",
     }
 
 
@@ -171,21 +194,36 @@ def _announce_replica(
     from slack_sdk import WebClient
 
     from backend.db.slack_board_store import SlackBoardStore
+    from backend.integrations.periskope.copy import announce_blocks, announce_color, announce_fallback
 
     display = str(slack.get("display_id") or slack.get("record_id") or "").strip()
     jira_key = str(jira.get("jira_key") or "").strip()
-    heading = display or jira_key or entity.title[:80]
-    lines = [f"WhatsApp {entity.kind} *{heading}* · {entity.title[:160]}"]
-    chat = entity.chat_name or entity.chat_id
-    if chat:
-        lines.append(f"Chat: {chat}")
-    if entity.external_id:
-        lines.append(f"Periskope: `{entity.external_id}`")
-    if jira_key and display:
-        lines.append(f"JIRA: `{jira_key}`")
+    list_url = str(slack.get("open_url") or "").strip()
+    board_name = str(slack.get("board_name") or "").strip()
+    status = str(slack.get("status") or "Not picked").strip() or "Not picked"
+    text = announce_fallback(entity, display_id=display)
+    blocks = announce_blocks(
+        entity,
+        display_id=display,
+        list_url=list_url,
+        jira_key=jira_key,
+        board_name=board_name,
+        status=status,
+    )
     try:
         client = WebClient(token=token)
-        response = client.chat_postMessage(channel=channel_id, text="\n".join(lines))
+        response = client.chat_postMessage(
+            channel=channel_id,
+            text=text,
+            attachments=[
+                {
+                    "color": announce_color(entity.priority),
+                    "blocks": blocks,
+                }
+            ],
+            unfurl_links=False,
+            unfurl_media=False,
+        )
         thread_ts = str(response.get("ts") or "")
         record_id = str(slack.get("record_id") or "")
         if record_id and thread_ts:
@@ -217,6 +255,17 @@ def apply_entity(
 ) -> dict[str, Any]:
     """Create or reuse Slack List / JIRA items for a connector entity."""
     if entity.action == "ignore" or not entity.external_id or not entity.title.strip():
+        return {"ok": True, "status": "ignored", "key": entity.mapping_key()}
+    from backend.integrations.periskope.summarize import looks_like_ticket_id
+
+    if entity.connector_id == "periskope" and entity.kind == "ticket" and not looks_like_ticket_id(
+        entity.external_id
+    ):
+        logger.info(
+            "Skipping connector replica with invalid ticket id connector=%s id=%r",
+            entity.connector_id,
+            entity.external_id[:80],
+        )
         return {"ok": True, "status": "ignored", "key": entity.mapping_key()}
 
     store = ConnectorSyncStore(data_dir)

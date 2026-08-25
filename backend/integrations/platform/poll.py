@@ -73,6 +73,14 @@ def poll_connector(
         if not replicate:
             continue
         for entity in accepted[:cap]:
+            try:
+                entity = connector.enrich(config, entity, data_dir=data_dir)
+            except Exception:
+                logger.exception(
+                    "Connector poll enrich failed connector=%s id=%s",
+                    connector_id,
+                    entity.external_id,
+                )
             applied.append(
                 apply_entity(
                     entity,

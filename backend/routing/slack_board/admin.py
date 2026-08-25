@@ -167,8 +167,12 @@ def format_channel_board_status(data_dir, channel_id: str) -> str:
                 f"`{binding['display_id_prefix']}-{binding['next_display_num']}`",
                 f"- Default status: `{binding['default_status']}`",
                 f"- Auto-approve writes: `{binding['auto_approve_writes']}`",
+                f"- Docs search: `{'on' if binding.get('docs_search_enabled') else 'off'}`",
             ]
         )
+        persona = str(binding.get("persona_prompt") or "").strip()
+        if persona:
+            lines.extend(["- Persona:", f"  {persona}"])
         if len(bindings) > 1:
             lines.append("")
             lines.append("**All bindings for this channel:**")

@@ -58,6 +58,8 @@ def init_slack_workflows_db(db_file: Path) -> None:
             auto_approve_writes INTEGER NOT NULL DEFAULT 0,
             column_map_json TEXT NOT NULL DEFAULT '{}',
             enabled INTEGER NOT NULL DEFAULT 1,
+            persona_prompt TEXT NOT NULL DEFAULT '',
+            docs_search_enabled INTEGER NOT NULL DEFAULT 0,
             created_at REAL NOT NULL,
             updated_at REAL NOT NULL
         )
@@ -71,8 +73,33 @@ def init_slack_workflows_db(db_file: Path) -> None:
     conn.close()
 
 
+def _ensure_board_binding_columns(conn: sqlite3.Connection) -> None:
+    existing = {
+        row[1] for row in conn.execute("PRAGMA table_info(slack_board_bindings)").fetchall()
+    }
+    if "persona_prompt" not in existing:
+        conn.execute(
+            "ALTER TABLE slack_board_bindings ADD COLUMN persona_prompt TEXT NOT NULL DEFAULT ''"
+        )
+    if "docs_search_enabled" not in existing:
+        conn.execute(
+            "ALTER TABLE slack_board_bindings ADD COLUMN docs_search_enabled INTEGER NOT NULL DEFAULT 0"
+        )
+
+
+def _row_value(row: sqlite3.Row, key: str, default: Any = "") -> Any:
+    try:
+        value = row[key]
+    except (KeyError, IndexError):
+        return default
+    if value is None:
+        return default
+    return value
+
+
 def _migrate_slack_board_bindings(conn: sqlite3.Connection) -> None:
     """Remove legacy duplicate rows and enforce one binding per channel and list."""
+    _ensure_board_binding_columns(conn)
     for column in ("channel_id", "list_id"):
         dupes = conn.execute(
             f"""
@@ -157,6 +184,8 @@ def _row_to_board_binding(row: sqlite3.Row) -> dict[str, Any]:
         "auto_approve_writes": bool(row["auto_approve_writes"]),
         "columns": _parse_columns(row["column_map_json"] or "{}"),
         "enabled": bool(row["enabled"]),
+        "persona_prompt": str(_row_value(row, "persona_prompt", "") or ""),
+        "docs_search_enabled": bool(_row_value(row, "docs_search_enabled", 0)),
         "created_at": row["created_at"],
         "updated_at": row["updated_at"],
     }
@@ -359,6 +388,8 @@ def db_create_board_binding(
     auto_approve_writes: bool = False,
     columns: dict[str, str] | None = None,
     enabled: bool = True,
+    persona_prompt: str = "",
+    docs_search_enabled: bool = False,
 ) -> dict[str, Any]:
     conn = _connect(data_dir)
     binding_id = uuid.uuid4().hex
@@ -372,8 +403,9 @@ def db_create_board_binding(
             INSERT INTO slack_board_bindings (
                 id, board_key, list_id, list_name, channel_id, channel_name,
                 display_id_prefix, next_display_num, default_status,
-                auto_approve_writes, column_map_json, enabled, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                auto_approve_writes, column_map_json, enabled,
+                persona_prompt, docs_search_enabled, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             """,
             (
                 binding_id,
@@ -388,6 +420,8 @@ def db_create_board_binding(
                 1 if auto_approve_writes else 0,
                 json.dumps(col_map),
                 1 if enabled else 0,
+                (persona_prompt or "").strip(),
+                1 if docs_search_enabled else 0,
                 now,
                 now,
             ),
@@ -422,6 +456,8 @@ def db_update_board_binding(
     auto_approve_writes: bool | None = None,
     columns: dict[str, str] | None = None,
     enabled: bool | None = None,
+    persona_prompt: str | None = None,
+    docs_search_enabled: bool | None = None,
 ) -> dict[str, Any] | None:
     existing = db_get_board_binding(data_dir, binding_id)
     if not existing:
@@ -446,6 +482,12 @@ def db_update_board_binding(
         if auto_approve_writes is not None
         else existing["auto_approve_writes"],
         "enabled": enabled if enabled is not None else existing["enabled"],
+        "persona_prompt": persona_prompt
+        if persona_prompt is not None
+        else existing.get("persona_prompt") or "",
+        "docs_search_enabled": docs_search_enabled
+        if docs_search_enabled is not None
+        else existing.get("docs_search_enabled"),
         "updated_at": now,
     }
     col_map = dict(existing.get("columns") or _DEFAULT_COLUMNS)
@@ -458,7 +500,8 @@ def db_update_board_binding(
             UPDATE slack_board_bindings SET
                 board_key = ?, list_id = ?, list_name = ?, channel_name = ?,
                 display_id_prefix = ?, next_display_num = ?, default_status = ?,
-                auto_approve_writes = ?, column_map_json = ?, enabled = ?, updated_at = ?
+                auto_approve_writes = ?, column_map_json = ?, enabled = ?,
+                persona_prompt = ?, docs_search_enabled = ?, updated_at = ?
             WHERE id = ?
             """,
             (
@@ -472,6 +515,8 @@ def db_update_board_binding(
                 1 if fields["auto_approve_writes"] else 0,
                 fields["column_map_json"],
                 1 if fields["enabled"] else 0,
+                str(fields["persona_prompt"] or ""),
+                1 if fields["docs_search_enabled"] else 0,
                 now,
                 binding_id,
             ),
@@ -523,6 +568,8 @@ def db_repair_board_bindings(data_dir: Path | None) -> int:
                 auto_approve_writes INTEGER NOT NULL DEFAULT 0,
                 column_map_json TEXT NOT NULL DEFAULT '{}',
                 enabled INTEGER NOT NULL DEFAULT 1,
+                persona_prompt TEXT NOT NULL DEFAULT '',
+                docs_search_enabled INTEGER NOT NULL DEFAULT 0,
                 created_at REAL NOT NULL,
                 updated_at REAL NOT NULL
             )

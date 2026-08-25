@@ -49,6 +49,60 @@ def test_ticket_entity_from_periskope_payload():
     assert entity.mapping_key() == "periskope:ticket:BKT-001"
 
 
+def test_ticket_title_ignores_whatsapp_id_dump():
+    from backend.integrations.periskope.copy import announce_blocks, list_item_details, ticket_title
+    from backend.integrations.platform.types import ExternalEntity
+
+    dump = "{'from_me': False, 'id': '3B17671FEC68FF23E656', 'remote': '120363410912716439@g.us', 'serialized': 'false_120363410912716439@g.us_3B17671FEC68F'}"
+    entity = entity_from_ticket(
+        {
+            "chat": {"chat_id": "120363410912716439@g.us", "chat_name": "FP - Periskope testing group"},
+            "ticket": {"ticket_id": "FLE-026", "subject": dump, "priority": 2, "status": "open"},
+            "message": {"id": {"from_me": False, "remote": "120363410912716439@g.us"}, "sender_name": "Azeem"},
+        }
+    )
+    assert entity is not None
+    assert entity.title == "WhatsApp ticket FLE-026"
+    assert "from_me" not in entity.description
+    recent = [
+        {"sender_name": "Azeem", "body": "Test 05", "from_me": False},
+        {"sender_name": "Riya", "body": "please check COD on checkout", "from_me": False},
+    ]
+    title = ticket_title(subject=dump, recent=recent, ticket_id="FLE-026")
+    assert title == "please check COD on checkout"
+    entity.title = title
+    entity.extra["raised_by"] = "Azeem"
+    entity.extra["recent_messages"] = recent
+    details = list_item_details(entity, recent)
+    assert "Raised by: Azeem" in details
+    assert "Merchant: FP - Periskope testing group" in details
+    assert "Issue:" in details
+    assert "please check COD on checkout" in details
+    assert "from_me" not in details
+    assert "Recent messages:" not in details
+    blocks = announce_blocks(
+        entity,
+        display_id="TS-2",
+        list_url="https://slack.com/lists/F1?record_id=Rec1",
+        board_name="support-tasks",
+    )
+    assert blocks[0]["type"] == "section"
+    heading = blocks[0]["text"]["text"]
+    assert "please check COD on checkout" in heading
+    assert "TS-2" in heading
+    assert "Item in support-tasks" in heading
+    field_text = " ".join(field["text"] for field in blocks[1]["fields"])
+    assert "*Severity*" in field_text
+    assert "*Submitted by*" in field_text
+    assert "Azeem" in field_text
+    assert "FP - Periskope testing group" in field_text
+    assert "Merchant:" in blocks[2]["text"]["text"]
+    assert "Issue:" in blocks[2]["text"]["text"]
+    assert blocks[3]["type"] == "actions"
+    assert blocks[3]["elements"][0]["text"]["text"] == "Open in Slack List"
+
+
+
 def test_parse_webhook_ignores_message_created():
     body = json.dumps(
         {
@@ -108,6 +162,26 @@ def test_parse_webhook_message_ticket_attached():
     events = parse_webhook_body(body)
     assert events[0].entity is not None
     assert events[0].entity.external_id == "FLE-024"
+
+
+def test_parse_webhook_rejects_whatsapp_id_dump_as_ticket():
+    dump = {
+        "from_me": True,
+        "id": "3EB060A3EBC140239A7A57",
+        "remote": "120363410912716439@g.us",
+        "serialized": "true_120363410912716439@g.us_3EB060A3EBC140239A7A57",
+    }
+    body = json.dumps(
+        {
+            "event_type": "message.ticket.attached",
+            "data": {"id": dump, "chat": {"chat_id": "120363410912716439@g.us"}},
+        }
+    ).encode("utf-8")
+    events = parse_webhook_body(body)
+    assert events[0].entity is None
+
+    entity = entity_from_ticket({"ticket": {"id": dump, "subject": "Test 06"}, "message": {"body": dump}})
+    assert entity is None
 
 
 def test_webhook_ticket_created_is_not_dropped_by_chat_allowlist():
@@ -285,6 +359,7 @@ def test_poll_replicate_calls_apply_entity(tmp_path, monkeypatch):
     fake.list_tickets.return_value = [entity]
     fake.list_tasks.return_value = []
     fake.replica_targets.return_value = ("slack_board",)
+    fake.enrich.side_effect = lambda _config, ent, **_kwargs: ent
 
     monkeypatch.setattr("backend.integrations.platform.poll.get_connector", lambda _id: fake)
     applied = []

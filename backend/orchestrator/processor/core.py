@@ -480,9 +480,12 @@ class TaskProcessor(SessionMixin, DirectMixin, InvestigationMixin, ReplyMixin):
                     )
 
         if investigation is None and legacy_routing and self.config.repo_knowledge.enabled:
+            from backend.routing.channel_settings import should_force_channel_docs_search
             from backend.routing.tool_planner import looks_like_repo_doc_question
 
-            if looks_like_repo_doc_question(task.cleaned_intent, source=task.source):
+            if should_force_channel_docs_search(
+                task, self._data_dir_path(), config=self.config
+            ) or looks_like_repo_doc_question(task.cleaned_intent, source=task.source):
                 investigation = self._playbooks.get_by_name("repo_knowledge")
                 if investigation:
                     logger.info(
@@ -709,9 +712,16 @@ class TaskProcessor(SessionMixin, DirectMixin, InvestigationMixin, ReplyMixin):
                     for domain, steps in group_steps_by_domain(tool_plan.steps or [])
                 )
 
+        from backend.routing.channel_settings import channel_persona_system_block
+
         extra_system = "\n\n".join(
             part
             for part in (
+                (
+                    channel_persona_system_block(self._data_dir_path(), task.channel_id)
+                    if task.source == "slack"
+                    else ""
+                ),
                 scoped_context,
                 tool_manifest,
                 goal_spec_block,

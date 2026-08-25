@@ -137,6 +137,7 @@ export type AlfredConfig = {
       ticket_create_target: "slack_board" | "jira" | "both";
       slack_board_key: string;
       jira_project: string;
+      ticket_summary_prompt?: string;
       sync_on_update: boolean;
     };
   };
@@ -1529,6 +1530,8 @@ export type SlackBoardBinding = {
   auto_approve_writes: boolean;
   columns: SlackBoardColumnMap;
   enabled: boolean;
+  persona_prompt: string;
+  docs_search_enabled: boolean;
   created_at: number;
   updated_at: number;
 };
@@ -1545,6 +1548,8 @@ export type SlackBoardBindingInput = {
   auto_approve_writes?: boolean;
   columns?: Partial<SlackBoardColumnMap>;
   enabled?: boolean;
+  persona_prompt?: string;
+  docs_search_enabled?: boolean;
 };
 
 export type SlackBoardBindingsResponse = {

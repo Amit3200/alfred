@@ -4,9 +4,18 @@ from __future__ import annotations
 
 import json
 import logging
+from pathlib import Path
 from typing import Any
 
 from backend.integrations.periskope.api import PeriskopeApiClient, PeriskopeApiError
+from backend.integrations.periskope.copy import (
+    human_text,
+    list_item_details,
+    person_label,
+    raised_by,
+    ticket_title,
+)
+from backend.integrations.periskope.summarize import looks_like_ticket_id, summarize_ticket
 from backend.integrations.periskope.normalize import (
     CONNECTOR_ID,
     entity_from_task,
@@ -59,20 +68,21 @@ def _allow_entity(
 
 
 def _normalize_message(message: dict[str, Any], *, chat_id: str = "") -> dict[str, Any]:
-    sender = (
+    ident = message.get("id") if isinstance(message.get("id"), dict) else {}
+    sender = person_label(
         message.get("sender_name")
         or message.get("performed_by")
-        or message.get("sender_phone")
+        or message.get("pushname")
         or message.get("author")
+        or message.get("sender_phone")
         or message.get("from")
-        or ""
     )
-    ident = message.get("id") if isinstance(message.get("id"), dict) else {}
+    remote = str(ident.get("remote") or "").strip()
     return {
         "message_id": str(message.get("message_id") or ident.get("id") or "").strip(),
-        "chat_id": chat_id or str(message.get("chat_id") or "").strip(),
-        "sender_name": str(sender or "").strip(),
-        "body": str(message.get("body") or "")[:800],
+        "chat_id": chat_id or str(message.get("chat_id") or remote or "").strip(),
+        "sender_name": sender,
+        "body": human_text(message.get("body") or message),
         "timestamp": str(message.get("timestamp") or "").strip(),
         "from_me": bool(message.get("from_me")),
     }
@@ -107,8 +117,11 @@ class PeriskopeConnector(Connector):
             return "replicate_disabled"
         return "filtered"
 
-    def enrich(self, config: AlfredConfig, entity: ExternalEntity) -> ExternalEntity:
+    def enrich(self, config: AlfredConfig, entity: ExternalEntity, *, data_dir: Path | None = None) -> ExternalEntity:
         if entity.kind != "ticket":
+            return entity
+        if not looks_like_ticket_id(entity.external_id):
+            entity.action = "ignore"
             return entity
         enriched = entity
         try:
@@ -122,40 +135,94 @@ class PeriskopeConnector(Connector):
                         parsed.description = entity.description
                     if not parsed.chat_id:
                         parsed.chat_id = entity.chat_id
+                    if not parsed.chat_name:
+                        parsed.chat_name = entity.chat_name
+                    extra = dict(entity.extra or {})
+                    extra.update(parsed.extra or {})
+                    parsed.extra = extra
                     enriched = parsed
         except PeriskopeApiError:
             logger.debug("Periskope get_ticket failed for %s", entity.external_id, exc_info=True)
         chat_id = enriched.chat_id or entity.chat_id
-        context = self._recent_chat_context(config, chat_id, limit=20)
-        if context:
-            existing = (enriched.description or "").strip()
-            enriched.description = f"{existing}\n\n{context}".strip() if existing else context
+        recent = self._recent_messages(config, chat_id, limit=20)
+        if not enriched.chat_name and chat_id:
+            enriched.chat_name = self._chat_name(config, chat_id)
+        extra = dict(enriched.extra or {})
+        extra["recent_messages"] = recent
+        extra["group_name"] = enriched.chat_name
+        extra["raised_by"] = extra.get("raised_by") or raised_by(enriched, recent)
+        settings = self.settings(config)
+        persona = ""
+        extra_prompt = str(getattr(settings, "ticket_summary_prompt", "") or "").strip() if settings else ""
+        channel_id = str(
+            getattr(settings, "slack_channel_id", "")
+            or getattr(settings, "summary_channel_id", "")
+            or ""
+        ).strip() if settings else ""
+        if channel_id and data_dir is not None:
+            from backend.routing.channel_settings import channel_persona_prompt
+
+            persona = channel_persona_prompt(data_dir, channel_id)
+        intake = summarize_ticket(
+            config,
+            enriched,
+            recent,
+            persona_prompt=persona,
+            extra_prompt=extra_prompt,
+            data_dir=data_dir,
+        )
+        extra["intake"] = {
+            "title": intake.title,
+            "problem": intake.problem,
+            "action_items": list(intake.action_items),
+        }
+        enriched.extra = extra
+        enriched.title = intake.title or ticket_title(
+            subject=enriched.title,
+            message_body=enriched.description,
+            recent=recent,
+            ticket_id=enriched.external_id,
+        )
+        enriched.description = list_item_details(enriched, recent)
         if chat_id:
             enriched.chat_id = chat_id
         return enriched
 
-    def _recent_chat_context(self, config: AlfredConfig, chat_id: str, *, limit: int = 20) -> str:
+    def _chat_name(self, config: AlfredConfig, chat_id: str) -> str:
+        try:
+            for chat in self.list_chats(config):
+                if str(chat.get("chat_id") or "") == chat_id:
+                    return str(chat.get("chat_name") or "").strip()
+        except Exception:
+            logger.debug("Periskope chat name lookup failed chat_id=%s", chat_id, exc_info=True)
+        return ""
+
+    def _recent_messages(self, config: AlfredConfig, chat_id: str, *, limit: int = 20) -> list[dict[str, Any]]:
         chat_id = (chat_id or "").strip()
         if not chat_id:
-            return ""
+            return []
         try:
             rows = self.list_messages(config, chat_id=chat_id, limit=max(1, min(limit, 20)))
         except Exception:
             logger.exception("Periskope last-messages fetch failed chat_id=%s", chat_id)
-            return ""
+            return []
         chronological = list(reversed(rows[:limit]))
-        lines: list[str] = []
-        for row in chronological:
-            body = str(row.get("body") or "").strip()
-            if not body:
-                continue
-            sender = str(row.get("sender_name") or "unknown").strip()
-            stamp = str(row.get("timestamp") or "").strip()
-            prefix = f"{stamp} {sender}".strip() if stamp else sender
-            lines.append(f"- {prefix}: {body[:400]}")
-        if not lines:
+        return [row for row in chronological if human_text(row.get("body"))]
+
+    def _recent_chat_context(self, config: AlfredConfig, chat_id: str, *, limit: int = 5) -> str:
+        recent = self._recent_messages(config, chat_id, limit=limit)
+        if not recent:
             return ""
-        return "Recent WhatsApp messages:\n" + "\n".join(lines)
+        return list_item_details(
+            ExternalEntity(
+                connector_id=CONNECTOR_ID,
+                kind="ticket",
+                external_id="",
+                title="",
+                chat_id=chat_id,
+            ),
+            recent,
+        )
 
     def health_check(self, config: AlfredConfig) -> dict[str, Any]:
         if not self.enabled(config):

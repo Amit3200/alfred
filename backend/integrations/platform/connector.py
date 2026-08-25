@@ -43,7 +43,7 @@ class Connector(ABC):
     @abstractmethod
     def parse_webhook(self, *, headers: dict[str, str], body: bytes) -> list[ConnectorEvent]: ...
 
-    def enrich(self, config: AlfredConfig, entity: ExternalEntity) -> ExternalEntity:
+    def enrich(self, config: AlfredConfig, entity: ExternalEntity, *, data_dir=None) -> ExternalEntity:
         return entity
 
     def health_check(self, config: AlfredConfig) -> dict[str, Any]:

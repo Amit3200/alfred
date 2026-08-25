@@ -57,6 +57,7 @@ const DEFAULT_PERISKOPE: NonNullable<NonNullable<AlfredConfig["connectors"]>["pe
   ticket_create_target: "slack_board",
   slack_board_key: "",
   jira_project: "",
+  ticket_summary_prompt: "",
   sync_on_update: true,
 };
 
@@ -1376,7 +1377,9 @@ export function IntegrationsPanel() {
             <br />
             Live webhook URL (must be publicly reachable). Subscribe in Periskope to
             <Typography.Text code>ticket.created</Typography.Text> (not every WhatsApp message).
-            Alfred then fetches the last 20 chat messages and creates a Slack List item in the channel below.
+            Alfred summarizes the chat into a problem statement and action items, then creates
+            one Slack List item in the channel below. Channel persona from Slack boards is
+            prepended; you can add extra ticket instructions here.
             <br />
             Hook URL:{" "}
             <Typography.Text code copyable>
@@ -1499,6 +1502,26 @@ export function IntegrationsPanel() {
                   })
                 }
               />
+            </Col>
+            <Col span={24}>
+              <label className="alfred-field-label">Ticket summary prompt (optional)</label>
+              <Input.TextArea
+                rows={4}
+                placeholder="Prefer billing/settlement language. Call out merchant name, amount, and whether this is a test."
+                value={periskopeConfig(config).ticket_summary_prompt || ""}
+                onChange={(e) =>
+                  updateConfig({
+                    connectors: {
+                      ...(config.connectors ?? {}),
+                      periskope: { ...periskopeConfig(config), ticket_summary_prompt: e.target.value },
+                    },
+                  })
+                }
+              />
+              <Typography.Paragraph type="secondary" style={{ fontSize: 12, margin: "6px 0 0" }}>
+                Extra instructions on top of Alfred&apos;s default: identify the problem, ignore bot/away
+                noise, and list action items. The Slack board persona for this channel is always included.
+              </Typography.Paragraph>
             </Col>
             <Col span={24}>
               <label className="alfred-field-label">Allowed chat ids</label>

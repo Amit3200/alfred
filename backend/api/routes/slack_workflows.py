@@ -78,6 +78,8 @@ class BoardBindingPayload(BaseModel):
     auto_approve_writes: bool = False
     columns: dict[str, str] = Field(default_factory=dict)
     enabled: bool = True
+    persona_prompt: str = Field(default="", max_length=4000)
+    docs_search_enabled: bool = False
 
 
 class BoardBindingUpdatePayload(BaseModel):
@@ -91,6 +93,8 @@ class BoardBindingUpdatePayload(BaseModel):
     auto_approve_writes: bool | None = None
     columns: dict[str, str] | None = None
     enabled: bool | None = None
+    persona_prompt: str | None = Field(default=None, max_length=4000)
+    docs_search_enabled: bool | None = None
 
 
 @router.get("/channels")
@@ -203,6 +207,8 @@ def create_board(
             auto_approve_writes=payload.auto_approve_writes,
             columns=payload.columns or None,
             enabled=payload.enabled,
+            persona_prompt=payload.persona_prompt,
+            docs_search_enabled=payload.docs_search_enabled,
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc
@@ -268,6 +274,8 @@ def update_board(
             auto_approve_writes=payload.auto_approve_writes,
             columns=payload.columns,
             enabled=payload.enabled,
+            persona_prompt=payload.persona_prompt,
+            docs_search_enabled=payload.docs_search_enabled,
         )
     except ValueError as exc:
         raise HTTPException(status_code=409, detail=str(exc)) from exc

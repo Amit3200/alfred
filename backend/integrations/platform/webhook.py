@@ -61,7 +61,7 @@ def process_connector_webhook(
             continue
         if event.needs_enrich:
             try:
-                entity = connector.enrich(config, entity)
+                entity = connector.enrich(config, entity, data_dir=manager.data_dir)
             except Exception:
                 logger.exception("Connector enrich failed connector=%s event_type=%s", connector_id, event_type)
         if entity.action == "ignore":

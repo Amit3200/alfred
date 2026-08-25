@@ -426,6 +426,14 @@ def _build_planner_channel_context(
                 f"Display id prefix: {binding.get('display_id_prefix')}",
             ]
         )
+        persona = str(binding.get("persona_prompt") or "").strip()
+        if persona:
+            lines.append(f"Channel persona (follow this first):\n{persona}")
+        if binding.get("docs_search_enabled"):
+            lines.append(
+                "Docs search is ON for this channel: prefer search_repo_docs + read_repo_doc "
+                "and answer from indexed docs unless the user is creating/updating a board or JIRA ticket."
+            )
     else:
         lines.append("Slack List board: not linked for this channel")
     session_context = _format_planner_session_context(session_metadata)
@@ -479,6 +487,14 @@ def plan_tools_llm(
     if channel_context:
         user_parts.extend(["", "Channel configuration:", channel_context])
 
+    from backend.routing.channel_settings import channel_persona_prompt
+
+    persona_prompt = (
+        channel_persona_prompt(data_dir, task.channel_id)
+        if task and task.source == "slack" and task.channel_id
+        else ""
+    )
+
     system = """You are Alfred's Tool Planner. Given the user message, entities, and tool catalog,
 produce a JSON plan. Do NOT execute tools. Do NOT invent tool names.
 
@@ -506,6 +522,8 @@ Rules:
 10. Slides/presentation/deck requests (HTML deck from data, metrics, tables) MUST use save_html_deck with intent_class html_slides.
     Add publish_html_artifact only when the user explicitly asks to publish/host/share a URL.
     Do NOT use search_repo_docs or google_create_sheet for slide generation when save_html_deck is in the catalog."""
+    if persona_prompt:
+        system = f"Channel persona (must follow):\n{persona_prompt}\n\n{system}"
 
     try:
         response = provider.chat(
@@ -599,6 +617,24 @@ def resolve_tool_plan(
             slides_plan.intent_class,
         )
         return slides_plan
+
+    from backend.routing.channel_settings import should_force_channel_docs_search
+
+    if should_force_channel_docs_search(task, data_dir, config=config):
+        from backend.routing.chat_persona import build_support_doc_plan
+
+        qa_plan = build_support_doc_plan(task)
+        if skill_allowed:
+            allowed = set(skill_allowed)
+            filtered = [t for t in qa_plan.tools_needed if t in allowed]
+            if filtered:
+                qa_plan.tools_needed = filtered
+                qa_plan.steps = [s for s in qa_plan.steps if s.tool in filtered]
+            else:
+                qa_plan = None
+        if qa_plan:
+            logger.info("Channel docs-search plan: tools=%s", qa_plan.tools_needed)
+            return qa_plan
 
     if playbook_store is not None:
         from backend.routing.plan_templates import match_plan_template

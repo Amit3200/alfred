@@ -483,6 +483,14 @@ class PeriskopeConfig(BaseModel):
         default="",
         description="JIRA project key when ticket_create_target includes jira.",
     )
+    ticket_summary_prompt: str = Field(
+        default="",
+        description=(
+            "Extra instructions for summarizing WhatsApp tickets onto Slack/JIRA. "
+            "Empty uses Alfred's default problem + action-item prompt. "
+            "Channel persona from Slack boards is always prepended."
+        ),
+    )
     sync_on_update: bool = True
     api_token: str = ""
     webhook_secret: str = ""

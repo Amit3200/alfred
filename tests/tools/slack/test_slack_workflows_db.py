@@ -174,3 +174,31 @@ def test_channel_workflow_policy(tmp_path: Path):
     )
     profile = binding_to_profile(binding)
     assert profile.columns.title == "Name"
+
+
+def test_board_binding_persona_and_docs_search(tmp_path: Path):
+    from backend.db.slack_workflows_db import db_update_board_binding
+
+    binding = db_create_board_binding(
+        tmp_path,
+        board_key="support",
+        list_id="Fdocs",
+        channel_id="Cdocs",
+        persona_prompt="You are billing support. Prefer invoice docs.",
+        docs_search_enabled=True,
+    )
+    assert binding["persona_prompt"] == "You are billing support. Prefer invoice docs."
+    assert binding["docs_search_enabled"] is True
+
+    updated = db_update_board_binding(
+        tmp_path,
+        binding["id"],
+        persona_prompt="Prefer settlement docs.",
+        docs_search_enabled=False,
+    )
+    assert updated is not None
+    assert updated["persona_prompt"] == "Prefer settlement docs."
+    assert updated["docs_search_enabled"] is False
+    loaded = db_get_board_binding_for_channel(tmp_path, "Cdocs")
+    assert loaded is not None
+    assert loaded["persona_prompt"] == "Prefer settlement docs."

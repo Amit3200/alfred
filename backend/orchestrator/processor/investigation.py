@@ -117,6 +117,9 @@ class InvestigationMixin:
             return investigation
         if investigation is not None and investigation.name == "connector_management":
             return investigation
+        if turn_plan.intent_class == "repo.docs.qa" and planned.name == "repo_knowledge":
+            logger.info("TurnPlan docs QA → skill %s", planned.name)
+            return planned
         if is_html_slides_intent(turn_plan.intent_class):
             if investigation is None or investigation.name != planned.name:
                 logger.info("TurnPlan HTML slides → skill %s", planned.name)
@@ -207,6 +210,14 @@ class InvestigationMixin:
                 skill = self._playbooks.get_by_name("repo_knowledge")
                 if skill is not None:
                     return skill
+
+        from backend.routing.channel_settings import should_force_channel_docs_search
+
+        if should_force_channel_docs_search(task, self._data_dir_path(), config=self.config):
+            skill = self._playbooks.get_by_name("repo_knowledge")
+            if skill is not None:
+                logger.info("Forced repo_knowledge from channel docs-search toggle")
+                return skill
 
         routing = self.config.routing
         turn_meta = task.metadata.get("turn_plan") or {}
