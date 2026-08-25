@@ -46,7 +46,11 @@ def process_connector_webhook(
         event_type = str(event.event_type or "").strip() or "unknown"
         entity = event.entity
         if entity is None:
-            reason = "ignored_event" if event_type.startswith("message.") or event_type.startswith("chat.") else "unparsed_entity"
+            ignored_noise = event_type.startswith(("message.", "chat.")) and event_type not in {
+                "message.ticket.attached",
+                "message.flagged",
+            }
+            reason = "ignored_event" if ignored_noise else "unparsed_entity"
             skipped.append({"event_type": event_type, "reason": reason})
             logger.info(
                 "Connector webhook skip connector=%s event_type=%s reason=%s",
@@ -70,19 +74,24 @@ def process_connector_webhook(
             )
             continue
         if not connector.accepts(config, entity):
+            reason = "filtered"
+            reject = getattr(connector, "reject_reason", None)
+            if callable(reject):
+                reason = str(reject(config, entity) or reason)
             skipped.append(
                 {
                     "event_type": event_type,
-                    "reason": "filtered",
+                    "reason": reason,
                     "id": entity.external_id,
                     "chat_id": entity.chat_id,
                     "kind": entity.kind,
                 }
             )
             logger.info(
-                "Connector webhook skip connector=%s event_type=%s reason=filtered kind=%s id=%s chat_id=%s",
+                "Connector webhook skip connector=%s event_type=%s reason=%s kind=%s id=%s chat_id=%s",
                 connector_id,
                 event_type,
+                reason,
                 entity.kind,
                 entity.external_id,
                 entity.chat_id or "-",

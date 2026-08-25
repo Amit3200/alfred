@@ -95,6 +95,73 @@ def test_parse_webhook_accepts_event_alias_and_subject_fallback():
     assert events[0].needs_enrich is True
 
 
+def test_parse_webhook_message_ticket_attached():
+    body = json.dumps(
+        {
+            "event_type": "message.ticket.attached",
+            "data": {
+                "message": {"ticket_id": "FLE-024", "body": "please check COD"},
+                "chat": {"chat_id": "120363410912716439@g.us"},
+            },
+        }
+    ).encode("utf-8")
+    events = parse_webhook_body(body)
+    assert events[0].entity is not None
+    assert events[0].entity.external_id == "FLE-024"
+
+
+def test_webhook_ticket_created_is_not_dropped_by_chat_allowlist():
+    from backend.integrations.periskope.connector import PeriskopeConnector
+    from backend.integrations.platform.types import ExternalEntity
+    from backend.models.config import AlfredConfig, ConnectorsConfig, PeriskopeConfig
+
+    config = AlfredConfig(
+        connectors=ConnectorsConfig(
+            periskope=PeriskopeConfig(
+                enabled=True,
+                allowed_chat_ids=["*", "999@g.us"],
+                replicate_tickets=True,
+            )
+        )
+    )
+    entity = ExternalEntity(
+        connector_id="periskope",
+        kind="ticket",
+        external_id="FLE-024",
+        title="COD",
+        chat_id="120363410912716439@g.us",
+    )
+    connector = PeriskopeConnector()
+    assert connector.accepts(config, entity) is True
+
+    blocked = AlfredConfig(
+        connectors=ConnectorsConfig(
+            periskope=PeriskopeConfig(enabled=True, replicate_tickets=False)
+        )
+    )
+    assert connector.accepts(blocked, entity) is False
+    assert connector.reject_reason(blocked, entity) == "replicate_disabled"
+
+
+def test_star_allowlist_means_all_chats():
+    from backend.integrations.periskope.connector import _allow_entity, _allowed_chat_ids
+    from backend.integrations.platform.types import ExternalEntity
+    from backend.models.config import AlfredConfig, ConnectorsConfig, PeriskopeConfig
+
+    config = AlfredConfig(
+        connectors=ConnectorsConfig(periskope=PeriskopeConfig(allowed_chat_ids=["*"]))
+    )
+    assert _allowed_chat_ids(config) == set()
+    entity = ExternalEntity(
+        connector_id="periskope",
+        kind="ticket",
+        external_id="FLE-1",
+        title="x",
+        chat_id="1203@g.us",
+    )
+    assert _allow_entity(config, entity, enforce_chat_allowlist=True) is True
+
+
 def test_connector_sync_store_roundtrip(tmp_path):
     store = ConnectorSyncStore(tmp_path)
     store.put("periskope:ticket:BKT-001", {"slack_record_id": "Rec123", "jira_key": "TS-9"})

@@ -20,21 +20,40 @@ from backend.models.config import AlfredConfig
 
 logger = logging.getLogger(__name__)
 
+_ALLOW_ALL_CHATS = frozenset({"*", "all"})
+
 
 def _allowed_chat_ids(config: AlfredConfig) -> set[str]:
+    """WhatsApp chat allowlist for poll/list. Empty / * / all means every chat."""
     settings = getattr(getattr(config, "connectors", None), "periskope", None)
-    raw = list(getattr(settings, "allowed_chat_ids", None) or [])
-    return {str(item).strip() for item in raw if str(item).strip()}
+    raw = getattr(settings, "allowed_chat_ids", None) or []
+    if isinstance(raw, str):
+        raw = [part.strip() for part in raw.split(",")]
+    values = {str(item).strip() for item in raw if str(item).strip()}
+    if not values or values & _ALLOW_ALL_CHATS:
+        return set()
+    return values
 
 
-def _allow_entity(config: AlfredConfig, entity: ExternalEntity) -> bool:
+def _replication_enabled(config: AlfredConfig, entity: ExternalEntity) -> bool:
     settings = getattr(getattr(config, "connectors", None), "periskope", None)
     if entity.kind == "ticket" and not bool(getattr(settings, "replicate_tickets", True)):
         return False
     if entity.kind == "task" and not bool(getattr(settings, "replicate_tasks", True)):
         return False
+    return True
+
+
+def _allow_entity(
+    config: AlfredConfig,
+    entity: ExternalEntity,
+    *,
+    enforce_chat_allowlist: bool = True,
+) -> bool:
+    if not _replication_enabled(config, entity):
+        return False
     allowed = _allowed_chat_ids(config)
-    if allowed and entity.chat_id and entity.chat_id not in allowed:
+    if enforce_chat_allowlist and allowed and entity.chat_id and entity.chat_id not in allowed:
         return False
     return True
 
@@ -79,7 +98,14 @@ class PeriskopeConnector(Connector):
         return parse_webhook_body(body)
 
     def accepts(self, config: AlfredConfig, entity: ExternalEntity) -> bool:
-        return _allow_entity(config, entity)
+        # Inbound ticket.created already is a Periskope ticket — do not drop it
+        # because the WhatsApp group is missing from the poll allowlist.
+        return _allow_entity(config, entity, enforce_chat_allowlist=False)
+
+    def reject_reason(self, config: AlfredConfig, entity: ExternalEntity) -> str:
+        if not _replication_enabled(config, entity):
+            return "replicate_disabled"
+        return "filtered"
 
     def enrich(self, config: AlfredConfig, entity: ExternalEntity) -> ExternalEntity:
         if entity.kind != "ticket":
@@ -226,8 +252,8 @@ class PeriskopeConnector(Connector):
         from backend.integrations.periskope.time_range import resolve_message_window
 
         allowed = _allowed_chat_ids(config)
-        if allowed and chat_id and chat_id not in allowed:
-            return []
+        # A specific chat_id is a targeted fetch (webhook enrich). Only apply
+        # the allowlist to org-wide message pulls.
         settings = self.settings(config)
         timezone = str(getattr(settings, "summary_timezone", "") or "Asia/Kolkata")
         start, end = resolve_message_window(
@@ -259,7 +285,7 @@ class PeriskopeConnector(Connector):
                 msg_chat = str(message.get("chat_id") or message.get("to") or chat_id or "").strip()
                 if chat_id and msg_chat and msg_chat != chat_id:
                     continue
-                if allowed and msg_chat and msg_chat not in allowed:
+                if not chat_id and allowed and msg_chat and msg_chat not in allowed:
                     continue
                 out.append(_normalize_message(message, chat_id=msg_chat))
                 if len(out) >= cap:

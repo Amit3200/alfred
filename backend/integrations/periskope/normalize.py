@@ -11,7 +11,7 @@ CONNECTOR_ID = "periskope"
 
 _TICKET_EVENTS = frozenset({"ticket.created", "ticket.updated", "ticket.deleted"})
 _TASK_EVENTS = frozenset({"task.created", "task.updated", "task.deleted"})
-_IGNORED_EVENTS = frozenset(
+IGNORED_EVENTS = frozenset(
     {
         "message.created",
         "message.updated",
@@ -21,6 +21,7 @@ _IGNORED_EVENTS = frozenset(
         "chat.notification.created",
     }
 )
+_IGNORED_EVENTS = IGNORED_EVENTS
 
 
 def _priority_label(raw: Any) -> str:
@@ -77,10 +78,16 @@ def _message_bodies(data: dict[str, Any]) -> str:
 def entity_from_ticket(data: dict[str, Any], *, action: str = "upsert") -> ExternalEntity | None:
     ticket = _ticket_payload(data)
     chat = _chat_payload(data)
-    ticket_id = str(ticket.get("ticket_id") or data.get("ticket_id") or "").strip()
+    message = data.get("message") if isinstance(data.get("message"), dict) else {}
+    ticket_id = str(
+        ticket.get("ticket_id")
+        or data.get("ticket_id")
+        or message.get("ticket_id")
+        or ticket.get("id")
+        or ""
+    ).strip()
     title = str(ticket.get("subject") or data.get("subject") or "").strip()
     if not title:
-        message = data.get("message") if isinstance(data.get("message"), dict) else {}
         title = str(message.get("body") or "").strip()[:120]
     if not ticket_id:
         return None
