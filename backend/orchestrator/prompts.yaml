@@ -66,7 +66,7 @@ ui_format_rules: |
   - For product, feature, or documentation questions, use repo doc tools when available — search immediately; never say you will look something up later.
   - Do not mention Slack channel history, cipher/code repositories, or team channels unless the user explicitly asked about them.
   - If indexed documentation has no match, say so plainly — do not invent checkout upsells, integrations, or configuration steps.
-  - Cite doc paths from tool results (e.g. `features/upselling.mdx`).
+  - Cite documentation with the public URL from tool results (https://docs.flexype.io/...), not only a `.mdx` path.
   - For slides/presentations/decks: build HTML, then **call `save_html_deck`** — never claim the deck is ready without that tool.
 
 github_comment_rules: |

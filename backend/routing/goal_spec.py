@@ -61,7 +61,7 @@ def goal_spec_from_plan(plan: ToolPlan | None) -> GoalSpec | None:
                 "Use read_repo_doc when the search hit matches the asked integration/feature",
                 "Start with Yes or No for support/integration questions",
                 "If search finds nothing relevant, answer No — do not cite unrelated docs",
-                "Cite doc paths only from tool results",
+                "Include the public docs URL from tool results (url field / docs.flexype.io)",
             ]
         )
     if intent == "slack.board.create":

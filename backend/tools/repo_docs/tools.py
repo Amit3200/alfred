@@ -13,6 +13,7 @@ from backend.context.doc_index import (
     search_repo_docs,
     significant_query_tokens,
 )
+from backend.context.doc_urls import attach_public_doc_urls, public_doc_url
 from backend.context.generator import resolve_main_repo
 from backend.context.repo_profiles import (
     doc_search_repo_slugs,
@@ -107,6 +108,7 @@ def search_repo_docs_tool(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
             kind="doc_search",
             data={"query": query, "results": [], "found": False},
         )
+    hits = attach_public_doc_urls(hits, config=config)
     return ToolResult(
         kind="doc_search",
         data={"query": query, "results": hits, "found": True, "count": len(hits)},
@@ -136,6 +138,9 @@ def read_repo_doc_tool(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
     except ValueError as exc:
         return ToolResult.error(str(exc))
     doc["repo"] = slug
+    url = public_doc_url(path, repo=slug, config=ctx.config)
+    if url:
+        doc["url"] = url
     return ToolResult(kind="doc_content", data=doc)
 
 
@@ -150,6 +155,7 @@ def list_repo_docs_tool(ctx: ToolContext, args: dict[str, Any]) -> ToolResult:
     prefix = str(args.get("prefix") or "").strip().lower()
     if prefix:
         docs = [d for d in docs if d["path"].lower().startswith(prefix)]
+    docs = attach_public_doc_urls(docs, repo=slug, config=ctx.config)
     return ToolResult(kind="doc_list", data={"repo": slug, "docs": docs, "count": len(docs)})
 
 

@@ -659,7 +659,8 @@ class TaskProcessor(SessionMixin, DirectMixin, InvestigationMixin, ReplyMixin):
             if rk.enabled and not rk.inject_overview:
                 repo_context_prompt = (
                     "## Repository documentation\n"
-                    "Use `search_repo_docs` and `read_repo_doc` for runbook and documentation questions."
+                    "Use `search_repo_docs` and `read_repo_doc` for runbook and documentation questions. "
+                    "When a hit includes `url`, put that https://docs.flexype.io/... link in the reply."
                 )
             else:
                 from backend.context.generator import load_repo_context_for_prompt

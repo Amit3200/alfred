@@ -469,6 +469,23 @@ def test_format_reply_for_doc_search():
     )
     assert "docs/runbook.md" in out
 
+    linked = format_reply_for_intent(
+        intent_class="repo.docs.qa",
+        kind="doc_search",
+        data={
+            "query": "hydrogen",
+            "results": [
+                {
+                    "path": "platforms/hydrogen.mdx",
+                    "title": "Hydrogen",
+                    "url": "https://docs.flexype.io/platforms/hydrogen",
+                }
+            ],
+        },
+        raw_text="",
+    )
+    assert "https://docs.flexype.io/platforms/hydrogen" in linked
+
 
 def test_match_script_by_trigger(tmp_path: Path):
     scripts_root = tmp_path / "scripts"

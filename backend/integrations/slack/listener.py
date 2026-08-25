@@ -96,34 +96,16 @@ def build_slack_bolt_app(
 
     @app.event("message")
     def handle_channel_message(event: dict, client: Any, logger: Any) -> None:  # noqa: ARG001
-        from backend.integrations.slack.docs_listen import should_handle_docs_search_message
-
-        if should_handle_docs_search_message(
+        if _try_docs_search_event(
             event,
             bot_user_id=bot_user_id,
-            slack_config=config.slack,
+            config=config,
             data_dir=data_dir,
+            queue=queue,
+            client=client,
+            processor=processor,
+            on_task_complete=on_task_complete,
         ):
-            task = sanitize_slack_mention(event, config.slack)
-            if task is None:
-                return
-            task.metadata["channel_docs_search"] = True
-            logger.info(
-                "channel_docs_search user=%s channel=%s thread=%s intent=%r",
-                task.user_id,
-                task.channel_id,
-                task.thread_ts,
-                task.cleaned_intent[:120],
-            )
-            _dispatch_slack_task(
-                task,
-                queue=queue,
-                client=client,
-                processor=processor,
-                config=config,
-                on_task_complete=on_task_complete,
-                log_name=f"alfred-docs-{task.id[:8]}",
-            )
             return
 
         if not config.slack.list_jira_sync.enabled:
@@ -192,12 +174,65 @@ def build_slack_bolt_app(
     return app
 
 
+def _try_docs_search_event(
+    event: dict,
+    *,
+    bot_user_id: str,
+    config: AlfredConfig,
+    data_dir: Any,
+    queue: Any,
+    client: Any,
+    processor: Any,
+    on_task_complete: Callable[[], None] | None,
+) -> bool:
+    from backend.integrations.slack.docs_listen import (
+        already_seen,
+        mark_seen,
+        should_handle_docs_search_message,
+    )
+
+    channel_id = str(event.get("channel") or "")
+    ts = str(event.get("ts") or "")
+    if data_dir is not None and already_seen(data_dir, channel_id, ts):
+        return False
+    if not should_handle_docs_search_message(
+        event,
+        bot_user_id=bot_user_id,
+        slack_config=config.slack,
+        data_dir=data_dir,
+    ):
+        return False
+    task = sanitize_slack_mention(event, config.slack)
+    if task is None:
+        return False
+    if data_dir is not None:
+        mark_seen(data_dir, channel_id, ts)
+    task.metadata["channel_docs_search"] = True
+    logger.info(
+        "channel_docs_search user=%s channel=%s thread=%s intent=%r",
+        task.user_id,
+        task.channel_id,
+        task.thread_ts,
+        task.cleaned_intent[:120],
+    )
+    _dispatch_slack_task(
+        task,
+        queue=queue,
+        client=client,
+        processor=processor,
+        config=config,
+        on_task_complete=on_task_complete,
+        log_name=f"alfred-docs-{task.id[:8]}",
+    )
+    return True
+
+
 def _dispatch_slack_task(
     task: Any,
     *,
     queue: Any,
     client: Any,
-    processor: TaskProcessor,
+    processor: Any,
     config: AlfredConfig,
     on_task_complete: Callable[[], None] | None,
     log_name: str,
@@ -309,6 +344,7 @@ class SlackSocketRunner:
         self._handler: Any | None = None
         self._thread: threading.Thread | None = None
         self._stop_event = threading.Event()
+        self._poll_thread: threading.Thread | None = None
         self.last_error: str | None = None
         self.running = False
 
@@ -324,7 +360,12 @@ class SlackSocketRunner:
         try:
             pass
 
+            from backend.db.slack_workflows_db import init_slack_workflows_db
             from backend.db.sqlite_queue import SQLiteQueue
+            from backend.integrations.slack.docs_listen import docs_search_channels
+            from backend.paths import db_path
+
+            init_slack_workflows_db(db_path(self.manager.data_dir))
             queue = SQLiteQueue(self.manager.data_dir)
             bolt_app = build_slack_bolt_app(config, data_dir=self.manager.data_dir, queue=queue)
             self._handler = SocketModeHandler(bolt_app, config.slack.app_token)
@@ -335,9 +376,23 @@ class SlackSocketRunner:
                 daemon=True,
             )
             self._thread.start()
+            self._poll_thread = threading.Thread(
+                target=self._poll_docs_search_loop,
+                args=(config, queue, bolt_app),
+                name="alfred-docs-search-poll",
+                daemon=True,
+            )
+            self._poll_thread.start()
             self.running = True
             self.last_error = None
-            logger.info("Slack Socket Mode listener started")
+            watched = [
+                f"{row.get('channel_name') or row.get('channel_id')} ({row.get('channel_id')})"
+                for row in docs_search_channels(self.manager.data_dir)
+            ]
+            logger.info(
+                "Slack Socket Mode listener started; docs-search channels=%s",
+                watched or "none",
+            )
             return True, "Listening for @mentions via Socket Mode"
         except ImportError:
             message = "slack-bolt not installed — run: pip install 'alfred-agent[slack]'"
@@ -348,6 +403,44 @@ class SlackSocketRunner:
             self.last_error = message
             logger.exception("Failed to start Slack listener")
             return False, message
+
+    def _poll_docs_search_loop(self, config: AlfredConfig, queue: Any, bolt_app: Any) -> None:
+        from slack_sdk import WebClient
+
+        from backend.integrations.slack.docs_listen import POLL_INTERVAL_SEC, poll_docs_search_once
+
+        client = WebClient(token=config.slack.bot_token)
+        try:
+            bot_user_id = str(client.auth_test().get("user_id") or "")
+        except Exception:
+            logger.exception("Docs-search poller could not resolve bot user id")
+            return
+
+        def _on_event(event: dict) -> None:
+            _try_docs_search_event(
+                event,
+                bot_user_id=bot_user_id,
+                config=config,
+                data_dir=self.manager.data_dir,
+                queue=queue,
+                client=bolt_app.client,
+                processor=None,  # queue path; processor unused when queue is set
+                on_task_complete=None,
+            )
+
+        while not self._stop_event.wait(POLL_INTERVAL_SEC):
+            try:
+                handled = poll_docs_search_once(
+                    client,
+                    slack_config=config.slack,
+                    data_dir=self.manager.data_dir,
+                    bot_user_id=bot_user_id,
+                    on_event=_on_event,
+                )
+                if handled:
+                    logger.info("Docs-search poll enqueued %s message(s)", handled)
+            except Exception:
+                logger.exception("Docs-search poll loop failed")
 
     def _run_loop(self) -> None:
         try:

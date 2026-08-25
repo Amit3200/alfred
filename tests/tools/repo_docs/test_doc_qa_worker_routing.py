@@ -87,6 +87,34 @@ def test_doc_qa_grounding_rejects_yes_when_search_empty():
     assert not result.passed
 
 
+def test_doc_qa_grounding_allows_public_docs_url_from_search_hit():
+    goal = goal_spec_from_plan(
+        ToolPlan(
+            goal="docs",
+            confidence=0.9,
+            tools_needed=["search_repo_docs"],
+            intent_class="repo.docs.qa",
+        )
+    )
+    trace = [
+        ToolTraceEntry(
+            tool="search_repo_docs",
+            success=True,
+            result_kind="doc_search",
+            observation=(
+                '{"found":true,"results":[{"path":"platforms/hydrogen.mdx",'
+                '"url":"https://docs.flexype.io/platforms/hydrogen"}]}'
+            ),
+        )
+    ]
+    result = validate_agent_result(
+        "**Yes** — see https://docs.flexype.io/platforms/hydrogen",
+        trace,
+        goal,
+    )
+    assert result.passed
+
+
 def test_doc_qa_grounding_allows_checkout_url_after_read():
     goal = goal_spec_from_plan(
         ToolPlan(

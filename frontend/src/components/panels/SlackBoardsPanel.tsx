@@ -309,8 +309,22 @@ export function SlackBoardsPanel() {
     {
       title: "Docs",
       dataIndex: "docs_search_enabled",
-      width: 70,
-      render: (v: boolean) => <Tag color={v ? "processing" : "default"}>{v ? "on" : "off"}</Tag>,
+      width: 90,
+      render: (v: boolean, record) => (
+        <Switch
+          checked={Boolean(v)}
+          onChange={async (on) => {
+            try {
+              await api.updateSlackBoardBinding(record.id, { docs_search_enabled: on });
+              notify("success", on ? "Docs search on — Alfred answers questions in this channel." : "Docs search off.");
+              refresh();
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : String(err);
+              notify("error", message);
+            }
+          }}
+        />
+      ),
     },
     {
       title: "Persona",
@@ -449,9 +463,9 @@ export function SlackBoardsPanel() {
               Link: <code>@alfred link board to F…</code> · Unlink: <code>@alfred unlink</code> ·
               Config: <code>@alfred show board config</code>
               <br />
-              Per-channel <strong>persona</strong> and <strong>docs search</strong> are set on Edit.
-              When docs search is on, Alfred answers channel messages from the synced docs repo in
-              the thread (ticket/board commands still need @alfred).
+              Per-channel <strong>persona</strong> is set on Edit. Turn <strong>Docs</strong> on
+              in the table to answer questions in that channel without @alfred (from the synced
+              docs repo, in the thread).
             </>
           }
         />

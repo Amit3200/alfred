@@ -8,7 +8,8 @@ SEARCH_REPO_DOCS = ToolSchema(
     name="search_repo_docs",
     description=(
         "Search indexed repository documentation and runbooks (BM25). "
-        "Use before answering doc/runbook questions — returns cited excerpts. "
+        "Use before answering doc/runbook questions — returns cited excerpts and a public `url` "
+        "(https://docs.flexype.io/... for FlexyPe/docs). "
         "Searches all configured doc repos when repo is omitted."
     ),
     parameters={

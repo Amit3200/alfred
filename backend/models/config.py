@@ -187,6 +187,13 @@ class GitRepoProfile(BaseModel):
         default_factory=list,
         description="Optional labels for knowledge UI and routing (e.g. handbook, playbook, runbook).",
     )
+    docs_public_base_url: str = Field(
+        default="",
+        description=(
+            "Public docs site for this repo, e.g. https://docs.flexype.io. "
+            "Indexed paths are mapped by stripping .md/.mdx (platforms/hydrogen.mdx → /platforms/hydrogen)."
+        ),
+    )
 
 
 class GitConfig(BaseModel):
