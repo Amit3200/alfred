@@ -22,7 +22,7 @@ from backend.tools.catalog import (
 _TOOL_DESCRIPTIONS: dict[str, str] = {
     "get_jira_issue": "Fetch one JIRA issue by key",
     "jira_search": "Search/list JIRA issues via JQL",
-    "jira_create_issue": "Create a new JIRA issue",
+    "jira_create_issue": "Create a JIRA issue with summary plus description (Slack thread link + context)",
     "jira_assign_issue": "Assign/reassign an existing JIRA issue",
     "jira_update_issue": "Update JIRA summary/description",
     "transition_jira_issue": "Change JIRA status within project workflow",

@@ -174,3 +174,40 @@ def test_connector_sends_end_of_day_iso_window(monkeypatch):
     assert isinstance(params, dict)
     assert str(params["start_time"]).startswith("2026-08-21T00:00:00")
     assert str(params["end_time"]).startswith("2026-08-21T23:59:59")
+
+
+def test_enrich_ticket_appends_last_chat_messages(monkeypatch):
+    from backend.integrations.platform.types import ExternalEntity
+
+    config = AlfredConfig(
+        connectors=ConnectorsConfig(periskope=PeriskopeConfig(enabled=True, org_phone="9198", api_token="tok")),
+    )
+
+    def fake_get_ticket(self, ticket_id: str):
+        return {
+            "ticket": {"ticket_id": ticket_id, "subject": "COD disable reason", "status": "open", "priority": 2},
+            "chat": {"chat_id": "1203@g.us", "chat_name": "Nmpc"},
+        }
+
+    def fake_list(self, cfg, *, chat_id="", start_time="", end_time="", limit=100, intent=""):
+        assert chat_id == "1203@g.us"
+        assert limit == 20
+        return [
+            {"sender_name": "Riya", "body": "newer", "timestamp": "t2"},
+            {"sender_name": "Merchant", "body": "older", "timestamp": "t1"},
+        ]
+
+    monkeypatch.setattr(PeriskopeApiClient, "get_ticket", fake_get_ticket)
+    monkeypatch.setattr(PeriskopeConnector, "list_messages", fake_list)
+    entity = ExternalEntity(
+        connector_id="periskope",
+        kind="ticket",
+        external_id="BKT-9",
+        title="COD disable reason",
+        chat_id="1203@g.us",
+    )
+    enriched = PeriskopeConnector().enrich(config, entity)
+    assert "Recent WhatsApp messages:" in enriched.description
+    assert enriched.description.index("older") < enriched.description.index("newer")
+    assert "Merchant" in enriched.description
+

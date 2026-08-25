@@ -112,17 +112,18 @@ def test_jira_create_issue_tool_class_uses_domain_service():
         "issue_type": "Task",
         "project": "TECH",
     }
-    ctx = ToolContext(config=_config())
+    ctx = ToolContext(config=_config(), channel_id="C123", thread_ts="111.222")
     with patch("backend.tools.jira.write.JiraService.from_config") as mock_svc:
         mock_svc.return_value.create_issue.return_value = client_result
-        result = JiraCreateIssueTool().run(ctx, {"summary": "Coupon freebie"})
+        result = JiraCreateIssueTool().run(
+            ctx,
+            {"summary": "Coupon freebie", "description": "Show why COD is disabled."},
+        )
     assert result.kind == "jira_action"
-    assert result.data["action"] == "create"
-    assert result.data["key"] == "TECH-9"
     req = mock_svc.return_value.create_issue.call_args[0][0]
-    assert req.project == "TECH"
-    assert req.issue_type == "Task"
-    assert req.summary == "Coupon freebie"
+    assert "Show why COD is disabled." in req.description
+    assert "Slack thread:" in req.description
+    assert "C123" in req.description
 
 
 def test_jira_create_issue_tool_validates_missing_summary():

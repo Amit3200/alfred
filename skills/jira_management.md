@@ -106,7 +106,8 @@ When the user asks to map **all / everyone / whole workspace** (e.g. ~23 people)
 
 ### 3. Create Items
 
-- **Required Fields:** Summary, Project Key, Issue Type (Task/Story/Epic/Bug), and Priority.
+- **Required Fields:** Summary, Project Key, Issue Type (Task/Story/Epic/Bug), Priority, and **Description**.
+- **Description:** Always write one. Include (1) what was asked, (2) relevant thread / Slack List context (display id like `TS-23` when this is a mirror), (3) the Slack thread permalink. Do not create with an empty description.
 - **Channel project:** When the JIRA context block lists a **Channel JIRA project key**, always use that for creates in this Slack channel — never `TECH-SUPPORT` (board display name).
 - **Project TS:** Use issue type **Task** (TS has Process/Task/Sub-task — not Bug).
 - **Protocol:** If mandatory fields are missing, infer from thread context; only ask when truly ambiguous. Then call `jira_create_issue` — never claim JIRA tools are unavailable when JIRA is enabled.

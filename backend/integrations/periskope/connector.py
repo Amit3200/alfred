@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 from typing import Any
 
 from backend.integrations.periskope.api import PeriskopeApiClient, PeriskopeApiError
@@ -16,6 +17,8 @@ from backend.integrations.platform.connector import Connector
 from backend.integrations.platform.hmac import verify_hmac_sha256
 from backend.integrations.platform.types import ConnectorEvent, ExternalEntity
 from backend.models.config import AlfredConfig
+
+logger = logging.getLogger(__name__)
 
 
 def _allowed_chat_ids(config: AlfredConfig) -> set[str]:
@@ -81,16 +84,52 @@ class PeriskopeConnector(Connector):
     def enrich(self, config: AlfredConfig, entity: ExternalEntity) -> ExternalEntity:
         if entity.kind != "ticket":
             return entity
+        enriched = entity
         try:
             client = PeriskopeApiClient.from_alfred_config(config)
             payload = client.get_ticket(entity.external_id)
             data = payload.get("ticket") if isinstance(payload.get("ticket"), dict) else payload
-            if not isinstance(data, dict):
-                return entity
-            enriched = entity_from_ticket(payload if "ticket" in payload or "chat" in payload else data)
-            return enriched or entity
+            if isinstance(data, dict):
+                parsed = entity_from_ticket(payload if "ticket" in payload or "chat" in payload else data)
+                if parsed is not None:
+                    if not parsed.description and entity.description:
+                        parsed.description = entity.description
+                    if not parsed.chat_id:
+                        parsed.chat_id = entity.chat_id
+                    enriched = parsed
         except PeriskopeApiError:
-            return entity
+            logger.debug("Periskope get_ticket failed for %s", entity.external_id, exc_info=True)
+        chat_id = enriched.chat_id or entity.chat_id
+        context = self._recent_chat_context(config, chat_id, limit=20)
+        if context:
+            existing = (enriched.description or "").strip()
+            enriched.description = f"{existing}\n\n{context}".strip() if existing else context
+        if chat_id:
+            enriched.chat_id = chat_id
+        return enriched
+
+    def _recent_chat_context(self, config: AlfredConfig, chat_id: str, *, limit: int = 20) -> str:
+        chat_id = (chat_id or "").strip()
+        if not chat_id:
+            return ""
+        try:
+            rows = self.list_messages(config, chat_id=chat_id, limit=max(1, min(limit, 20)))
+        except Exception:
+            logger.exception("Periskope last-messages fetch failed chat_id=%s", chat_id)
+            return ""
+        chronological = list(reversed(rows[:limit]))
+        lines: list[str] = []
+        for row in chronological:
+            body = str(row.get("body") or "").strip()
+            if not body:
+                continue
+            sender = str(row.get("sender_name") or "unknown").strip()
+            stamp = str(row.get("timestamp") or "").strip()
+            prefix = f"{stamp} {sender}".strip() if stamp else sender
+            lines.append(f"- {prefix}: {body[:400]}")
+        if not lines:
+            return ""
+        return "Recent WhatsApp messages:\n" + "\n".join(lines)
 
     def health_check(self, config: AlfredConfig) -> dict[str, Any]:
         if not self.enabled(config):
@@ -107,7 +146,16 @@ class PeriskopeConnector(Connector):
             data = client.ping()
             phones = data.get("phones") if isinstance(data, dict) else data
             count = len(phones) if isinstance(phones, list) else 1
-            return {"ok": True, "message": f"Connected · {count} phone(s)"}
+            channel = str(
+                getattr(settings, "slack_channel_id", "")
+                or getattr(settings, "summary_channel_id", "")
+                or ""
+            ).strip()
+            target = str(getattr(settings, "ticket_create_target", "slack_board") or "slack_board")
+            message = f"Connected · {count} phone(s)"
+            if target in {"slack_board", "both"} and not channel:
+                message += " · set a Slack channel so tickets land on that channel's List"
+            return {"ok": True, "message": message, "slack_channel_id": channel}
         except Exception as exc:
             return {"ok": False, "message": str(exc)}
 

@@ -31,6 +31,24 @@ def _service(ctx: ToolContext) -> JiraService:
     return JiraService.from_config(ctx.config)
 
 
+def _enriched_description(ctx: ToolContext, args: dict[str, Any]) -> str:
+    from backend.domains.jira.description import enrich_jira_create_description
+
+    registry = ctx.get("registry")
+    session_metadata = getattr(registry, "session_metadata", None) if registry is not None else None
+    if not isinstance(session_metadata, dict):
+        session_metadata = {}
+    task = ctx.get("current_task")
+    return enrich_jira_create_description(
+        str(args.get("description") or ""),
+        summary=str(args.get("summary") or ""),
+        task=task,
+        session_metadata=session_metadata,
+        channel_id=str(ctx.channel_id or ""),
+        thread_ts=str(ctx.thread_ts or ""),
+    )
+
+
 class JiraCreateIssueTool(BaseTool):
     name = "jira_create_issue"
     capability = "jira.write.create"
@@ -48,6 +66,7 @@ class JiraCreateIssueTool(BaseTool):
             args["project"] = (ctx.config.jira.default_project or "").strip()
         if not str(args.get("issue_type") or "").strip():
             args["issue_type"] = "Task"
+        args["description"] = _enriched_description(ctx, args)
         req = CreateIssueRequest.from_args(args)
         error = req.validate()
         if error:

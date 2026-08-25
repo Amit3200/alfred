@@ -8,7 +8,7 @@ from typing import Any
 
 from backend.integrations.platform.store import ConnectorSyncStore
 from backend.integrations.platform.types import ExternalEntity, ReplicaTarget
-from backend.models.config import AlfredConfig
+from backend.models.config import AlfredConfig, SlackBoardProfile
 
 logger = logging.getLogger(__name__)
 
@@ -31,19 +31,38 @@ def _entity_description(entity: ExternalEntity) -> str:
     return "\n".join(lines)[:8000]
 
 
-def _resolve_board(config: AlfredConfig, data_dir: Path, board_key: str = ""):
-    from backend.db.slack_workflows_db import db_list_board_bindings
-    from backend.domains.slack_board.operations import resolve_board_any_channel
-    from backend.integrations.slack.workflow_registry import binding_to_profile
+def connector_slack_channel_id(settings: Any) -> str:
+    if settings is None:
+        return ""
+    return str(
+        getattr(settings, "slack_channel_id", "")
+        or getattr(settings, "summary_channel_id", "")
+        or ""
+    ).strip()
 
-    if board_key:
-        board = resolve_board_any_channel(config, board_name=board_key, data_dir=data_dir)
-        if board is not None:
-            return board
-    for binding in db_list_board_bindings(data_dir):
-        if binding.get("enabled"):
-            return binding_to_profile(binding)
-    return None
+
+def resolve_connector_board(
+    config: AlfredConfig,
+    data_dir: Path,
+    settings: Any,
+) -> tuple[SlackBoardProfile | None, str]:
+    """Resolve the Slack List from the connector's configured channel."""
+    from backend.domains.slack_board.operations import resolve_board_any_channel
+    from backend.integrations.slack.workflow_registry import resolve_board_for_channel
+
+    channel_id = connector_slack_channel_id(settings)
+    board_key = str(getattr(settings, "slack_board_key", "") or "").strip() if settings else ""
+    if not channel_id:
+        return None, ""
+    board = resolve_board_for_channel(config, channel_id, data_dir=data_dir)
+    if board is None and board_key:
+        board = resolve_board_any_channel(
+            config,
+            board_name=board_key,
+            channel_id=channel_id,
+            data_dir=data_dir,
+        )
+    return board, channel_id
 
 
 def _create_slack_board_item(
@@ -57,18 +76,22 @@ def _create_slack_board_item(
     from backend.domains.slack_board.operations import create_board_task
 
     settings = getattr(getattr(config, "connectors", None), entity.connector_id, None)
-    board_key = str(getattr(settings, "slack_board_key", "") or "")
-    board = _resolve_board(config, data_dir, board_key)
+    board, channel_id = resolve_connector_board(config, data_dir, settings)
+    if not channel_id:
+        raise RuntimeError(
+            "No Slack channel is configured for this connector. "
+            "Set Slack channel in Integrations → Periskope so List items and tasks land there."
+        )
     if board is None:
-        raise RuntimeError("No Slack List board is linked. Run `@alfred setup board` first.")
+        raise RuntimeError(
+            f"No Slack List is linked to channel `{channel_id}`. "
+            "Bind a board for that channel under Slack boards."
+        )
     token = (config.slack.bot_token or "").strip()
     if not token:
         raise RuntimeError("Slack bot token is not configured.")
     client = WebClient(token=token)
     store = SlackBoardStore(data_dir)
-    channel_id = ""
-    if board.channel_ids:
-        channel_id = str(board.channel_ids[0])
     result = create_board_task(
         client,
         config,
@@ -91,13 +114,25 @@ def _create_slack_board_item(
 def _create_jira_issue(
     config: AlfredConfig,
     entity: ExternalEntity,
+    *,
+    data_dir: Path | None = None,
 ) -> dict[str, Any]:
     from backend.integrations.jira.api import JiraApiClient
+    from backend.integrations.slack.workflow_registry import channel_jira_project_key
 
     settings = getattr(getattr(config, "connectors", None), entity.connector_id, None)
-    project = str(getattr(settings, "jira_project", "") or config.jira.default_project or "").strip()
+    project = str(getattr(settings, "jira_project", "") or "").strip()
     if not project:
-        raise RuntimeError("No JIRA project configured for this connector.")
+        channel_id = connector_slack_channel_id(settings)
+        if channel_id:
+            project = str(channel_jira_project_key(channel_id, data_dir=data_dir) or "").strip()
+    if not project:
+        project = str(config.jira.default_project or "").strip()
+    if not project:
+        raise RuntimeError(
+            "No JIRA project configured for this connector. "
+            "Set JIRA project in Integrations → Periskope, or on the Slack channel workflow."
+        )
     issue_types = getattr(config.jira, "project_issue_types", None) or {}
     issue_type = str(issue_types.get(project) or "Task")
     client = JiraApiClient.from_alfred_config(config)
@@ -113,6 +148,64 @@ def _create_jira_issue(
         "jira_key": created.get("key") or "",
         "jira_url": created.get("url") or "",
     }
+
+
+def _announce_replica(
+    config: AlfredConfig,
+    data_dir: Path,
+    entity: ExternalEntity,
+    results: dict[str, Any],
+) -> None:
+    settings = getattr(getattr(config, "connectors", None), entity.connector_id, None)
+    slack = results.get("targets", {}).get("slack_board") or {}
+    jira = results.get("targets", {}).get("jira") or {}
+    created = slack.get("status") == "created" or jira.get("status") == "created"
+    if not created:
+        return
+    channel_id = str(slack.get("channel_id") or connector_slack_channel_id(settings) or "").strip()
+    if not channel_id:
+        return
+    token = (config.slack.bot_token or "").strip()
+    if not token:
+        return
+    from slack_sdk import WebClient
+
+    from backend.db.slack_board_store import SlackBoardStore
+
+    display = str(slack.get("display_id") or slack.get("record_id") or "").strip()
+    jira_key = str(jira.get("jira_key") or "").strip()
+    heading = display or jira_key or entity.title[:80]
+    lines = [f"WhatsApp {entity.kind} *{heading}* · {entity.title[:160]}"]
+    chat = entity.chat_name or entity.chat_id
+    if chat:
+        lines.append(f"Chat: {chat}")
+    if entity.external_id:
+        lines.append(f"Periskope: `{entity.external_id}`")
+    if jira_key and display:
+        lines.append(f"JIRA: `{jira_key}`")
+    try:
+        client = WebClient(token=token)
+        response = client.chat_postMessage(channel=channel_id, text="\n".join(lines))
+        thread_ts = str(response.get("ts") or "")
+        record_id = str(slack.get("record_id") or "")
+        if record_id and thread_ts:
+            store = SlackBoardStore(data_dir)
+            meta = store.find_record(record_id) or {}
+            store.register_record(
+                record_id,
+                board_key=str(meta.get("board_key") or ""),
+                list_id=str(meta.get("list_id") or slack.get("list_id") or ""),
+                channel_id=channel_id,
+                display_id=str(meta.get("display_id") or slack.get("display_id") or ""),
+                thread_ts=thread_ts,
+                title=str(meta.get("title") or entity.title),
+            )
+    except Exception:
+        logger.exception(
+            "Failed to announce connector replica in Slack channel=%s entity=%s",
+            channel_id,
+            entity.external_id,
+        )
 
 
 def apply_entity(
@@ -160,7 +253,7 @@ def apply_entity(
                         "jira_url": mapping.get("jira_url"),
                     }
                     continue
-                created = _create_jira_issue(config, entity)
+                created = _create_jira_issue(config, entity, data_dir=data_dir)
                 mapping.update(created)
                 results["targets"]["jira"] = {"status": "created", **created}
         except Exception as exc:
@@ -173,6 +266,8 @@ def apply_entity(
             )
             results["ok"] = False
             results["targets"][target] = {"status": "error", "error": str(exc)}
+
+    _announce_replica(config, data_dir, entity, results)
 
     if mapping:
         store.put(

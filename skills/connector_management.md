@@ -51,6 +51,7 @@ When asked to summarize a group, fetch messages for the requested window, then w
 
 ## Creating Alfred work
 
+- Webhook replica uses the Slack channel configured in Integrations → Periskope. Tickets and tasks land on the Slack List bound to that channel.
 - Slack List: `slack_board_create_task` (one card per Periskope ticket/task).
 - JIRA: `jira_create_issue` only if the user asked for JIRA or `ticket_create_target` is jira/both.
 - Prefer the live webhook replica when the user only wants items that already landed on the board.

@@ -2,7 +2,7 @@ import { ReloadOutlined, PlusOutlined, DeleteOutlined, ApiOutlined, CheckCircleO
 import { Button, Col, Flex, Input, Row, Select, Switch, Typography, Modal } from "antd";
 import type { ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { api, type AlfredConfig, type ConnectorPollResponse, type GoogleOAuthStatus, type IntegrationSyncStatusResponse } from "../../api/client";
+import { api, type AlfredConfig, type ConnectorPollResponse, type GoogleOAuthStatus, type IntegrationSyncStatusResponse, type SlackBoardBinding, type SlackChannelWorkflow } from "../../api/client";
 import { useApp } from "../../context/AppContext";
 import { integrationDotClass, integrationHealth, type HealthCheck } from "../../health";
 import { JsonCredentialField } from "../ui/JsonCredentialField";
@@ -49,6 +49,7 @@ const DEFAULT_PERISKOPE: NonNullable<NonNullable<AlfredConfig["connectors"]>["pe
   base_url: "https://api.periskope.app/v1",
   org_phone: "",
   allowed_chat_ids: [],
+  slack_channel_id: "",
   summary_channel_id: "",
   summary_timezone: "Asia/Kolkata",
   replicate_tickets: true,
@@ -232,6 +233,8 @@ export function IntegrationsPanel() {
   const [syncStatus, setSyncStatus] = useState<IntegrationSyncStatusResponse | null>(null);
   const [syncLoading, setSyncLoading] = useState<string | null>(null);
   const [pollPreview, setPollPreview] = useState<ConnectorPollResponse | null>(null);
+  const [slackBoards, setSlackBoards] = useState<SlackBoardBinding[]>([]);
+  const [slackChannels, setSlackChannels] = useState<SlackChannelWorkflow[]>([]);
 
   const loadSyncStatus = useCallback(async () => {
     try {
@@ -250,6 +253,19 @@ export function IntegrationsPanel() {
       void loadSyncStatus();
     }
   }, [activeModal, loadSyncStatus]);
+
+  useEffect(() => {
+    if (activeModal !== "periskope") {
+      return;
+    }
+    void Promise.all([
+      api.listSlackBoardBindings().then((result) => result.boards || []).catch(() => [] as SlackBoardBinding[]),
+      api.listSlackChannelWorkflows().then((result) => result.channels || []).catch(() => [] as SlackChannelWorkflow[]),
+    ]).then(([boards, channels]) => {
+      setSlackBoards(boards);
+      setSlackChannels(channels);
+    });
+  }, [activeModal]);
 
   const runSlackUserSync = async () => {
     setSyncLoading("slack");
@@ -1358,7 +1374,11 @@ export function IntegrationsPanel() {
             Polling needs only the API token and org phone — no webhook. Use Pull now to preview
             tickets/tasks, then optionally replicate into Slack Lists or JIRA.
             <br />
-            Live webhook URL (optional, must be publicly reachable):{" "}
+            Live webhook URL (must be publicly reachable). Subscribe in Periskope to
+            <Typography.Text code>ticket.created</Typography.Text> (not every WhatsApp message).
+            Alfred then fetches the last 20 chat messages and creates a Slack List item in the channel below.
+            <br />
+            Hook URL:{" "}
             <Typography.Text code copyable>
               {connectorWebhookUrl("periskope")}
             </Typography.Text>
@@ -1400,19 +1420,70 @@ export function IntegrationsPanel() {
               />
             </Col>
             <Col span={12}>
-              <label className="alfred-field-label">Slack board key (optional)</label>
-              <Input
-                placeholder="First linked board if empty"
-                value={periskopeConfig(config).slack_board_key}
-                onChange={(e) =>
+              <label className="alfred-field-label">Slack channel</label>
+              <Select
+                style={{ width: "100%" }}
+                allowClear
+                showSearch
+                optionFilterProp="label"
+                placeholder={
+                  slackBoards.length || slackChannels.length
+                    ? "Channel where List items and tasks land"
+                    : "Bind a Slack List under Slack boards first"
+                }
+                value={periskopeConfig(config).slack_channel_id || undefined}
+                onChange={(channelId) => {
+                  const board = slackBoards.find((row) => row.enabled && row.channel_id === channelId);
                   updateConfig({
                     connectors: {
                       ...(config.connectors ?? {}),
-                      periskope: { ...periskopeConfig(config), slack_board_key: e.target.value },
+                      periskope: {
+                        ...periskopeConfig(config),
+                        slack_channel_id: channelId || "",
+                        summary_channel_id: channelId || "",
+                        slack_board_key: board?.board_key || "",
+                      },
                     },
-                  })
-                }
+                  });
+                }}
+                options={(() => {
+                  const seen = new Set<string>();
+                  const options: { value: string; label: string }[] = [];
+                  for (const board of slackBoards.filter((row) => row.enabled && row.channel_id)) {
+                    if (seen.has(board.channel_id)) continue;
+                    seen.add(board.channel_id);
+                    options.push({
+                      value: board.channel_id,
+                      label: `${board.channel_name || board.channel_id} · ${board.list_name || board.list_id}`,
+                    });
+                  }
+                  for (const channel of slackChannels.filter((row) => row.enabled && row.channel_id && !seen.has(row.channel_id))) {
+                    seen.add(channel.channel_id);
+                    options.push({
+                      value: channel.channel_id,
+                      label: `${channel.channel_name || channel.channel_id} · no List bound yet`,
+                    });
+                  }
+                  const current = periskopeConfig(config).slack_channel_id;
+                  if (current && !seen.has(current)) {
+                    options.unshift({ value: current, label: current });
+                  }
+                  return options;
+                })()}
               />
+              <Typography.Paragraph type="secondary" style={{ fontSize: 12, margin: "6px 0 0" }}>
+                {(() => {
+                  const channelId = periskopeConfig(config).slack_channel_id;
+                  if (!channelId) {
+                    return "Pick the Slack channel first. Alfred uses that channel's List for tickets and tasks.";
+                  }
+                  const board = slackBoards.find((row) => row.enabled && row.channel_id === channelId);
+                  if (board) {
+                    return `List ${board.list_name || board.list_id} (${board.board_key}) receives tickets and tasks.`;
+                  }
+                  return "No Slack List is linked to this channel yet. Bind one under Slack boards.";
+                })()}
+              </Typography.Paragraph>
             </Col>
             <Col span={12}>
               <label className="alfred-field-label">JIRA project (optional)</label>

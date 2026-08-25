@@ -79,8 +79,13 @@ def entity_from_ticket(data: dict[str, Any], *, action: str = "upsert") -> Exter
     chat = _chat_payload(data)
     ticket_id = str(ticket.get("ticket_id") or data.get("ticket_id") or "").strip()
     title = str(ticket.get("subject") or data.get("subject") or "").strip()
-    if not ticket_id or not title:
+    if not title:
+        message = data.get("message") if isinstance(data.get("message"), dict) else {}
+        title = str(message.get("body") or "").strip()[:120]
+    if not ticket_id:
         return None
+    if not title:
+        title = f"WhatsApp ticket {ticket_id}"
     status = str(ticket.get("status") or "").strip()
     entity_action = "close" if action == "close" or status.lower() in {"closed", "deleted"} else "upsert"
     if ticket.get("is_deleted"):
@@ -129,7 +134,9 @@ def parse_webhook_body(body: bytes) -> list[ConnectorEvent]:
     payload = json.loads(body or b"{}")
     if not isinstance(payload, dict):
         return []
-    event_type = str(payload.get("event_type") or payload.get("type") or "").strip()
+    event_type = str(
+        payload.get("event_type") or payload.get("event") or payload.get("type") or ""
+    ).strip()
     data = payload.get("data")
     if not isinstance(data, dict):
         data = payload
@@ -150,7 +157,7 @@ def parse_webhook_body(body: bytes) -> list[ConnectorEvent]:
     needs_enrich = False
     if event_type in _TICKET_EVENTS:
         entity = entity_from_ticket(data, action=action)
-        needs_enrich = not bool(entity and entity.description)
+        needs_enrich = True
     elif event_type in _TASK_EVENTS:
         entity = entity_from_task(data, action=action)
     elif event_type in {"message.ticket.attached", "message.flagged"}:

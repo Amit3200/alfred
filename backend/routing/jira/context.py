@@ -164,8 +164,9 @@ def format_jira_context_for_prompt(
         parts.append(
             "- **Action:** User wants a new JIRA issue — call `jira_create_issue` with the channel "
             f"project key above. Default issue type for `{create_project}`: **{issue_type_hint}** "
-            "unless the user specifies otherwise. Pull summary/description from thread context; "
-            "do not claim tools are missing."
+            "unless the user specifies otherwise. Always pass `description`: what was asked, "
+            "relevant thread/Slack List context (e.g. TS-23), and the Slack thread permalink. "
+            "Do not create with an empty description. Do not claim tools are missing."
         )
 
     if jira.assignee_map:

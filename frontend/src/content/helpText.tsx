@@ -91,6 +91,8 @@ export const SECRETS_HELP: Record<string, HelpGuide> = {
       "In Periskope: Settings → API → generate an API key (shown once).",
       "Copy the connected WhatsApp number as digits only (country code + number) for the x-phone header.",
       "Settings → Webhooks → generate a signing key and point the hook URL at Alfred: /api/v1/connectors/periskope/webhook",
+      "Subscribe to ticket.created / ticket.updated (not message.created). Alfred ignores raw WhatsApp messages.",
+      "In Integrations → Periskope pick the Slack channel. Alfred uses the Slack List bound to that channel for tickets and tasks, and posts new items there.",
       "Paste the API token and signing key here. They are encrypted and never written to config.yaml.",
       "Enable Periskope in Integrations, set org phone, then Test connection.",
     ],

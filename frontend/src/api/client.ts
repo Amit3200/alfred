@@ -129,6 +129,7 @@ export type AlfredConfig = {
       base_url: string;
       org_phone: string;
       allowed_chat_ids: string[];
+      slack_channel_id: string;
       summary_channel_id: string;
       summary_timezone: string;
       replicate_tickets: boolean;

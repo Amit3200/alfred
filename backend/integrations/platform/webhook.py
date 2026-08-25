@@ -41,29 +41,83 @@ def process_connector_webhook(
 
     targets = connector.replica_targets(config)
     results: list[dict[str, Any]] = []
+    skipped: list[dict[str, Any]] = []
     for event in events:
+        event_type = str(event.event_type or "").strip() or "unknown"
         entity = event.entity
         if entity is None:
+            reason = "ignored_event" if event_type.startswith("message.") or event_type.startswith("chat.") else "unparsed_entity"
+            skipped.append({"event_type": event_type, "reason": reason})
+            logger.info(
+                "Connector webhook skip connector=%s event_type=%s reason=%s",
+                connector_id,
+                event_type,
+                reason,
+            )
             continue
         if event.needs_enrich:
             try:
                 entity = connector.enrich(config, entity)
             except Exception:
-                logger.exception("Connector enrich failed connector=%s", connector_id)
-        if entity.action == "ignore" or not connector.accepts(config, entity):
-            continue
-        results.append(
-            apply_entity(
-                entity,
-                config,
-                data_dir=manager.data_dir,
-                targets=targets,
+                logger.exception("Connector enrich failed connector=%s event_type=%s", connector_id, event_type)
+        if entity.action == "ignore":
+            skipped.append({"event_type": event_type, "reason": "ignore_action", "id": entity.external_id})
+            logger.info(
+                "Connector webhook skip connector=%s event_type=%s reason=ignore_action id=%s",
+                connector_id,
+                event_type,
+                entity.external_id,
             )
+            continue
+        if not connector.accepts(config, entity):
+            skipped.append(
+                {
+                    "event_type": event_type,
+                    "reason": "filtered",
+                    "id": entity.external_id,
+                    "chat_id": entity.chat_id,
+                    "kind": entity.kind,
+                }
+            )
+            logger.info(
+                "Connector webhook skip connector=%s event_type=%s reason=filtered kind=%s id=%s chat_id=%s",
+                connector_id,
+                event_type,
+                entity.kind,
+                entity.external_id,
+                entity.chat_id or "-",
+            )
+            continue
+        applied = apply_entity(
+            entity,
+            config,
+            data_dir=manager.data_dir,
+            targets=targets,
+        )
+        results.append(applied)
+        slack = (applied.get("targets") or {}).get("slack_board") or {}
+        jira = (applied.get("targets") or {}).get("jira") or {}
+        logger.info(
+            "Connector webhook applied connector=%s event_type=%s id=%s title=%s slack=%s jira=%s",
+            connector_id,
+            event_type,
+            entity.external_id,
+            (entity.title or "")[:80],
+            slack.get("display_id") or slack.get("status") or slack.get("error") or "-",
+            jira.get("jira_key") or jira.get("status") or jira.get("error") or "-",
         )
     logger.info(
-        "Connector webhook connector=%s event_count=%s applied=%s",
+        "Connector webhook connector=%s event_count=%s applied=%s skipped=%s event_types=%s",
         connector_id,
         len(events),
         len(results),
+        len(skipped),
+        ",".join(str(event.event_type or "unknown") for event in events) or "-",
     )
-    return {"ok": True, "status": "processed", "applied": len(results), "results": results}
+    return {
+        "ok": True,
+        "status": "processed",
+        "applied": len(results),
+        "skipped": skipped,
+        "results": results,
+    }

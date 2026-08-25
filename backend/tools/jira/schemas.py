@@ -74,7 +74,11 @@ JIRA_SEARCH = ToolSchema(
 
 JIRA_CREATE_ISSUE = ToolSchema(
     name="jira_create_issue",
-    description="Create a new JIRA issue (Task, Story, Epic, Bug, etc.).",
+    description=(
+        "Create a new JIRA issue (Task, Story, Epic, Bug, etc.). "
+        "Always pass description: what was asked, relevant thread/Slack List context, "
+        "and the Slack thread URL."
+    ),
     parameters={
         "type": "object",
         "properties": {
@@ -85,7 +89,13 @@ JIRA_CREATE_ISSUE = ToolSchema(
                 "description": "Issue type name, e.g. Task, Story, Epic, Bug.",
             },
             "priority": {"type": "string", "description": "Optional priority, e.g. High."},
-            "description": {"type": "string", "description": "Optional description."},
+            "description": {
+                "type": "string",
+                "description": (
+                    "Required in practice. Summarize the request and thread. "
+                    "Include the Slack thread permalink and Slack List id (e.g. TS-23) when known."
+                ),
+            },
             "reporter": {
                 "type": "string",
                 "description": "Optional reporter name or email. Falls back to API token user if unknown.",

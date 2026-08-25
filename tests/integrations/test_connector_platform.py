@@ -76,6 +76,25 @@ def test_parse_webhook_ticket_created():
     assert events[0].needs_enrich is True
 
 
+def test_parse_webhook_accepts_event_alias_and_subject_fallback():
+    body = json.dumps(
+        {
+            "event": "ticket.created",
+            "data": {
+                "ticket": {"ticket_id": "BKT-003", "priority": 1, "status": "open"},
+                "message": {"body": "COD is stuck on checkout"},
+                "chat": {"chat_id": "1203@g.us", "chat_name": "Nmpc"},
+            },
+        }
+    ).encode("utf-8")
+    events = parse_webhook_body(body)
+    assert events[0].event_type == "ticket.created"
+    assert events[0].entity is not None
+    assert events[0].entity.title == "COD is stuck on checkout"
+    assert events[0].entity.chat_id == "1203@g.us"
+    assert events[0].needs_enrich is True
+
+
 def test_connector_sync_store_roundtrip(tmp_path):
     store = ConnectorSyncStore(tmp_path)
     store.put("periskope:ticket:BKT-001", {"slack_record_id": "Rec123", "jira_key": "TS-9"})
@@ -122,6 +141,8 @@ def test_webhook_rejects_unknown_connector_and_bad_signature(tmp_path):
     )
     assert ok["ok"] is True
     assert ok["applied"] == 0
+    assert ok["skipped"][0]["event_type"] == "message.created"
+    assert ok["skipped"][0]["reason"] == "ignored_event"
 
 
 def test_connector_tools_register_when_enabled():
@@ -210,3 +231,69 @@ def test_poll_replicate_calls_apply_entity(tmp_path, monkeypatch):
     assert result["ok"] is True
     assert result["created"] == 1
     assert applied == [("BKT-2", ("slack_board",))]
+
+
+def test_resolve_connector_board_uses_configured_channel(tmp_path):
+    from backend.db.slack_workflows_db import db_create_board_binding
+    from backend.integrations.platform.actions import resolve_connector_board
+    from backend.models.config import AlfredConfig, PeriskopeConfig, SlackConfig
+
+    db_create_board_binding(tmp_path, board_key="other", list_id="Fother", channel_id="Cother")
+    db_create_board_binding(tmp_path, board_key="tech", list_id="Ftech", channel_id="Ctech")
+    config = AlfredConfig(slack=SlackConfig(enabled=True))
+    board, channel = resolve_connector_board(
+        config,
+        tmp_path,
+        PeriskopeConfig(slack_channel_id="Ctech"),
+    )
+    assert channel == "Ctech"
+    assert board is not None
+    assert board.name == "tech"
+    assert board.list_id == "Ftech"
+
+
+def test_resolve_connector_board_falls_back_to_summary_channel(tmp_path):
+    from backend.db.slack_workflows_db import db_create_board_binding
+    from backend.integrations.platform.actions import resolve_connector_board
+    from backend.models.config import AlfredConfig, PeriskopeConfig, SlackConfig
+
+    db_create_board_binding(tmp_path, board_key="tech", list_id="Ftech", channel_id="Ctech")
+    config = AlfredConfig(slack=SlackConfig(enabled=True))
+    board, channel = resolve_connector_board(
+        config,
+        tmp_path,
+        PeriskopeConfig(summary_channel_id="Ctech"),
+    )
+    assert channel == "Ctech"
+    assert board is not None
+    assert board.list_id == "Ftech"
+
+
+def test_resolve_connector_board_missing_channel_is_empty(tmp_path):
+    from backend.db.slack_workflows_db import db_create_board_binding
+    from backend.integrations.platform.actions import resolve_connector_board
+    from backend.models.config import AlfredConfig, PeriskopeConfig, SlackConfig
+
+    db_create_board_binding(tmp_path, board_key="tech", list_id="Ftech", channel_id="Ctech")
+    config = AlfredConfig(slack=SlackConfig(enabled=True))
+    board, channel = resolve_connector_board(config, tmp_path, PeriskopeConfig())
+    assert channel == ""
+    assert board is None
+
+
+def test_create_slack_board_item_requires_channel(tmp_path):
+    import pytest
+
+    from backend.integrations.platform.actions import _create_slack_board_item
+    from backend.integrations.platform.types import ExternalEntity
+    from backend.models.config import AlfredConfig, ConnectorsConfig, PeriskopeConfig
+
+    entity = ExternalEntity(
+        connector_id="periskope",
+        kind="ticket",
+        external_id="BKT-9",
+        title="Needs a channel",
+    )
+    config = AlfredConfig(connectors=ConnectorsConfig(periskope=PeriskopeConfig(enabled=True)))
+    with pytest.raises(RuntimeError, match="No Slack channel"):
+        _create_slack_board_item(config, tmp_path, entity)

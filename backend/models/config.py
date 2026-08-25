@@ -457,9 +457,16 @@ class PeriskopeConfig(BaseModel):
         default_factory=list,
         description="If set, only these WhatsApp chat_ids (@g.us / @c.us) are pulled or replicated.",
     )
+    slack_channel_id: str = Field(
+        default="",
+        description=(
+            "Slack channel where Periskope tickets and tasks land. "
+            "Alfred uses the Slack List bound to this channel."
+        ),
+    )
     summary_channel_id: str = Field(
         default="",
-        description="Optional Slack channel for daily group summaries.",
+        description="Optional Slack channel for daily group summaries. Empty uses slack_channel_id.",
     )
     summary_timezone: str = Field(default="Asia/Kolkata")
     replicate_tickets: bool = True
@@ -470,7 +477,7 @@ class PeriskopeConfig(BaseModel):
     )
     slack_board_key: str = Field(
         default="",
-        description="Slack List board key. Empty uses the first linked board.",
+        description="Optional Slack List board key. Empty uses the board bound to slack_channel_id.",
     )
     jira_project: str = Field(
         default="",
