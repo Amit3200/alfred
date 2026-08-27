@@ -65,6 +65,21 @@ def classify_intent(
             session_turns=session_turns,
         )
         if llm is not None and llm.confidence >= 0.55:
+            if _should_override_llm_with_jira_create(
+                task,
+                config=config,
+                session_turns=session_turns,
+                session_metadata=session_metadata,
+                thread_context=thread_context,
+                data_dir=data_dir,
+            ):
+                return IntentClassification(
+                    intent_class="jira.write.create",
+                    target_system="jira",
+                    confidence=0.93,
+                    entities=llm.entities or _entity_payload(bag),
+                    strategy="rules_override",
+                )
             return llm
     return classify_intent_rules(
         task,
@@ -73,6 +88,29 @@ def classify_intent(
         session_metadata=session_metadata,
         thread_context=thread_context,
         entities=bag,
+        data_dir=data_dir,
+    )
+
+
+def _should_override_llm_with_jira_create(
+    task: Task,
+    *,
+    config: AlfredConfig,
+    session_turns: tuple[str, ...] = (),
+    session_metadata: dict[str, Any] | None = None,
+    thread_context: str = "",
+    data_dir: Any = None,
+) -> bool:
+    if not config.jira.enabled:
+        return False
+    text = (task.cleaned_intent or task.raw_text or "").strip()
+    return should_route_create_to_jira(
+        text,
+        jira_enabled=True,
+        session_turns=session_turns,
+        session_metadata=session_metadata,
+        thread_context=thread_context,
+        channel_id=task.channel_id or "",
         data_dir=data_dir,
     )
 
@@ -196,7 +234,14 @@ def classify_intent_rules(
             entities=entity_payload,
         )
 
-    if looks_like_slack_board_create(task.cleaned_intent or text):
+    if looks_like_slack_board_create(
+        task.cleaned_intent or text,
+        channel_id=task.channel_id or "",
+        data_dir=data_dir,
+        session_turns=session_turns,
+        session_metadata=session_metadata,
+        thread_context=thread_context,
+    ):
         return IntentClassification(
             intent_class="slack.board.write.create",
             target_system="slack_board",

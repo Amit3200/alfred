@@ -251,13 +251,29 @@ def looks_like_slack_board_followup(
     return sum(1 for marker in _BOARD_SESSION_MARKERS if marker in combined) >= 1
 
 
-def looks_like_slack_board_create(intent: str) -> bool:
+def looks_like_slack_board_create(
+    intent: str,
+    *,
+    channel_id: str = "",
+    data_dir: Any = None,
+    session_turns: tuple[str, ...] = (),
+    session_metadata: dict[str, Any] | None = None,
+    thread_context: str = "",
+) -> bool:
     text = intent or ""
     if not _CREATE_TASK_RE.search(text):
         return False
     from backend.routing.create_target_precedence import should_route_create_to_jira
 
-    if should_route_create_to_jira(text, jira_enabled=True):
+    if should_route_create_to_jira(
+        text,
+        jira_enabled=True,
+        channel_id=channel_id,
+        data_dir=data_dir,
+        session_turns=session_turns,
+        session_metadata=session_metadata,
+        thread_context=thread_context,
+    ):
         return False
     return True
 

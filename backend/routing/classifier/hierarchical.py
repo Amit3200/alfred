@@ -91,8 +91,10 @@ def _select_parent(
         "",
         "Hard rules:",
         "- If the user names Jira, a Jira project, or an issue key (TECH-12), parent is jira.",
+        "- If channel_prefers_jira_creates is true and they ask to create a task/ticket, "
+        "parent is jira unless they named Slack List / slack board.",
         "- If a Slack List is linked to this channel and they say create/update a task/board "
-        "without naming Jira, parent is slack_board.",
+        "without naming Jira, AND channel_prefers_jira_creates is false, parent is slack_board.",
         "- If both Jira and a Slack List could apply and the user did not specify, "
         'parent is conversational and set ambiguous_with to ["jira","slack_board"].',
         "- Docs/runbooks → repo_docs. Public internet → web. HTML slides → artifact.",

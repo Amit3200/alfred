@@ -93,6 +93,13 @@ def test_persona_prefers_jira_from_natural_language():
     assert persona_prefers_jira_creates(
         "Primary: call jira_create_issue with project=`TECH`."
     )
+    assert persona_prefers_jira_creates(
+        "Use JIRA project=TECH when asked to create a ticket. "
+        "Fall back to the Slack List if JIRA fails."
+    )
+    assert persona_prefers_jira_creates(
+        "When creating tickets, prefer JIRA project key TECH."
+    )
     assert not persona_prefers_jira_creates("")
     assert not persona_prefers_jira_creates(
         "This is billing support. Prefer invoice docs. Do not create tickets unless asked."
@@ -128,6 +135,57 @@ def test_channel_persona_overrides_slack_list_default(tmp_path):
         channel_id="C_TECH",
         data_dir=tmp_path,
     )
+
+
+def test_persona_overrides_leftover_session_slack_list(tmp_path):
+    from backend.db.slack_workflows_db import db_create_board_binding, db_upsert_channel_workflow
+
+    db_upsert_channel_workflow(
+        tmp_path,
+        channel_id="C_TECH",
+        ticket_system="slack_list",
+        jira_project_key="TECH",
+    )
+    db_create_board_binding(
+        tmp_path,
+        board_key="team-tech",
+        list_id="F1234567890",
+        channel_id="C_TECH",
+        persona_prompt=(
+            "Use JIRA project=TECH when asked to create a ticket. "
+            "Fall back to the Slack List if JIRA fails."
+        ),
+    )
+    intent = "create a task to have variant based PPCOD selection"
+    assert should_route_create_to_jira(
+        intent,
+        jira_enabled=True,
+        channel_id="C_TECH",
+        data_dir=tmp_path,
+        session_metadata={"ticket_create_target": "slack_list"},
+    )
+    assert not looks_like_slack_board_create(
+        intent,
+        channel_id="C_TECH",
+        data_dir=tmp_path,
+        session_metadata={"ticket_create_target": "slack_list"},
+    )
+
+
+def test_followup_create_in_jira_400_thread_routes_to_jira():
+    intent = "create a task to have variant based PPCOD selection"
+    thread = (
+        "[1] Azeem Hussain: @alfred create a task on JIRA Tech Board "
+        "to have variant based PPCOD selection\n"
+        "[2] bot: JIRA API 400: The target project doesn't exist or you don't have permission\n"
+        "[5] Amit: the above took JIRA Tech as the board name.\n"
+    )
+    assert should_route_create_to_jira(
+        intent,
+        jira_enabled=True,
+        thread_context=thread,
+    )
+    assert not looks_like_slack_board_create(intent, thread_context=thread)
 
 
 def test_slack_list_default_without_jira_persona(tmp_path):

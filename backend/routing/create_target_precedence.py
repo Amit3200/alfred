@@ -22,10 +22,12 @@ _JIRA_THREAD_MARKERS = (
     "jira_create_issue",
     "jira dashboard",
     "jira board",
+    "jira tech",
     "tech board",
     "project key",
     "governance:",
     "requires explicit approval",
+    "jira api 400",
 )
 _PERSONA_SKIP_JIRA_RE = re.compile(
     r"\b(?:do not|don't|never|not)\b.{0,48}\b(?:create|open|file|raise).{0,48}\bjira\b"
@@ -54,13 +56,23 @@ def persona_prefers_jira_creates(persona: str) -> bool:
         return True
     if "jira" not in lower:
         return False
-    if re.search(r"\b(?:create|open|file|raise)\b.{0,160}\bjira\b", lower):
+    if re.search(
+        r"\b(?:create|creating|open|opening|file|filing|raise|raising)\b.{0,200}\bjira\b",
+        lower,
+    ):
         return True
-    if re.search(r"\bjira\b.{0,160}\b(?:create|open|file|raise)\b", lower):
+    if re.search(
+        r"\bjira\b.{0,200}\b(?:create|creating|open|opening|file|filing|raise|raising|ticket|issue|task)\b",
+        lower,
+    ):
         return True
     if "tech board" in lower:
         return True
-    if re.search(r"project(?:\s+key)?\s*[`:]\s*tech\b", lower):
+    if re.search(r"project(?:\s+key)?\s*[=:`]\s*tech\b", lower):
+        return True
+    if re.search(r"project(?:\s+key)?\s+tech\b", lower):
+        return True
+    if re.search(r"\b(?:prefer(?:s|red)?|use|using)\b.{0,48}\bjira\b", lower):
         return True
     return False
 
@@ -74,24 +86,25 @@ def channel_prefers_jira_creates(
     """True when this Slack channel should create in JIRA.
 
     Slack List remains the default. A JIRA-oriented channel persona or an
-    explicit channel workflow of ``jira`` overrides that default.
+    explicit channel workflow of ``jira`` overrides that default, including a
+    leftover session ``ticket_create_target=slack_list`` from an earlier List create.
     """
     target = _ticket_target(session_metadata)
     if target == "jira":
         return True
-    # Button/session choice of Slack List wins over persona for that turn.
+    cid = (channel_id or "").strip()
+    if cid:
+        from backend.integrations.slack.workflow_registry import channel_ticket_system, resolve_data_dir
+        from backend.routing.channel_settings import channel_persona_prompt
+
+        dd = resolve_data_dir(data_dir)
+        if persona_prefers_jira_creates(channel_persona_prompt(dd, cid)):
+            return True
+        if channel_ticket_system(cid, data_dir=dd) == "jira":
+            return True
     if target in ("slack_list", "slack", "list", "board"):
         return False
-    cid = (channel_id or "").strip()
-    if not cid:
-        return False
-    from backend.integrations.slack.workflow_registry import channel_ticket_system, resolve_data_dir
-    from backend.routing.channel_settings import channel_persona_prompt
-
-    dd = resolve_data_dir(data_dir)
-    if persona_prefers_jira_creates(channel_persona_prompt(dd, cid)):
-        return True
-    return channel_ticket_system(cid, data_dir=dd) == "jira"
+    return False
 
 
 def should_route_create_to_jira(
@@ -135,6 +148,21 @@ def should_route_create_to_jira(
         if not looks_like_batch_board_create(text):
             return True
 
+    combined = "\n".join([*session_turns[-8:], thread_context or "", text]).lower()
+    if (
+        _looks_like_create_request(text)
+        and "jira" in combined
+        and (
+            sum(1 for marker in _JIRA_THREAD_MARKERS if marker in combined) >= 1
+            or "tech board" in combined
+            or "jira api 400" in combined
+        )
+    ):
+        from backend.routing.slack_board.intent import looks_like_batch_board_create
+
+        if not looks_like_batch_board_create(text):
+            return True
+
     # Slack List language wins unless the user named JIRA. Otherwise a prior
     # failed jira_create_issue in the thread poisons later "create tasks" asks.
     if not _EXPLICIT_JIRA_RE.search(text):
@@ -160,12 +188,5 @@ def should_route_create_to_jira(
         return True
     if re.search(r"\b(?:create|add)\b.{0,80}\b(?:task|ticket)\b.{0,80}\bjira\b", text, re.I):
         return True
-
-    combined = "\n".join([*session_turns[-8:], thread_context or "", text]).lower()
-    if "jira" in combined and _CREATE_VERB_RE.search(text):
-        if sum(1 for marker in _JIRA_THREAD_MARKERS if marker in combined) >= 1:
-            return True
-        if re.search(r"\btech\s+board\b", combined) and "jira" in combined:
-            return True
 
     return False

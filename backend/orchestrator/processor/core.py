@@ -163,7 +163,9 @@ class TaskProcessor(SessionMixin, DirectMixin, InvestigationMixin, ReplyMixin):
             if policy_target:
                 task.metadata["ticket_create_target"] = policy_target
                 ticket_target = policy_target
-                if session:
+                # Do not persist slack_list onto the session — that would block a
+                # JIRA persona on the next "create a task" in the same thread.
+                if session and policy_target == "jira":
                     session.metadata["ticket_create_target"] = policy_target
 
         from backend.routing.resolver import resolve_turn
@@ -187,7 +189,7 @@ class TaskProcessor(SessionMixin, DirectMixin, InvestigationMixin, ReplyMixin):
             session_turns: tuple[str, ...] = ()
             if session and session.turns:
                 session_turns = tuple(
-                    turn.content for turn in session.turns[-4:] if (turn.content or "").strip()
+                    turn.content for turn in session.turns[-12:] if (turn.content or "").strip()
                 )
 
             followup_response = None

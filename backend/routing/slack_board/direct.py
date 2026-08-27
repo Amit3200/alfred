@@ -352,28 +352,54 @@ def try_slack_board_create_direct(
     confirm_pending = bool(pending_creates) and is_confirmation_phrase(
         intent, config.governance
     )
+    routing_turns = session_turns
+    if session is not None:
+        turns = getattr(session, "turns", None) or []
+        fuller = tuple(
+            str(turn.content)
+            for turn in turns[-12:]
+            if str(getattr(turn, "content", "") or "").strip()
+        )
+        if fuller:
+            routing_turns = fuller
     if force_intent_class != "slack.board.create" and not confirm_pending:
         from backend.routing.create_target_precedence import should_route_create_to_jira
 
         session_meta = dict(session_meta)
-        target = str(task.metadata.get("ticket_create_target") or "").strip()
-        if target and not session_meta.get("ticket_create_target"):
+        target = str(task.metadata.get("ticket_create_target") or "").strip().lower()
+        if target == "jira":
+            session_meta["ticket_create_target"] = "jira"
+        elif target and not session_meta.get("ticket_create_target"):
             session_meta["ticket_create_target"] = target
-        if should_route_create_to_jira(
+        route_jira = should_route_create_to_jira(
             intent,
             jira_enabled=config.jira.enabled,
-            session_turns=session_turns,
+            session_turns=routing_turns,
             session_metadata=session_meta,
             channel_id=task.channel_id or "",
             data_dir=data_dir,
-        ):
+        )
+        logger.info(
+            "Create-task Slack List gate channel=%s route_jira=%s ticket_target=%s intent=%r",
+            task.channel_id,
+            route_jira,
+            session_meta.get("ticket_create_target") or "",
+            intent[:120],
+        )
+        if route_jira:
             return None, {}
     title_followup = looks_like_board_create_title_followup(
         intent,
         session_turns=session_turns,
         session_metadata=session_meta,
     )
-    if not looks_like_slack_board_create(intent) and not title_followup and not confirm_pending:
+    if not looks_like_slack_board_create(
+        intent,
+        channel_id=task.channel_id or "",
+        data_dir=data_dir,
+        session_turns=routing_turns,
+        session_metadata=session_meta,
+    ) and not title_followup and not confirm_pending:
         if force_intent_class != "slack.board.create":
             return None, {}
 
@@ -509,7 +535,14 @@ def try_slack_board_create_direct(
             thread_text=thread_text,
         )
         if looks_like_batch_board_create(intent) or (
-            looks_like_slack_board_create(intent) and len(extracted) >= 2
+            looks_like_slack_board_create(
+                intent,
+                channel_id=task.channel_id or "",
+                data_dir=data_dir,
+                session_turns=session_turns,
+                session_metadata=session_meta,
+            )
+            and len(extracted) >= 2
         ):
             batch_titles = extracted
 

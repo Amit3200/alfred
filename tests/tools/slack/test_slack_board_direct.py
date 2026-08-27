@@ -99,6 +99,40 @@ def test_direct_create_skips_when_channel_persona_prefers_jira(tmp_path: Path):
     assert meta == {}
 
 
+def test_direct_create_skips_leftover_slack_list_when_persona_prefers_jira(tmp_path: Path):
+    from types import SimpleNamespace
+
+    from backend.db.slack_workflows_db import db_create_board_binding
+    from backend.models.config import JiraConfig
+
+    db_create_board_binding(
+        tmp_path,
+        board_key="team-tech",
+        list_id="F0BQ0MH2LMB",
+        channel_id="Ctech",
+        persona_prompt="Use JIRA project=TECH when asked to create a ticket.",
+    )
+    config = AlfredConfig(
+        slack=SlackConfig(enabled=True, bot_token="xoxb-test"),
+        jira=JiraConfig(enabled=True, default_project="TECH"),
+    )
+    task = Task(
+        source="slack",
+        user_id="U1",
+        channel_id="Ctech",
+        raw_text="create a task to have variant based PPCOD selection",
+        cleaned_intent="create a task to have variant based PPCOD selection",
+        metadata={"ticket_create_target": "jira"},
+    )
+    session = SimpleNamespace(
+        metadata={"ticket_create_target": "slack_list"},
+        turns=[],
+    )
+    response, meta = try_slack_board_create_direct(task, config, tmp_path, session=session)
+    assert response is None
+    assert meta == {}
+
+
 def test_direct_create_uses_list_override_and_updates_binding(tmp_path: Path):
     from backend.db.slack_workflows_db import db_create_board_binding, db_get_board_binding_for_channel
 

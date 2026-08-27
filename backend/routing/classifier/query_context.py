@@ -25,6 +25,8 @@ class QueryMetadata:
     last_intent_class: str
     last_target_system: str
     ticket_create_target: str
+    channel_prefers_jira: bool = False
+    channel_jira_project: str = ""
     entities: dict[str, Any] = field(default_factory=dict)
 
     def prompt_block(self) -> str:
@@ -47,6 +49,8 @@ class QueryMetadata:
                 f"session.last_intent_class: {self.last_intent_class or '(none)'}",
                 f"session.last_target_system: {self.last_target_system or '(none)'}",
                 f"session.ticket_create_target: {self.ticket_create_target or '(none)'}",
+                f"channel_prefers_jira_creates: {str(self.channel_prefers_jira).lower()}",
+                f"channel_jira_project_key: {self.channel_jira_project or '(none)'}",
             ]
         )
 
@@ -86,6 +90,24 @@ def gather_query_metadata(
             "document_ids": list(entities.document_ids),
         }
 
+    prefers_jira = False
+    jira_project = ""
+    if task.source == "slack" and (task.channel_id or "").strip():
+        try:
+            from backend.integrations.slack.workflow_registry import channel_jira_project_key
+            from backend.routing.create_target_precedence import channel_prefers_jira_creates
+
+            prefers_jira = channel_prefers_jira_creates(
+                channel_id=task.channel_id or "",
+                data_dir=path,
+                session_metadata=session_meta,
+            )
+            jira_project = str(
+                channel_jira_project_key(task.channel_id or "", data_dir=path) or ""
+            )
+        except Exception:
+            prefers_jira = False
+
     return QueryMetadata(
         source=str(task.source or ""),
         channel_id=str(task.channel_id or ""),
@@ -99,5 +121,7 @@ def gather_query_metadata(
         last_intent_class=str(turn.get("intent_class") or ""),
         last_target_system=str(turn.get("target_system") or ""),
         ticket_create_target=str(session_meta.get("ticket_create_target") or ""),
+        channel_prefers_jira=prefers_jira,
+        channel_jira_project=jira_project,
         entities=entity_payload,
     )

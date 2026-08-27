@@ -200,6 +200,40 @@ def test_classify_intent_uses_hierarchical_when_enabled():
     assert result.strategy == "llm_hierarchical"
 
 
+def test_classify_overrides_hierarchical_slack_board_when_persona_prefers_jira(tmp_path):
+    from backend.db.slack_workflows_db import db_create_board_binding
+
+    db_create_board_binding(
+        tmp_path,
+        board_key="team-tech",
+        list_id="F123",
+        channel_id="C1",
+        persona_prompt="Use JIRA project=TECH when asked to create a ticket.",
+    )
+    config = _config()
+    config.routing.classifier_enabled = True
+    fake = IntentClassification(
+        intent_class="slack.board.write.create",
+        target_system="slack_board",
+        confidence=0.95,
+        strategy="llm_hierarchical",
+    )
+    task = _task("create a task to have variant based PPCOD selection")
+    with patch(
+        "backend.routing.classifier.hierarchical.classify_intent_hierarchical",
+        return_value=fake,
+    ):
+        result = classify_intent(
+            task,
+            config=config,
+            session_metadata={"ticket_create_target": "slack_list"},
+            data_dir=tmp_path,
+        )
+    assert result.intent_class == "jira.write.create"
+    assert result.target_system == "jira"
+    assert result.strategy == "rules_override"
+
+
 def test_conversational_turn_plan_does_not_open_tools():
     config = _config()
     config.routing.classifier_enabled = True
