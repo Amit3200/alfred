@@ -109,6 +109,67 @@ def test_persona_prefers_jira_from_natural_language():
     )
 
 
+TEAM_TECH_JIRA_PERSONA = """You are FlexyPe engineering support in #team-tech.
+
+## When to create
+Create a ticket ONLY when the user asks to create / open / log / raise / file a task, ticket, or issue.
+Do NOT create on small talk, thanks, status pings, or docs/how-to questions. Answer those instead.
+If they are updating an existing ticket (status, assignee, or an explicit id), update that ticket. Do not create a new one.
+If you are not sure whether they want a ticket, do not create. Ask one short clarifying question.
+
+## Where to create
+1. Primary: JIRA project key `TECH` (this is the TECH board). Always pass project=`TECH`. Never use board titles as the project (`TECH board`, `JIRA Tech Board`, `TECH-SUPPORT`).
+2. Fallback: if `jira_create_issue` fails (bad project, permission, or API error), immediately create on this channel’s Slack List with `slack_board_create_task`. Do not retry JIRA with a guessed project name.
+3. Do not create JIRA and Slack List for the same request unless JIRA failed and you are using the fallback.
+
+## Description (required)
+For JIRA, call `jira_create_issue` with:
+- project: `TECH`
+- issue_type: `Task` unless the user names Bug/Story
+- summary: one-line problem
+- description: always write a real body, not empty. Include:
+  - What was asked / the problem
+  - Why it matters or who is blocked (if known)
+  - Any steps, IDs, or error text from the thread
+  - Slack thread permalink
+
+For the Slack List fallback, use a matching title and the same problem summary in details.
+
+Reply with the JIRA key + URL, or the Slack List display id if you fell back. Say so if you used the fallback.
+"""
+
+
+def test_team_tech_persona_prefers_jira_despite_dual_write_sentence():
+    assert persona_prefers_jira_creates(TEAM_TECH_JIRA_PERSONA)
+    from backend.routing.jira.project_key import project_key_from_persona
+
+    assert project_key_from_persona(TEAM_TECH_JIRA_PERSONA) == "TECH"
+
+
+def test_team_tech_persona_routes_generic_create_to_jira(tmp_path):
+    from backend.db.slack_workflows_db import db_create_board_binding, db_upsert_channel_workflow
+
+    db_upsert_channel_workflow(
+        tmp_path,
+        channel_id="C_TECH",
+        ticket_system="slack_list",
+    )
+    db_create_board_binding(
+        tmp_path,
+        board_key="team-tech",
+        list_id="F1234567890",
+        channel_id="C_TECH",
+        persona_prompt=TEAM_TECH_JIRA_PERSONA,
+    )
+    intent = "create a task to have variant based PPCOD selection"
+    assert should_route_create_to_jira(
+        intent,
+        jira_enabled=True,
+        channel_id="C_TECH",
+        data_dir=tmp_path,
+    )
+
+
 def test_channel_persona_overrides_slack_list_default(tmp_path):
     from backend.db.slack_workflows_db import db_create_board_binding, db_upsert_channel_workflow
 

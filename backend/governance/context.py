@@ -51,7 +51,25 @@ class GovernanceContext:
             if self._confirmation_required_for_source():
                 if not self._tool_auto_approved(tool_name):
                     if not session_has_write_approval(self.session, self._gov):
-                        summary = tool_action_summary(tool_name, arguments)
+                        display_args = dict(arguments)
+                        if tool_name == "jira_create_issue":
+                            from backend.routing.jira.context import resolve_channel_jira_project
+                            from backend.routing.jira.project_key import normalize_jira_project_key
+
+                            project = resolve_channel_jira_project(
+                                self.task,
+                                self.config,
+                                data_dir=self.data_dir,
+                            )
+                            if not project:
+                                raw = str(display_args.get("project") or "").strip()
+                                if raw:
+                                    project = normalize_jira_project_key(raw, self.config.jira)
+                            if not project:
+                                project = (self.config.jira.default_project or "").strip()
+                            if project:
+                                display_args["project"] = project
+                        summary = tool_action_summary(tool_name, display_args)
                         msg = confirmation_required_message(tool_name, summary)
                         if tool_name == "slack_board_create_task":
                             from backend.routing.slack_board.pending import remember_pending_board_create
@@ -108,7 +126,16 @@ class GovernanceContext:
         intent = self.task.cleaned_intent or self.task.raw_text or ""
         if looks_like_jira_create_request(intent):
             return True
-        return looks_like_jira_create_followup(intent)
+        if looks_like_jira_create_followup(intent):
+            return True
+        from backend.routing.create_target_precedence import should_route_create_to_jira
+
+        return should_route_create_to_jira(
+            intent,
+            jira_enabled=self.config.jira.enabled,
+            channel_id=self.task.channel_id or "",
+            data_dir=self.data_dir,
+        )
 
     def _confirmation_required_for_source(self) -> bool:
         if not self._gov.require_confirmation:

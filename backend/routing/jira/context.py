@@ -4,6 +4,7 @@ from backend.integrations.jira.api import extract_issue_key
 
 
 import re
+from pathlib import Path
 from typing import Any
 
 from backend.integrations.slack.sanitize import extract_slack_mention_labels, extract_slack_user_ids, clean_slack_text
@@ -14,7 +15,7 @@ from backend.db.slack_user_cache import SlackUserCache
 from backend.integrations.slack.users import pick_slack_display_name
 from slack_sdk import WebClient
 
-from backend.routing.jira.project_key import resolve_project_alias
+from backend.routing.jira.project_key import project_key_from_persona, resolve_project_alias
 
 _ASSIGNED_TO_RE = re.compile(
     r"\bassigned to\s+(.+?)(?:\?|$|\s+(?:which|in|from|for)\b)",
@@ -53,9 +54,20 @@ def _project_from_channel(channel_id: str, config: AlfredConfig, data_dir: Path 
 
     from backend.integrations.slack.workflow_registry import channel_jira_project_key, resolve_data_dir
 
-    db_key = channel_jira_project_key(channel_id, data_dir=resolve_data_dir(data_dir))
+    dd = resolve_data_dir(data_dir)
+    db_key = channel_jira_project_key(channel_id, data_dir=dd)
     if db_key:
         return db_key
+
+    if channel_id and dd is not None:
+        from backend.routing.channel_settings import channel_persona_prompt
+
+        persona_key = project_key_from_persona(
+            channel_persona_prompt(dd, channel_id),
+            config.jira,
+        )
+        if persona_key:
+            return persona_key
 
     sync = config.slack.list_jira_sync
     if sync.enabled and sync.jira_project.strip():
@@ -64,26 +76,38 @@ def _project_from_channel(channel_id: str, config: AlfredConfig, data_dir: Path 
     return None
 
 
-def resolve_channel_jira_project(task: Task, config: AlfredConfig) -> str | None:
+def resolve_channel_jira_project(
+    task: Task,
+    config: AlfredConfig,
+    data_dir: Path | None = None,
+) -> str | None:
     """Project key from Slack channel mapping / list_jira_sync only (not defaults or intent)."""
-    return _project_from_channel(task.channel_id or "", config)
+    return _project_from_channel(task.channel_id or "", config, data_dir=data_dir)
 
 
-def jira_projects_for_task(task: Task, config: AlfredConfig) -> list[str]:
+def jira_projects_for_task(
+    task: Task,
+    config: AlfredConfig,
+    data_dir: Path | None = None,
+) -> list[str]:
     """Project keys for JQL/search in this Slack message (intent → channel map → default)."""
     combined = f"{task.cleaned_intent}\n{task.raw_text}"
     if explicit := _project_from_intent(combined, config.jira):
         return [explicit]
 
-    if channel := _project_from_channel(task.channel_id or "", config):
+    if channel := _project_from_channel(task.channel_id or "", config, data_dir=data_dir):
         return [channel]
 
     return jira_project_keys(config.jira)
 
 
-def resolve_jira_project_for_task(task: Task, config: AlfredConfig) -> str | None:
+def resolve_jira_project_for_task(
+    task: Task,
+    config: AlfredConfig,
+    data_dir: Path | None = None,
+) -> str | None:
     """Best project key for this Slack channel / thread (never board display names like TECH-SUPPORT)."""
-    projects = jira_projects_for_task(task, config)
+    projects = jira_projects_for_task(task, config, data_dir=data_dir)
     return projects[0] if projects else None
 
 
@@ -116,9 +140,9 @@ def format_jira_context_for_prompt(
     if active_ticket:
         parts.append(f"- Active JIRA ticket: `{active_ticket}` (referenced in thread context)")
 
-    projects = jira_projects_for_task(task, config)
+    projects = jira_projects_for_task(task, config, data_dir=data_dir)
     combined = f"{task.cleaned_intent}\n{task.raw_text}"
-    channel_project = resolve_channel_jira_project(task, config)
+    channel_project = resolve_channel_jira_project(task, config, data_dir=data_dir)
     explicit_project = _project_from_intent(combined, config.jira)
     if channel_project:
         parts.append(

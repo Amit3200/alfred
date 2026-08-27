@@ -50,16 +50,19 @@ def _enriched_description(ctx: ToolContext, args: dict[str, Any]) -> str:
 
 
 def _resolve_create_project(ctx: ToolContext, args: dict[str, Any]) -> str:
-    from backend.integrations.slack.workflow_registry import channel_jira_project_key
+    from backend.routing.jira.context import _project_from_channel
+    from backend.routing.jira.project_key import normalize_jira_project_key
 
-    channel_key = str(
-        channel_jira_project_key(str(ctx.channel_id or ""), data_dir=ctx.data_dir) or ""
-    ).strip()
+    channel_key = _project_from_channel(
+        str(ctx.channel_id or ""),
+        ctx.config,
+        data_dir=ctx.data_dir,
+    )
     if channel_key:
         return channel_key
     raw = str(args.get("project") or "").strip()
     if raw:
-        return raw
+        return normalize_jira_project_key(raw, ctx.config.jira)
     return (ctx.config.jira.default_project or "").strip()
 
 

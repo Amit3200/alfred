@@ -224,6 +224,15 @@ def test_normalize_jira_project_key_strips_board_title():
     assert normalize_jira_project_key("TECH-SUPPORT", config) == "TS"
 
 
+def test_project_key_from_persona():
+    from backend.routing.jira.project_key import project_key_from_persona
+
+    assert project_key_from_persona("Use JIRA project=TECH when asked to create a ticket.") == "TECH"
+    assert project_key_from_persona("Primary: call jira_create_issue with project=`TECH`.") == "TECH"
+    assert project_key_from_persona("When creating tickets, prefer JIRA project key TECH.") == "TECH"
+    assert project_key_from_persona("Prefer docs. Do not create tickets unless asked.") == ""
+
+
 def test_jira_projects_for_task_prefers_intent_over_channel():
     config = AlfredConfig()
     config.jira = JiraConfig(

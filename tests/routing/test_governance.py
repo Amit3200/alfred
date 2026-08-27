@@ -120,6 +120,69 @@ def test_jira_create_still_requires_confirmation_without_explicit_ask(tmp_path: 
     )
     assert blocked is not None
     assert "requires explicit approval" in blocked.data["message"]
+    assert "JIRA create `TECH`" in blocked.data["message"]
+
+
+def test_jira_create_confirmation_fills_persona_project(tmp_path: Path):
+    from backend.db.slack_workflows_db import db_create_board_binding
+    from backend.governance.catalog import tool_action_summary
+
+    db_create_board_binding(
+        tmp_path,
+        board_key="team-tech",
+        list_id="F0BQ0MH2LMB",
+        channel_id="C456",
+        persona_prompt="Use JIRA project=TECH when asked to create a ticket.",
+    )
+    config = AlfredConfig(
+        governance=GovernanceConfig(),
+        jira=JiraConfig(enabled=True),
+    )
+    task = _task(
+        raw_text="what is TS-23?",
+        cleaned_intent="what is TS-23?",
+    )
+    ctx = GovernanceContext(config, task, data_dir=tmp_path)
+    blocked = ctx.check_before_run(
+        "jira_create_issue",
+        {"summary": "Implement variant-based PPCOD selection", "issue_type": "Task"},
+    )
+    assert blocked is not None
+    message = blocked.data["message"]
+    assert "requires explicit approval" in message
+    assert "`TECH`" in message
+    assert " on `?`" not in message
+    assert "PPCOD" in message
+    assert "JIRA create" in tool_action_summary(
+        "jira_create_issue",
+        {"project": "TECH", "summary": "Implement variant-based PPCOD selection"},
+    )
+
+
+def test_team_tech_persona_create_task_skips_jira_confirmation(tmp_path: Path):
+    from backend.db.slack_workflows_db import db_create_board_binding
+    from tests.routing.test_create_target_precedence import TEAM_TECH_JIRA_PERSONA
+
+    db_create_board_binding(
+        tmp_path,
+        board_key="team-tech",
+        list_id="F0BQ0MH2LMB",
+        channel_id="C456",
+        persona_prompt=TEAM_TECH_JIRA_PERSONA,
+    )
+    config = AlfredConfig(
+        governance=GovernanceConfig(),
+        jira=JiraConfig(enabled=True, default_project="TECH"),
+    )
+    task = _task(
+        raw_text="@alfred create a task to have variant based PPCOD selection",
+        cleaned_intent="create a task to have variant based PPCOD selection",
+    )
+    ctx = GovernanceContext(config, task, data_dir=tmp_path)
+    assert ctx.check_before_run(
+        "jira_create_issue",
+        {"summary": "Implement variant-based PPCOD selection", "issue_type": "Task"},
+    ) is None
 
 
 def test_board_auto_approve_writes_skips_jira_create(tmp_path: Path):

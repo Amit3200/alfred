@@ -30,8 +30,10 @@ _JIRA_THREAD_MARKERS = (
     "jira api 400",
 )
 _PERSONA_SKIP_JIRA_RE = re.compile(
-    r"\b(?:do not|don't|never|not)\b.{0,48}\b(?:create|open|file|raise).{0,48}\bjira\b"
-    r"|\bjira\b.{0,48}\b(?:do not|don't|never)\s+create\b",
+    r"\b(?:do not|don't|never)\b.{0,40}\b(?:create|open|file|raise)\b.{0,24}\bjira\b"
+    r".{0,24}\b(?:tickets?|issues?)\b.{0,64}\b(?:basic|how-?to|docs?|unless asked)\b"
+    r"|\b(?:do not|don't|never)\b.{0,24}\b(?:call|use)\b.{0,16}\bjira_create_issue\b"
+    r".{0,40}\b(?:basic|how-?to|docs?)\b",
     re.I,
 )
 
