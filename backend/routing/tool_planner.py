@@ -287,7 +287,12 @@ def plan_tools_rules(
         jira_create = (
             config.jira.enabled
             and _ok("jira_create_issue")
-            and should_route_create_to_jira(text, jira_enabled=True)
+            and should_route_create_to_jira(
+                text,
+                jira_enabled=True,
+                channel_id=task.channel_id or "",
+                data_dir=data_dir,
+            )
         )
         if jira_create:
             return ToolPlan(

@@ -355,11 +355,17 @@ def try_slack_board_create_direct(
     if force_intent_class != "slack.board.create" and not confirm_pending:
         from backend.routing.create_target_precedence import should_route_create_to_jira
 
+        session_meta = dict(session_meta)
+        target = str(task.metadata.get("ticket_create_target") or "").strip()
+        if target and not session_meta.get("ticket_create_target"):
+            session_meta["ticket_create_target"] = target
         if should_route_create_to_jira(
             intent,
             jira_enabled=config.jira.enabled,
             session_turns=session_turns,
             session_metadata=session_meta,
+            channel_id=task.channel_id or "",
+            data_dir=data_dir,
         ):
             return None, {}
     title_followup = looks_like_board_create_title_followup(

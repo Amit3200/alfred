@@ -124,7 +124,13 @@ def default_ticket_create_target(
     """Channel DB policy when user did not choose explicitly."""
     from backend.integrations.slack.workflow_registry import channel_ticket_system, resolve_data_dir
 
-    policy = channel_ticket_system(task.channel_id or "", data_dir=resolve_data_dir(data_dir))
+    cid = task.channel_id or ""
+    dd = resolve_data_dir(data_dir)
+    from backend.routing.create_target_precedence import channel_prefers_jira_creates
+
+    if channel_prefers_jira_creates(channel_id=cid, data_dir=dd):
+        return "jira"
+    policy = channel_ticket_system(cid, data_dir=dd)
     if policy == "slack_list":
         return "slack_list"
     if policy == "jira":

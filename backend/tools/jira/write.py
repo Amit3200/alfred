@@ -49,6 +49,56 @@ def _enriched_description(ctx: ToolContext, args: dict[str, Any]) -> str:
     )
 
 
+def _resolve_create_project(ctx: ToolContext, args: dict[str, Any]) -> str:
+    from backend.integrations.slack.workflow_registry import channel_jira_project_key
+
+    channel_key = str(
+        channel_jira_project_key(str(ctx.channel_id or ""), data_dir=ctx.data_dir) or ""
+    ).strip()
+    if channel_key:
+        return channel_key
+    raw = str(args.get("project") or "").strip()
+    if raw:
+        return raw
+    return (ctx.config.jira.default_project or "").strip()
+
+
+def _fallback_slack_board(ctx: ToolContext, args: dict[str, Any], exc: Exception) -> ToolResult | None:
+    task = ctx.get("current_task")
+    if task is None or ctx.data_dir is None or not (ctx.config.slack.bot_token or "").strip():
+        return None
+    from backend.domains.slack_board.operations import board_enabled, resolve_board_for_task
+
+    if not board_enabled(ctx.config, ctx.data_dir):
+        return None
+    if resolve_board_for_task(ctx.config, task, data_dir=ctx.data_dir) is None:
+        return None
+    from slack_sdk import WebClient
+
+    from backend.routing.slack_board.bootstrap import bootstrap_slack_board_create
+
+    title = str(args.get("summary") or "").strip()
+    note = bootstrap_slack_board_create(
+        WebClient(token=ctx.config.slack.bot_token),
+        ctx.config,
+        task=task,
+        data_dir=ctx.data_dir,
+        title_override=title,
+    )
+    if "already created" not in (note or "").lower():
+        return None
+    return ToolResult(
+        kind="jira_action",
+        data={
+            "action": "create_fallback_slack_board",
+            "jira_error": str(exc),
+            "message": (
+                f"JIRA create failed ({exc}). Created the task on this channel's Slack List instead.\n\n{note}"
+            ),
+        },
+    )
+
+
 class JiraCreateIssueTool(BaseTool):
     name = "jira_create_issue"
     capability = "jira.write.create"
@@ -62,8 +112,7 @@ class JiraCreateIssueTool(BaseTool):
 
     def run(self, ctx: ToolContext, arguments: dict[str, Any]) -> ToolResult:
         args = dict(arguments)
-        if not str(args.get("project") or "").strip():
-            args["project"] = (ctx.config.jira.default_project or "").strip()
+        args["project"] = _resolve_create_project(ctx, args)
         if not str(args.get("issue_type") or "").strip():
             args["issue_type"] = "Task"
         args["description"] = _enriched_description(ctx, args)
@@ -75,6 +124,9 @@ class JiraCreateIssueTool(BaseTool):
             result = _service(ctx).create_issue(req)
             return ToolResult.jira_action("create", result)
         except (RuntimeError, ValueError) as exc:
+            fallback = _fallback_slack_board(ctx, args, exc)
+            if fallback is not None:
+                return fallback
             return ToolResult.error(str(exc))
 
 

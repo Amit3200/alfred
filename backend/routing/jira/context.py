@@ -14,6 +14,8 @@ from backend.db.slack_user_cache import SlackUserCache
 from backend.integrations.slack.users import pick_slack_display_name
 from slack_sdk import WebClient
 
+from backend.routing.jira.project_key import resolve_project_alias
+
 _ASSIGNED_TO_RE = re.compile(
     r"\bassigned to\s+(.+?)(?:\?|$|\s+(?:which|in|from|for)\b)",
     re.I,
@@ -37,22 +39,6 @@ _LIST_HINTS = (
 )
 
 _DEFAULT_CLOSED_STATUSES = ("Done", "Closed", "Resolved", "Cancelled")
-
-
-def resolve_project_alias(text: str, config: JiraConfig) -> str | None:
-    """Resolve board/display name phrases to project keys via config.project_aliases."""
-    lower = (text or "").lower()
-    if not lower or not config.project_aliases:
-        return None
-    for alias, project_key in sorted(
-        config.project_aliases.items(),
-        key=lambda item: -len(str(item[0])),
-    ):
-        needle = str(alias).strip().lower()
-        key = str(project_key).strip().upper()
-        if needle and key and needle in lower:
-            return key
-    return None
 
 
 def _project_from_intent(combined: str, config: JiraConfig) -> str | None:

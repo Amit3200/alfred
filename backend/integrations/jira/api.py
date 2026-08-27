@@ -10,6 +10,7 @@ from urllib.parse import urljoin
 import requests
 
 from backend.models.config import AlfredConfig, JiraConfig
+from backend.routing.jira.project_key import normalize_jira_project_key
 
 _ISSUE_KEY_RE = re.compile(r"\b([A-Z][A-Z0-9]+-\d+)\b")
 
@@ -398,7 +399,7 @@ class JiraApiClient:
         assignee: str | None = None,
         resilient: bool = True,
     ) -> dict[str, Any]:
-        project_key = project.strip().upper()
+        project_key = normalize_jira_project_key(project, self.config)
         self._project_allowed(project_key)
         title = summary.strip()
         kind = issue_type.strip()

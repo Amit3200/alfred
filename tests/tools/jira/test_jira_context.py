@@ -214,6 +214,16 @@ def test_resolve_project_alias_from_config():
     assert resolve_project_alias("hello world", config) is None
 
 
+def test_normalize_jira_project_key_strips_board_title():
+    from backend.routing.jira.project_key import normalize_jira_project_key
+
+    assert normalize_jira_project_key("JIRA Tech Board") == "TECH"
+    assert normalize_jira_project_key("TECH board") == "TECH"
+    assert normalize_jira_project_key("TECH") == "TECH"
+    config = JiraConfig(project_aliases={"tech-support": "TS"})
+    assert normalize_jira_project_key("TECH-SUPPORT", config) == "TS"
+
+
 def test_jira_projects_for_task_prefers_intent_over_channel():
     config = AlfredConfig()
     config.jira = JiraConfig(

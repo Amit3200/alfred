@@ -58,6 +58,7 @@ def resolve_turn(
     config: AlfredConfig,
     session: Any | None = None,
     thread_context: str = "",
+    data_dir: Any = None,
 ) -> TurnPlan:
     session_turns: tuple[str, ...] = ()
     session_metadata: dict[str, Any] = {}
@@ -76,7 +77,7 @@ def resolve_turn(
         thread_context=thread_context,
         entities=bag,
         session=session,
-        data_dir=getattr(config, "data_dir", None),
+        data_dir=data_dir if data_dir is not None else getattr(config, "data_dir", None),
     )
     return turn_plan_from_classification(classification, config=config)
 

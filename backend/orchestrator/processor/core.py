@@ -138,9 +138,42 @@ class TaskProcessor(SessionMixin, DirectMixin, InvestigationMixin, ReplyMixin):
                     )
                 return self._finish_response(admin_response)
 
+        from backend.routing.ticket_create_disambiguation import (
+            apply_ticket_create_target,
+            default_ticket_create_target,
+            resolve_target_from_pending_reply,
+            ticket_create_target_from_task,
+        )
+
+        ticket_target = ticket_create_target_from_task(task)
+        if ticket_target is None and session:
+            reply_target = resolve_target_from_pending_reply(task, session)
+            if reply_target:
+                apply_ticket_create_target(session, reply_target)
+                task.metadata["ticket_create_target"] = reply_target
+                ticket_target = reply_target
+                if session_key and self.session_store:
+                    self.session_store.save(session)
+        if ticket_target is None:
+            policy_target = default_ticket_create_target(
+                task,
+                self.config,
+                data_dir=self._data_dir_path(),
+            )
+            if policy_target:
+                task.metadata["ticket_create_target"] = policy_target
+                ticket_target = policy_target
+                if session:
+                    session.metadata["ticket_create_target"] = policy_target
+
         from backend.routing.resolver import resolve_turn
 
-        turn_plan = resolve_turn(task, config=self.config, session=session)
+        turn_plan = resolve_turn(
+            task,
+            config=self.config,
+            session=session,
+            data_dir=self._data_dir_path(),
+        )
         task.metadata["turn_plan"] = turn_plan.to_metadata()
 
         if task.source == "slack":
@@ -202,13 +235,15 @@ class TaskProcessor(SessionMixin, DirectMixin, InvestigationMixin, ReplyMixin):
                     )
                 return self._finish_response(followup_response)
 
-            create_response, board_meta = try_slack_board_create_direct(
-                task,
-                self.config,
-                self._data_dir_path(),
-                session=session,
-                session_turns=session_turns,
-            )
+            create_response, board_meta = (None, {})
+            if not turn_plan.prefers_jira:
+                create_response, board_meta = try_slack_board_create_direct(
+                    task,
+                    self.config,
+                    self._data_dir_path(),
+                    session=session,
+                    session_turns=session_turns,
+                )
             if create_response is not None:
                 if board_meta and session:
                     session.metadata.update(board_meta)
@@ -336,35 +371,17 @@ class TaskProcessor(SessionMixin, DirectMixin, InvestigationMixin, ReplyMixin):
         )
 
         from backend.routing.ticket_create_disambiguation import (
-            apply_ticket_create_target,
             build_disambiguation_response,
             needs_ticket_create_disambiguation,
-            resolve_target_from_pending_reply,
             store_pending_ticket_create,
             ticket_create_target_from_task,
         )
 
-        ticket_target = ticket_create_target_from_task(task)
-        if ticket_target is None and session:
-            reply_target = resolve_target_from_pending_reply(task, session)
-            if reply_target:
-                apply_ticket_create_target(session, reply_target)
-                task.metadata["ticket_create_target"] = reply_target
-                ticket_target = reply_target
-                if session_key and self.session_store:
-                    self.session_store.save(session)
-
-        if ticket_target is None:
-            from backend.routing.ticket_create_disambiguation import default_ticket_create_target
-
-            policy_target = default_ticket_create_target(
-                task,
-                self.config,
-                data_dir=self._data_dir_path(),
-            )
-            if policy_target:
-                task.metadata["ticket_create_target"] = policy_target
-                ticket_target = policy_target
+        ticket_target = ticket_create_target_from_task(task) or str(
+            task.metadata.get("ticket_create_target") or ""
+        ).strip().lower() or None
+        if ticket_target not in ("slack_list", "jira"):
+            ticket_target = None
 
         if (
             ticket_target is None

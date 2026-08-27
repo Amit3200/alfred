@@ -73,6 +73,7 @@ def classify_intent(
         session_metadata=session_metadata,
         thread_context=thread_context,
         entities=bag,
+        data_dir=data_dir,
     )
 
 
@@ -119,6 +120,7 @@ def classify_intent_rules(
     session_metadata: dict[str, Any] | None = None,
     thread_context: str = "",
     entities: EntityBag | None = None,
+    data_dir: Any = None,
 ) -> IntentClassification:
     text = f"{task.cleaned_intent}\n{task.raw_text}".strip()
     bag = entities or extract_entities(text, thread_context)
@@ -150,6 +152,8 @@ def classify_intent_rules(
             session_turns=session_turns,
             session_metadata=session_metadata,
             thread_context=thread_context,
+            channel_id=task.channel_id or "",
+            data_dir=data_dir,
         )
     )
     if jira_create:
