@@ -10,6 +10,27 @@ from backend.integrations.jira.api import extract_issue_key
 from backend.integrations.slack.sanitize import extract_slack_user_ids
 
 _ISSUE_KEY_RE = re.compile(r"\b([A-Z][A-Z0-9]+-\d+)\b")
+_ISSUE_KEY_SPACE_RE = re.compile(r"\b([A-Z]{2,10})\s+(\d{1,6})\b")
+_FALSE_PROJECT_KEYS = frozenset(
+    {
+        "HTTP",
+        "HTTPS",
+        "ERROR",
+        "CODE",
+        "JSON",
+        "HTML",
+        "OK",
+        "ID",
+        "PR",
+        "FY",
+        "UTC",
+        "GMT",
+        "EST",
+        "PST",
+        "ISO",
+        "CVE",
+    }
+)
 _SHEET_ID_RE = re.compile(
     r"docs\.google\.com/spreadsheets/d/([a-zA-Z0-9_-]+)",
     re.I,
@@ -43,6 +64,14 @@ def extract_entities(*texts: str) -> EntityBag:
     seen_keys: set[str] = set()
     for match in _ISSUE_KEY_RE.finditer(combined):
         key = match.group(1).upper()
+        if key not in seen_keys:
+            seen_keys.add(key)
+            issue_keys.append(key)
+    for match in _ISSUE_KEY_SPACE_RE.finditer(combined):
+        project = match.group(1).upper()
+        if project in _FALSE_PROJECT_KEYS:
+            continue
+        key = f"{project}-{match.group(2)}"
         if key not in seen_keys:
             seen_keys.add(key)
             issue_keys.append(key)

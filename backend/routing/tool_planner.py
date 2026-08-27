@@ -227,6 +227,22 @@ def plan_tools_rules(
             strategy="rules",
         )
 
+    if config is not None and config.jira.enabled and _ok("jira_update_issue"):
+        from backend.routing.jira.intent import looks_like_jira_update_request
+
+        if looks_like_jira_update_request(text):
+            args_hint: dict[str, Any] = {}
+            if entities.issue_keys:
+                args_hint["issue_key"] = entities.issue_keys[0]
+            return ToolPlan(
+                goal="Update JIRA issue from user details",
+                confidence=0.9,
+                tools_needed=["jira_update_issue"],
+                steps=[ToolPlanStep("jira_update_issue", "update issue", args_hint)],
+                intent_class="jira.write.update",
+                strategy="rules",
+            )
+
     if config is not None and _ok("run_company_script"):
         from backend.integrations.company_scripts.triggers import match_script_by_trigger
 
@@ -517,6 +533,8 @@ Rules:
 1. Only use tools from the catalog.
 2. For "create sheet from CSV/data", use google_create_sheet then google_write_sheet.
 3. For assign requests on existing tickets, use jira_assign_issue not jira_create_issue.
+3b. For update/modify existing tickets (TECH-363 or TECH 363), use jira_update_issue not get_jira_issue.
+   Fill summary/description from the user's pasted details or Slack thread. Never placeholders.
 4. For summarize thread/alerts, include slack_fetch_thread or slack_fetch_channel_history.
 5. Questions about whether THIS Slack channel is configured for task tracking/boards are NOT repo documentation — prefer slack_board_* tools or set tools_needed=[] with intent_class slack.board.config.
 6. Product/runbook/documentation questions use search_repo_docs + read_repo_doc with intent_class repo.docs.qa.

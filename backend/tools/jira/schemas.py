@@ -83,7 +83,13 @@ JIRA_CREATE_ISSUE = ToolSchema(
         "type": "object",
         "properties": {
             "project": {"type": "string", "description": "Project key, e.g. ENG."},
-            "summary": {"type": "string", "description": "Issue title."},
+            "summary": {
+                "type": "string",
+                "description": (
+                    "Issue title from the user's problem, not a placeholder. "
+                    "Never use `<to be provided by user>`."
+                ),
+            },
             "issue_type": {
                 "type": "string",
                 "description": "Issue type name, e.g. Task, Story, Epic, Bug.",
@@ -93,7 +99,8 @@ JIRA_CREATE_ISSUE = ToolSchema(
                 "type": "string",
                 "description": (
                     "Required in practice. Summarize the request and thread. "
-                    "Include the Slack thread permalink and Slack List id (e.g. TS-23) when known."
+                    "Include the Slack thread permalink and Slack List id (e.g. TS-23) when known. "
+                    "Never use `<to be provided by user>` or `<optional details from user>`."
                 ),
             },
             "reporter": {
@@ -175,9 +182,21 @@ JIRA_UPDATE_ISSUE = ToolSchema(
     parameters={
         "type": "object",
         "properties": {
-            "issue_key": {"type": "string", "description": "Issue key, e.g. PROJ-123."},
-            "summary": {"type": "string", "description": "New summary/title."},
-            "description": {"type": "string", "description": "Description text to add or replace."},
+            "issue_key": {
+                "type": "string",
+                "description": "Issue key, e.g. PROJ-123. TECH 363 means TECH-363.",
+            },
+            "summary": {
+                "type": "string",
+                "description": "New summary/title from the user's details, never a placeholder.",
+            },
+            "description": {
+                "type": "string",
+                "description": (
+                    "Description text to add or replace. Use the user's pasted details. "
+                    "Never `<optional details from user>`."
+                ),
+            },
             "replace_description": {
                 "type": "boolean",
                 "description": "If true, replace description instead of appending (default false).",

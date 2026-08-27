@@ -14,6 +14,7 @@ from backend.routing.jira.intent import (
     looks_like_jira_assign_request,
     looks_like_jira_create_request,
     looks_like_jira_transition_request,
+    looks_like_jira_update_request,
 )
 from backend.routing.slack_board.intent import (
     looks_like_slack_board_create,
@@ -80,6 +81,17 @@ def classify_intent(
                     entities=llm.entities or _entity_payload(bag),
                     strategy="rules_override",
                 )
+            if _should_override_llm_with_jira_update(task, config=config):
+                payload = llm.entities or _entity_payload(bag)
+                if bag.issue_keys:
+                    payload = {**payload, "issue_key": bag.issue_keys[0]}
+                return IntentClassification(
+                    intent_class="jira.write.update",
+                    target_system="jira",
+                    confidence=0.93,
+                    entities=payload,
+                    strategy="rules_override",
+                )
             return llm
     return classify_intent_rules(
         task,
@@ -115,6 +127,17 @@ def _should_override_llm_with_jira_create(
     )
 
 
+def _should_override_llm_with_jira_update(
+    task: Task,
+    *,
+    config: AlfredConfig,
+) -> bool:
+    if not config.jira.enabled:
+        return False
+    text = f"{task.cleaned_intent}\n{task.raw_text}".strip()
+    return looks_like_jira_update_request(text) or looks_like_jira_update_request(task.cleaned_intent or "")
+
+
 def _entity_payload(bag: EntityBag) -> dict[str, Any]:
     return {
         "issue_keys": list(bag.issue_keys),
@@ -136,6 +159,8 @@ def _entity_direct_read(
     if len(text.split()) > 8:
         return None
     if looks_like_jira_create_request(task.cleaned_intent or text):
+        return None
+    if looks_like_jira_update_request(text):
         return None
     if looks_like_jira_assign_request(text) or looks_like_jira_transition_request(text):
         return None
@@ -200,6 +225,17 @@ def classify_intent_rules(
             target_system="jira",
             confidence=0.93,
             entities=entity_payload,
+        )
+
+    if config.jira.enabled and looks_like_jira_update_request(text):
+        payload = {**entity_payload}
+        if bag.issue_keys:
+            payload["issue_key"] = bag.issue_keys[0]
+        return IntentClassification(
+            intent_class="jira.write.update",
+            target_system="jira",
+            confidence=0.92,
+            entities=payload,
         )
 
     if bag.issue_keys and looks_like_jira_assign_request(text):

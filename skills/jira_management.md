@@ -101,12 +101,15 @@ When the user asks to map **all / everyone / whole workspace** (e.g. ~23 people)
 
 ### 2. Update/Modify
 
-- **Update Description:** Use `jira_update_issue` with the `description` field. Always append new info rather than overwriting unless explicitly told to "replace the description" (`replace_description: true`).
+- **Issue keys:** `TECH-363` and `TECH 363` are the same ticket.
+- **Update Description:** Use `jira_update_issue` with the `description` field. When the user pastes real details ("using this pls update TECH-363"), set `replace_description: true` and copy their text — do not echo placeholders.
 - **Add Comment:** Use `jira_add_comment`. Include context from the conversation thread in the comment.
+- Never call `get_jira_issue` instead of update when they asked to modify fields.
 
 ### 3. Create Items
 
 - **Required Fields:** Summary, Project Key, Issue Type (Task/Story/Epic/Bug), Priority, and **Description**.
+- **Never placeholders:** Do not pass `<to be provided by user>`, `<optional details from user>`, or empty stubs. Infer summary and description from the Slack thread (problem statement, merchant, "Issue:" / "Summary:" lines). If the current message is only "create a ticket on TECH board", the title lives in earlier thread messages.
 - **Description:** Always write one. Include (1) what was asked, (2) relevant thread / Slack List context (display id like `TS-23` when this is a mirror), (3) the Slack thread permalink. Do not create with an empty description.
 - **Channel project:** When the JIRA context block lists a **Channel JIRA project key**, always use that for creates in this Slack channel — never `TECH-SUPPORT` (board display name).
 - **Project TS:** Use issue type **Task** (TS has Process/Task/Sub-task — not Bug).

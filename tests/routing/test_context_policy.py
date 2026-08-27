@@ -21,6 +21,11 @@ def test_thread_follow_up_without_refresh():
     assert needs_context_refresh("thanks", has_session=True) is False
 
 
+def test_jira_create_and_modify_refresh_context():
+    assert needs_context_refresh("can you create a ticket on TECH board on jira", has_session=True)
+    assert needs_context_refresh("please modify TECH 363 with proper details", has_session=True)
+
+
 def test_lookup_refreshes_context():
     assert needs_context_refresh("when was the last event posted?", has_session=True)
 

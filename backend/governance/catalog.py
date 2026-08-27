@@ -89,6 +89,12 @@ def tool_action_summary(tool_name: str, arguments: dict[str, Any]) -> str:
         if title:
             return f"JIRA create `{project}` · {title[:100]}"
         return f"JIRA create issue in `{project}`"
+    if tool_name == "jira_update_issue":
+        key = args.get("issue_key") or "?"
+        title = str(args.get("summary") or "").strip()
+        if title:
+            return f"JIRA update `{key}` · {title[:100]}"
+        return f"JIRA update `{key}`"
     if tool_name.startswith("jira") or tool_name in (
         "transition_jira_issue",
         "add_jira_comment",

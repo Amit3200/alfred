@@ -90,7 +90,9 @@ def _select_parent(
         "3. Pick the parent whose description best matches the request semantically.",
         "",
         "Hard rules:",
-        "- If the user names Jira, a Jira project, or an issue key (TECH-12), parent is jira.",
+        "- If the user names Jira, a Jira project, or an issue key (TECH-12 or TECH 12), parent is jira.",
+        "- If they ask to update/modify/edit an existing issue, parent is jira (jira_update_issue), "
+        "not a Slack List lookup.",
         "- If channel_prefers_jira_creates is true and they ask to create a task/ticket, "
         "parent is jira unless they named Slack List / slack board.",
         "- If a Slack List is linked to this channel and they say create/update a task/board "
@@ -148,6 +150,10 @@ def _select_function(
         "Pick the single best FUNCTION for this request.",
         "Match the user text contextually and semantically to function descriptions.",
         "Then report the capability that owns that function.",
+        "Hard rules:",
+        "- Update/modify/edit + issue key (TECH-363 or TECH 363) → jira_update_issue, never get_jira_issue.",
+        "- Never invent summary/description as `<to be provided by user>` or similar placeholders; "
+        "infer from the Slack thread.",
         "",
         "## Query metadata",
         metadata.prompt_block(),

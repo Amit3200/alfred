@@ -80,6 +80,21 @@ def looks_like_jira_transition_request(intent: str) -> bool:
     return bool(_TRANSITION_RE.search(intent or ""))
 
 
+_UPDATE_JIRA_RE = re.compile(
+    r"\b(?:update|modify|edit|fix)\b.{0,100}\b(?:jira|[A-Z]{2,10}\s*-?\s*\d+|ticket|issue)\b"
+    r"|\b(?:jira|[A-Z]{2,10}\s*-?\s*\d+|ticket|issue)\b.{0,60}\b(?:update|modify|edit|fix)\b",
+    re.I,
+)
+
+
+def looks_like_jira_update_request(intent: str) -> bool:
+    """True when the user wants to change an existing JIRA issue's fields."""
+    text = intent or ""
+    if not text or looks_like_jira_create_request(text):
+        return False
+    return bool(_UPDATE_JIRA_RE.search(text))
+
+
 def _thread_has_jira_create_context(text: str) -> bool:
     lower = (text or "").lower()
     return sum(1 for marker in _JIRA_CREATE_CONTEXT_MARKERS if marker in lower) >= 2

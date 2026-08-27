@@ -110,6 +110,19 @@ def test_explicit_jira_create_skips_confirmation(tmp_path: Path):
     ) is None
 
 
+def test_explicit_jira_update_skips_confirmation(tmp_path: Path):
+    config = _config()
+    task = _task(
+        raw_text="please modify TECH 363 with proper details",
+        cleaned_intent="please modify TECH 363 with proper details",
+    )
+    ctx = GovernanceContext(config, task, data_dir=tmp_path)
+    assert ctx.check_before_run(
+        "jira_update_issue",
+        {"issue_key": "TECH-363", "summary": "Prepaid discount display", "description": "Merchant Everaw"},
+    ) is None
+
+
 def test_jira_create_still_requires_confirmation_without_explicit_ask(tmp_path: Path):
     config = _config()
     task = _task(raw_text="what is TS-23?", cleaned_intent="what is TS-23?")

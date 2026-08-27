@@ -99,6 +99,8 @@ class GovernanceContext:
             return True
         if tool_name == "jira_create_issue" and self._jira_create_auto_approved():
             return True
+        if tool_name == "jira_update_issue" and self._jira_update_auto_approved():
+            return True
         if tool_name.startswith("slack_board_"):
             board = self._resolved_board()
             if board and board.auto_approve_writes:
@@ -136,6 +138,12 @@ class GovernanceContext:
             channel_id=self.task.channel_id or "",
             data_dir=self.data_dir,
         )
+
+    def _jira_update_auto_approved(self) -> bool:
+        from backend.routing.jira.intent import looks_like_jira_update_request
+
+        intent = self.task.cleaned_intent or self.task.raw_text or ""
+        return looks_like_jira_update_request(intent)
 
     def _confirmation_required_for_source(self) -> bool:
         if not self._gov.require_confirmation:

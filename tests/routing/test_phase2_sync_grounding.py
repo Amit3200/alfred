@@ -143,6 +143,41 @@ def test_grounding_gate_allows_matching_url():
     assert result.passed
 
 
+def test_grounding_gate_allows_slack_mrkdwn_jira_browse_link():
+    observation = json.dumps(
+        {
+            "kind": "jira_action",
+            "data": {
+                "action": "create",
+                "key": "TECH-378",
+                "url": "https://flexype.atlassian.net/browse/TECH-378",
+                "summary": "Implement variant-based PPCOD selection",
+            },
+        }
+    )
+    trace = [
+        ToolTraceEntry(
+            tool="jira_create_issue",
+            success=True,
+            result_kind="jira_action",
+            observation=observation,
+        )
+    ]
+    slack_reply = (
+        "Created TECH-378 — Implement variant-based PPCOD selection.\n"
+        "<https://flexype.atlassian.net/browse/TECH-378|TECH-378>"
+    )
+    result = validate_agent_result(slack_reply, trace, None)
+    assert result.passed
+
+    encoded = (
+        "Created TECH-378\n"
+        "https://flexype.atlassian.net/browse/TECH-378%7CTECH-378"
+    )
+    result = validate_agent_result(encoded, trace, None)
+    assert result.passed
+
+
 def test_sync_state_store_stale(tmp_path: Path):
     store = SyncStateStore(tmp_path)
     assert store.is_stale("slack_users", hours=1)

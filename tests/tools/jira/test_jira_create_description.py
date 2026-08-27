@@ -48,6 +48,19 @@ def test_llm_description_keeps_text_and_appends_missing_slack_link():
     assert "C123" in text
 
 
+def test_placeholder_description_is_treated_as_empty():
+    text = enrich_jira_create_description(
+        "<to be provided by user>",
+        summary="Incorrect Prepaid Discount Display in Order Summary",
+        task=_task("create a ticket on TECH board on jira"),
+        channel_id="C123",
+        thread_ts="111.222",
+    )
+    assert "<to be provided by user>" not in text
+    assert "Incorrect Prepaid Discount" in text
+    assert "Slack thread:" in text
+
+
 def test_does_not_duplicate_existing_slack_link():
     link = "https://slack.com/archives/C123/p111222"
     text = enrich_jira_create_description(

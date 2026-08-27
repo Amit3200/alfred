@@ -114,10 +114,37 @@ class JiraCreateIssueTool(BaseTool):
         return JIRA_CREATE_ISSUE
 
     def run(self, ctx: ToolContext, arguments: dict[str, Any]) -> ToolResult:
+        from backend.domains.jira.thread_fields import (
+            fetch_slack_thread_text,
+            fill_jira_create_args,
+            is_weak_jira_summary,
+        )
+
         args = dict(arguments)
+        task = ctx.get("current_task")
+        request_text = ""
+        session_title = ""
+        if task is not None:
+            request_text = (task.cleaned_intent or task.raw_text or "").strip()
+        registry = ctx.get("registry")
+        session_metadata = getattr(registry, "session_metadata", None) if registry is not None else None
+        if isinstance(session_metadata, dict):
+            session_title = str(dict(session_metadata.get("last_board_task") or {}).get("title") or "")
+        args = fill_jira_create_args(
+            args,
+            request_text=request_text,
+            thread_text=fetch_slack_thread_text(ctx, task),
+            session_title=session_title,
+        )
         args["project"] = _resolve_create_project(ctx, args)
         if not str(args.get("issue_type") or "").strip():
             args["issue_type"] = "Task"
+        if is_weak_jira_summary(str(args.get("summary") or "")):
+            return ToolResult.error(
+                "Cannot create a JIRA issue without a real summary. "
+                "Use the problem from this thread — never placeholders like "
+                "`<to be provided by user>`."
+            )
         args["description"] = _enriched_description(ctx, args)
         req = CreateIssueRequest.from_args(args)
         error = req.validate()
@@ -217,7 +244,21 @@ class JiraUpdateIssueTool(BaseTool):
         return JIRA_UPDATE_ISSUE
 
     def run(self, ctx: ToolContext, arguments: dict[str, Any]) -> ToolResult:
-        req = UpdateIssueRequest.from_args(arguments)
+        from backend.domains.jira.thread_fields import fetch_slack_thread_text, fill_jira_update_args
+        from backend.routing.entity_extractor import extract_entities
+
+        args = dict(arguments)
+        task = ctx.get("current_task")
+        request_text = ""
+        if task is not None:
+            request_text = (task.cleaned_intent or task.raw_text or "").strip()
+        thread_text = fetch_slack_thread_text(ctx, task)
+        args = fill_jira_update_args(args, request_text=request_text, thread_text=thread_text)
+        issue_key = str(args.get("issue_key") or "").strip()
+        bag = extract_entities(issue_key, request_text, thread_text)
+        if bag.issue_keys:
+            args["issue_key"] = bag.issue_keys[0]
+        req = UpdateIssueRequest.from_args(args)
         error = req.validate()
         if error:
             return ToolResult.error(error)

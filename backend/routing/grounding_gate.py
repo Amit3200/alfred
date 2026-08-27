@@ -76,6 +76,7 @@ def _urls_from_observation(observation: str) -> set[str]:
             "document_url",
             "html_url",
             "web_url",
+            "issue_url",
         ):
             value = data.get(key)
             if isinstance(value, str) and value.strip():
@@ -129,6 +130,18 @@ def _template_or_example_urls(urls: set[str]) -> set[str]:
     return {url for url in urls if _TEMPLATE_URL_RE.search(url)}
 
 
+_JIRA_BROWSE_RE = re.compile(r"/browse/([A-Z][A-Z0-9]+-\d+)", re.I)
+
+
+def _url_cites_known_jira_issue(url: str, keys: set[str]) -> bool:
+    if not keys:
+        return False
+    from backend.routing.goal_spec import _canonicalize_url
+
+    match = _JIRA_BROWSE_RE.search(_canonicalize_url(url))
+    return bool(match and match.group(1).upper() in keys)
+
+
 def _url_grounding_issues(
     prose: str,
     trace: list[ToolTraceEntry],
@@ -153,12 +166,14 @@ def _url_grounding_issues(
     for entry in trace:
         if entry.success:
             urls_from_tools.update(_urls_from_observation(entry.observation))
+    known_keys = _issue_keys_from_trace(trace)
 
     fabricated_urls = [
         url
         for url in sorted(urls_in_text)
         if url not in _template_or_example_urls(urls_in_text)
         and not any(urls_match_for_grounding(url, tool_url) for tool_url in urls_from_tools)
+        and not _url_cites_known_jira_issue(url, known_keys)
     ]
     if not fabricated_urls:
         return []
@@ -304,6 +319,11 @@ def validate_agent_result(
         issues.extend(_doc_qa_issues(prose, trace))
 
     if issues:
+        jira_reply = _successful_jira_action_reply(trace)
+        if jira_reply:
+            if all(item.startswith("URLs in reply not found") for item in issues):
+                return ValidationResult(passed=True)
+            return ValidationResult(passed=False, issues=issues, fallback=jira_reply)
         if goal and goal.intent_class.startswith("slack.board."):
             fallback = (
                 "I couldn't complete that on the Slack List board. "
@@ -324,6 +344,24 @@ def validate_agent_result(
         return ValidationResult(passed=False, issues=issues, fallback="\n\n".join(fallback_parts))
 
     return ValidationResult(passed=True)
+
+
+def _successful_jira_action_reply(trace: list[ToolTraceEntry]) -> str:
+    """User-facing create/update confirmation from a successful JIRA write tool."""
+    for entry in reversed(trace):
+        if not entry.success:
+            continue
+        if entry.tool != "jira_create_issue" and entry.result_kind != "jira_action":
+            continue
+        inner = _observation_data(entry.observation)
+        key = str(inner.get("key") or "").strip()
+        if not key and entry.tool != "jira_create_issue":
+            continue
+        from backend.formatting.strategies import format_jira_action
+
+        action = str(inner.get("action") or "create")
+        return format_jira_action(action, inner, slack=True)
+    return ""
 
 
 def _observation_payload(observation: str) -> dict[str, Any]:

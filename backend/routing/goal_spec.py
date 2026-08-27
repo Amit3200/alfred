@@ -146,7 +146,7 @@ def goal_spec_from_plan(plan: ToolPlan | None) -> GoalSpec | None:
 
 
 def extract_urls(text: str) -> set[str]:
-    return {match.group(0).rstrip(".,)") for match in _URL_RE.finditer(text or "")}
+    return {_canonicalize_url(match.group(0)) for match in _URL_RE.finditer(text or "") if _canonicalize_url(match.group(0))}
 
 
 _ARTIFACT_PATH_RE = re.compile(
@@ -160,9 +160,19 @@ def extract_artifact_paths(text: str) -> set[str]:
     return {match.group(1).rstrip(".,)") for match in _ARTIFACT_PATH_RE.finditer(text or "")}
 
 
+def _canonicalize_url(url: str) -> str:
+    """Strip Slack mrkdwn `|label` and percent-encoded pipes from cited URLs."""
+    from urllib.parse import unquote
+
+    cleaned = unquote((url or "").strip()).rstrip(".,)")
+    if "|" in cleaned:
+        cleaned = cleaned.split("|", 1)[0]
+    return cleaned.rstrip("/")
+
+
 def url_grounding_variants(url: str) -> set[str]:
     """Equivalent URL forms for grounding (absolute vs path-only)."""
-    cleaned = (url or "").strip().rstrip(".,)")
+    cleaned = _canonicalize_url(url)
     if not cleaned:
         return set()
     variants = {cleaned}

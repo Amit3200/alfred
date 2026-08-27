@@ -20,6 +20,10 @@ def enrich_jira_create_description(
 ) -> str:
     """Keep LLM text, fill a fallback, and always attach the Slack thread URL when known."""
     body = (description or "").strip()
+    from backend.domains.jira.thread_fields import is_placeholder_jira_text
+
+    if is_placeholder_jira_text(body):
+        body = ""
     channel = (channel_id or (task.channel_id if task else "") or "").strip()
     ts = (thread_ts or (str(task.thread_ts or "") if task else "") or "").strip()
     permalink = slack_thread_permalink(channel_id=channel, thread_ts=ts, team_id=team_id)
