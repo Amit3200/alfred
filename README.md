@@ -5,7 +5,7 @@
 Config and encrypted secrets live in `.alfred/` (not a SaaS). Optional Ollama on your machine; admin UI for setup, health, and usage tracking.
 
 > **Status:** Alpha — Slack ingress, durable SQLite task queue, unified routing, git/JIRA/AWS/Google investigation, Slack List boards, inbound connectors (WhatsApp via Periskope), repo docs Q&A, schedules, planning mode, governance, and observability are working. **Next:** v2 automation (ECS/S3, hotfix skills); **v3** MCP + generic API extensibility (planned, not built). Slack DMs are out of scope.  
-> **What it does (HTML):** [`docs/index.html`](docs/index.html) — self-contained explainer you can host on GitHub Pages (`docs/` folder).  
+> **What it does (HTML):** [`docs/index.html`](docs/index.html) — product deck, hostable on GitHub Pages (`docs/` folder).  
 > **Tracker:** [`docs/build-reference/building_phase_v0.md`](docs/build-reference/building_phase_v0.md) (product surface last reviewed 2026-10-18)
 
 **Requires Python 3.10+.** Local dev targets **Python 3.13** (see `.python-version`).
@@ -173,7 +173,7 @@ Then, if you wired the matching integration:
 | AWS / playbooks / scripts | Setup guide steps 8–10 |
 | HTML slides | [HTML slides](#html-slides) |
 
-Product overview (hostable on GitHub Pages): [`docs/index.html`](docs/index.html).
+Product deck (hostable on GitHub Pages): [`docs/index.html`](docs/index.html).
 
 ---
 
@@ -885,7 +885,7 @@ Release wheel: `./scripts/build-release.sh`
 
 | Document | Description |
 |----------|-------------|
-| [`docs/index.html`](docs/index.html) | **What Alfred does** — GitHub Pages–ready explainer |
+| [`docs/index.html`](docs/index.html) | Product deck — GitHub Pages home |
 | [`docs/README.md`](docs/README.md) | Docs index |
 | [`docs/build-reference/building_phase_v0.md`](docs/build-reference/building_phase_v0.md) | **Implementation status & gaps** |
 | [`docs/build-reference/v0.md`](docs/build-reference/v0.md) | Layer architecture |

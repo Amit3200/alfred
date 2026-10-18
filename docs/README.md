@@ -14,7 +14,7 @@ Planning and reference materials for Alfred.
 
 | Audience | Read |
 |----------|------|
-| **What Alfred does (HTML)** | [`index.html`](index.html) — host on GitHub Pages from the `docs/` folder |
+| **What Alfred does (HTML)** | [`index.html`](index.html) — product deck; host on GitHub Pages from `docs/` |
 | **Getting started** | [`README.md`](../README.md#getting-started) — clone, run, Slack, first `@alfred` |
 | **Operators / new installs** | [`README.md`](../README.md) — setup, CLI, AWS, Slack, **scripts**, **logs** |
 | **Company scripts** | [`scripts/README.md`](scripts/README.md) (local) · [`scripts/remote-repo.md`](scripts/remote-repo.md) (Git repo + venv) |
