@@ -67,7 +67,7 @@ def looks_like_repo_doc_question(text: str, *, source: str = "") -> bool:
     """True when the user likely wants indexed repo documentation."""
     stripped = f"{text or ''}".strip()
     if source == "slack":
-        from backend.routing.slack_board_intent import (
+        from backend.routing.slack_board.intent import (
             looks_like_slack_board_config_question,
             looks_like_slack_board_request,
         )
@@ -104,10 +104,24 @@ def plan_tools_rules(
     def _ok(name: str) -> bool:
         return not allowed or name in allowed
 
+    from backend.routing.connector_intent import build_connector_tool_plan
     from backend.routing.html_slides_delivery import (
         build_html_slides_tool_plan,
         looks_like_html_slides_request,
     )
+    from backend.routing.schedule_intent import build_schedule_tool_plan
+
+    schedule_plan = build_schedule_tool_plan(
+        task, skill_allowed=list(allowed) if allowed else None
+    )
+    if schedule_plan is not None:
+        return schedule_plan
+
+    connector_plan = build_connector_tool_plan(
+        task, skill_allowed=list(allowed) if allowed else None
+    )
+    if connector_plan is not None:
+        return connector_plan
 
     if looks_like_html_slides_request(text) and _ok("save_html_deck"):
         plan = build_html_slides_tool_plan(task, skill_allowed=list(allowed) if allowed else None)
@@ -213,6 +227,22 @@ def plan_tools_rules(
             strategy="rules",
         )
 
+    if config is not None and config.jira.enabled and _ok("jira_update_issue"):
+        from backend.routing.jira.intent import looks_like_jira_update_request
+
+        if looks_like_jira_update_request(text):
+            args_hint: dict[str, Any] = {}
+            if entities.issue_keys:
+                args_hint["issue_key"] = entities.issue_keys[0]
+            return ToolPlan(
+                goal="Update JIRA issue from user details",
+                confidence=0.9,
+                tools_needed=["jira_update_issue"],
+                steps=[ToolPlanStep("jira_update_issue", "update issue", args_hint)],
+                intent_class="jira.write.update",
+                strategy="rules",
+            )
+
     if config is not None and _ok("run_company_script"):
         from backend.integrations.company_scripts.triggers import match_script_by_trigger
 
@@ -257,8 +287,9 @@ def plan_tools_rules(
         )
 
     if config is not None and task.source == "slack":
-        from backend.integrations.slack.board_service import board_enabled, resolve_board_for_task
-        from backend.routing.slack_board_intent import (
+        from backend.domains.slack_board.operations import board_enabled, resolve_board_for_task
+        from backend.routing.create_target_precedence import should_route_create_to_jira
+        from backend.routing.slack_board.intent import (
             looks_like_slack_board_config_question,
             looks_like_slack_board_create,
             looks_like_slack_board_request,
@@ -268,6 +299,26 @@ def plan_tools_rules(
 
         if looks_like_slack_board_config_question(text):
             return None
+
+        jira_create = (
+            config.jira.enabled
+            and _ok("jira_create_issue")
+            and should_route_create_to_jira(
+                text,
+                jira_enabled=True,
+                channel_id=task.channel_id or "",
+                data_dir=data_dir,
+            )
+        )
+        if jira_create:
+            return ToolPlan(
+                goal="Create JIRA issue from user request",
+                confidence=0.92,
+                tools_needed=["jira_create_issue"],
+                steps=[ToolPlanStep("jira_create_issue", "create issue")],
+                intent_class="jira.write.create",
+                strategy="rules",
+            )
 
         if board_enabled(config, data_dir) and resolve_board_for_task(config, task, data_dir=data_dir):
             if looks_like_slack_board_create(text) and _ok("slack_board_create_task"):
@@ -396,6 +447,15 @@ def _build_planner_channel_context(
                 f"Display id prefix: {binding.get('display_id_prefix')}",
             ]
         )
+        persona = str(binding.get("persona_prompt") or "").strip()
+        if persona:
+            lines.append(f"Channel persona (follow this first):\n{persona}")
+        if binding.get("docs_search_enabled"):
+            lines.append(
+                "Docs search is ON for this channel: prefer search_repo_docs + read_repo_doc "
+                "and answer from indexed docs unless the user is creating/updating a board or JIRA ticket. "
+                "Always include each hit's public url from the tool `url` field in the reply."
+            )
     else:
         lines.append("Slack List board: not linked for this channel")
     session_context = _format_planner_session_context(session_metadata)
@@ -449,6 +509,14 @@ def plan_tools_llm(
     if channel_context:
         user_parts.extend(["", "Channel configuration:", channel_context])
 
+    from backend.routing.channel_settings import channel_persona_prompt
+
+    persona_prompt = (
+        channel_persona_prompt(data_dir, task.channel_id)
+        if task and task.source == "slack" and task.channel_id
+        else ""
+    )
+
     system = """You are Alfred's Tool Planner. Given the user message, entities, and tool catalog,
 produce a JSON plan. Do NOT execute tools. Do NOT invent tool names.
 
@@ -465,6 +533,8 @@ Rules:
 1. Only use tools from the catalog.
 2. For "create sheet from CSV/data", use google_create_sheet then google_write_sheet.
 3. For assign requests on existing tickets, use jira_assign_issue not jira_create_issue.
+3b. For update/modify existing tickets (TECH-363 or TECH 363), use jira_update_issue not get_jira_issue.
+   Fill summary/description from the user's pasted details or Slack thread. Never placeholders.
 4. For summarize thread/alerts, include slack_fetch_thread or slack_fetch_channel_history.
 5. Questions about whether THIS Slack channel is configured for task tracking/boards are NOT repo documentation — prefer slack_board_* tools or set tools_needed=[] with intent_class slack.board.config.
 6. Product/runbook/documentation questions use search_repo_docs + read_repo_doc with intent_class repo.docs.qa.
@@ -476,6 +546,8 @@ Rules:
 10. Slides/presentation/deck requests (HTML deck from data, metrics, tables) MUST use save_html_deck with intent_class html_slides.
     Add publish_html_artifact only when the user explicitly asks to publish/host/share a URL.
     Do NOT use search_repo_docs or google_create_sheet for slide generation when save_html_deck is in the catalog."""
+    if persona_prompt:
+        system = f"Channel persona (must follow):\n{persona_prompt}\n\n{system}"
 
     try:
         response = provider.chat(
@@ -532,10 +604,30 @@ def resolve_tool_plan(
     llm_first = config.routing.planner_strategy == "llm_first"
     entity_direct_only = llm_first
 
+    from backend.routing.connector_intent import build_connector_tool_plan
     from backend.routing.html_slides_delivery import (
         build_html_slides_tool_plan,
         looks_like_html_slides_request,
     )
+    from backend.routing.schedule_intent import build_schedule_tool_plan
+
+    schedule_plan = build_schedule_tool_plan(task, skill_allowed=skill_allowed)
+    if schedule_plan is not None:
+        logger.info(
+            "Schedule plan (deterministic): tools=%s intent=%s",
+            schedule_plan.tools_needed,
+            schedule_plan.intent_class,
+        )
+        return schedule_plan
+
+    connector_plan = build_connector_tool_plan(task, skill_allowed=skill_allowed)
+    if connector_plan is not None:
+        logger.info(
+            "Connector plan (deterministic): tools=%s intent=%s",
+            connector_plan.tools_needed,
+            connector_plan.intent_class,
+        )
+        return connector_plan
 
     slides_plan = build_html_slides_tool_plan(
         task,
@@ -549,6 +641,69 @@ def resolve_tool_plan(
             slides_plan.intent_class,
         )
         return slides_plan
+
+    from backend.routing.channel_settings import should_force_channel_docs_search
+
+    if should_force_channel_docs_search(task, data_dir, config=config):
+        from backend.routing.chat_persona import build_support_doc_plan
+
+        qa_plan = build_support_doc_plan(task)
+        if skill_allowed:
+            allowed = set(skill_allowed)
+            filtered = [t for t in qa_plan.tools_needed if t in allowed]
+            if filtered:
+                qa_plan.tools_needed = filtered
+                qa_plan.steps = [s for s in qa_plan.steps if s.tool in filtered]
+            else:
+                qa_plan = None
+        if qa_plan:
+            logger.info("Channel docs-search plan: tools=%s", qa_plan.tools_needed)
+            return qa_plan
+
+    if playbook_store is not None:
+        from backend.routing.plan_templates import match_plan_template
+
+        template_plan = match_plan_template(
+            context.intent,
+            playbook_store,
+            channel_id=context.channel_id,
+            repo=context.repo,
+            min_confidence=config.routing.plan_template_min_confidence,
+        )
+        if template_plan:
+            if skill_allowed:
+                allowed = set(skill_allowed)
+                filtered = [t for t in template_plan.tools_needed if t in allowed]
+                if filtered:
+                    template_plan.tools_needed = filtered
+                    template_plan.steps = [s for s in template_plan.steps if s.tool in allowed]
+                else:
+                    template_plan = None
+            if template_plan and template_plan.confidence >= min_conf:
+                logger.info(
+                    "Plan template: intent=%s tools=%s",
+                    template_plan.intent_class,
+                    template_plan.tools_needed,
+                )
+                return template_plan
+
+    if playbook_store is not None and skill_allowed:
+        from backend.routing.workflow_chain import plan_from_playbook_chain
+
+        wanted = set(skill_allowed)
+        for playbook in playbook_store.list_playbooks():
+            if not playbook.workflow_chain or not playbook.use_workflow_chain:
+                continue
+            if set(playbook.allowed_tools or []) != wanted:
+                continue
+            chained = plan_from_playbook_chain(playbook)
+            if chained is not None:
+                logger.info(
+                    "Skill workflow chain: %s tools=%s",
+                    playbook.name,
+                    chained.tools_needed,
+                )
+                return chained
 
     if task.source == "ui":
         from backend.routing.chat_persona import (
@@ -608,28 +763,6 @@ def resolve_tool_plan(
     )
     if plan and plan.confidence >= min_conf:
         return plan
-
-    if playbook_store is not None:
-        from backend.routing.plan_templates import match_plan_template
-
-        template_plan = match_plan_template(
-            context.intent,
-            playbook_store,
-            channel_id=context.channel_id,
-            repo=context.repo,
-            min_confidence=config.routing.plan_template_min_confidence,
-        )
-        if template_plan:
-            if skill_allowed:
-                allowed = set(skill_allowed)
-                filtered = [t for t in template_plan.tools_needed if t in allowed]
-                if filtered:
-                    template_plan.tools_needed = filtered
-                    template_plan.steps = [s for s in template_plan.steps if s.tool in allowed]
-                else:
-                    template_plan = None
-            if template_plan and template_plan.confidence >= min_conf:
-                return template_plan
 
     if not llm_first and planner_llm_enabled(config) and provider is not None:
         llm_plan = plan_tools_llm(

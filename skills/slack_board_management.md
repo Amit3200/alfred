@@ -15,6 +15,11 @@ trigger_keywords:
 allowed_channels:
   - "*"
 requires_thread_context: false
+allowed_capabilities:
+  - slack.board.write.create
+  - slack.board.write.update
+  - slack.board.write.comment
+  - slack.board.read.search
 allowed_tools:
   - slack_fetch_thread
   - slack_board_create_task
@@ -22,6 +27,9 @@ allowed_tools:
   - slack_board_search_tasks
   - slack_board_get_task
   - slack_board_comment
+workflow_chain:
+  - slack_fetch_thread
+  - slack_board_create_task
 ---
 
 # Objective

@@ -29,6 +29,14 @@ def slack_actor(user_id: str, display_name: str = "") -> ArtifactActor:
     return ArtifactActor(key=f"slack:{uid}", label=label)
 
 
+SHARED_ADMIN_OWNER_KEY = "admin:shared"
+
+
+def scheduler_actor() -> ArtifactActor:
+    """Company scheduled decks — visible to every admin login."""
+    return ArtifactActor(key=SHARED_ADMIN_OWNER_KEY, label="Alfred scheduler")
+
+
 def resolve_publish_actor(
     *,
     task: Any | None,
@@ -49,6 +57,10 @@ def resolve_publish_actor(
             label = str(names.get(user_id) or user_id)
             actor = slack_actor(user_id, label)
             return actor, "slack", user_id
+
+    if task is not None and getattr(task, "source", "") == "scheduler":
+        actor = scheduler_actor()
+        return actor, "scheduler", ""
 
     if task is not None and getattr(task, "source", "") == "ui":
         name = uploaded_by.strip() or "admin"

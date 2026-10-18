@@ -74,6 +74,9 @@ def update_secrets(
     for name, key in incoming.ai_api_keys.items():
         if key is not None and str(key).strip():
             secrets.ai_api_keys[name] = str(key).strip()
+    from backend.integrations.platform.secrets import merge_connector_secret_payload
+
+    merge_connector_secret_payload(secrets, incoming.connectors)
     manager._apply_secrets_to_config(config, secrets)
     manager.save_merged(config, secrets)
     slack_restart = restart_slack_listener(request)

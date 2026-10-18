@@ -92,7 +92,7 @@ def bootstrap_doc_qa(
         topic = describe_missing_doc_topic(stripped)
         lines.append(
             f"\nNo indexed doc matched **{topic}**. "
-            "Answer **No** — not documented in FlexyPe support docs."
+            "Answer **No** — not documented in indexed support docs."
         )
     elif not found:
         if entities:

@@ -6,7 +6,7 @@ import time
 from typing import Any
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from pydantic import BaseModel, Field
 
 from backend.api.deps import get_artifact_actor, get_manager, require_admin
@@ -49,11 +49,12 @@ def _enrich_meta(meta: dict[str, Any]) -> dict[str, Any]:
 
 
 def _assert_owner(store: ArtifactStore, slug: str, actor: ArtifactActor) -> None:
-    owner = store.get_slug_owner(slug)
-    if owner is None:
-        return
-    if owner["owner_key"] != actor.key:
-        raise HTTPException(status_code=403, detail="You do not own this presentation slug")
+    try:
+        from backend.db.artifacts_db import assert_slug_owner
+
+        assert_slug_owner(store.db_file, slug, actor.key)
+    except SlugOwnershipError as exc:
+        raise HTTPException(status_code=403, detail="You do not own this presentation slug") from exc
 
 
 def _serve_html_file(path, manager: ConfigManager) -> HTMLResponse:
@@ -191,3 +192,39 @@ def get_artifact_meta(
         "latest": _enrich_meta(latest),
         "versions": [_enrich_meta(v) for v in versions],
     }
+
+
+@admin_router.delete("/{slug}/versions/{sha256}")
+def delete_artifact_version(
+    slug: str,
+    sha256: str,
+    manager: ConfigManager = Depends(require_admin),
+    actor: ArtifactActor = Depends(get_artifact_actor),
+) -> dict[str, Any]:
+    store = _store(manager)
+    _assert_owner(store, slug, actor)
+    try:
+        result = store.delete_version(slug=slug, sha256=sha256, owner_key=actor.key)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    latest = result.get("latest")
+    return {
+        **result,
+        "latest": _enrich_meta(latest) if latest else None,
+    }
+
+
+@admin_router.delete("/{slug}")
+def delete_artifact_slug(
+    slug: str,
+    manager: ConfigManager = Depends(require_admin),
+    actor: ArtifactActor = Depends(get_artifact_actor),
+) -> dict[str, Any]:
+    store = _store(manager)
+    _assert_owner(store, slug, actor)
+    try:
+        return store.delete_slug(slug=slug, owner_key=actor.key)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc

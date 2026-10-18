@@ -7,6 +7,7 @@ from backend.tools.catalog import (
     SLACK_BOARD_WRITE_TOOLS,
     AWS_TOOLS,
     COMPANY_SCRIPT_TOOLS,
+    CONNECTOR_TOOLS,
     GIT_TOOLS,
     GOOGLE_DOC_TOOLS,
     GOOGLE_SHEET_TOOLS,
@@ -21,7 +22,7 @@ from backend.tools.catalog import (
 _TOOL_DESCRIPTIONS: dict[str, str] = {
     "get_jira_issue": "Fetch one JIRA issue by key",
     "jira_search": "Search/list JIRA issues via JQL",
-    "jira_create_issue": "Create a new JIRA issue",
+    "jira_create_issue": "Create a JIRA issue with summary plus description (Slack thread link + context)",
     "jira_assign_issue": "Assign/reassign an existing JIRA issue",
     "jira_update_issue": "Update JIRA summary/description",
     "transition_jira_issue": "Change JIRA status within project workflow",
@@ -52,11 +53,22 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
     "web_search": "Web search",
     "save_html_deck": "REQUIRED: save self-contained HTML slide deck (.alfred/exports/) — call after building HTML",
     "publish_html_artifact": "Publish HTML deck — /artifacts/s/{slug} with slug, or /artifacts/sha/{sha256} without",
+    "connector_list": "List inbound connectors (Periskope)",
+    "connector_list_chats": "List Periskope WhatsApp chats/groups",
+    "connector_list_tickets": "List Periskope WhatsApp tickets",
+    "connector_list_tasks": "List Periskope WhatsApp tasks",
+    "connector_get_messages": "Fetch Periskope WhatsApp messages (optional chat_id; start_time/end_time for a day)",
+    "connector_poll": "Poll Periskope over REST (no webhook); replicate=true creates Slack/JIRA cards",
 }
 
 
 def get_tool_description(tool_name: str) -> str:
     """One-line description for admin catalog and CLI."""
+    from_class = _class_tool_descriptions().get(tool_name)
+    if from_class:
+        # Prefer a short first sentence for planner tables.
+        first = from_class.split(". ")[0].strip()
+        return first if first else from_class
     if tool_name in _TOOL_DESCRIPTIONS:
         return _TOOL_DESCRIPTIONS[tool_name]
     # Fallback labels for tools without explicit planner descriptions
@@ -119,6 +131,22 @@ def _artifact_manifest_section(allowed: list[str]) -> list[str]:
     return lines
 
 
+def _class_tool_descriptions() -> dict[str, str]:
+    try:
+        from backend.tools.base.discover import iter_tool_bundles
+
+        merged: dict[str, str] = {}
+        for bundle in iter_tool_bundles():
+            merged.update(bundle.descriptions())
+        return merged
+    except Exception:
+        return {}
+
+
+def _tool_line_desc(tool_name: str) -> str:
+    return _class_tool_descriptions().get(tool_name) or _TOOL_DESCRIPTIONS.get(tool_name, "")
+
+
 def _group_tools(tool_names: list[str]) -> dict[str, list[str]]:
     groups: dict[str, list[str]] = {}
     for name in sorted(tool_names):
@@ -141,7 +169,7 @@ def format_tool_catalog_for_planner(
     for domain, domain_tools in sorted(_group_tools(names).items()):
         lines.append(f"### {domain}")
         for tool in domain_tools:
-            desc = _TOOL_DESCRIPTIONS.get(tool, "See tool schema")
+            desc = _tool_line_desc(tool) or "See tool schema"
             lines.append(f"- `{tool}` — {desc}")
         lines.append("")
     return "\n".join(lines).strip()
@@ -172,7 +200,7 @@ def format_tool_manifest(
         lines.append("")
         lines.append(f"**{label}:**")
         for name in sorted(names):
-            desc = _TOOL_DESCRIPTIONS.get(name, "")
+            desc = _tool_line_desc(name)
             suffix = f" — {desc}" if desc else ""
             lines.append(f"- `{name}`{suffix}")
 
@@ -182,7 +210,7 @@ def format_tool_manifest(
         _append_tools("Other", other_tools)
     if not read_tools and not write_tools and not other_tools:
         for name in allowed:
-            desc = _TOOL_DESCRIPTIONS.get(name, "")
+            desc = _tool_line_desc(name)
             suffix = f" — {desc}" if desc else ""
             lines.append(f"- `{name}`{suffix}")
 
@@ -214,7 +242,7 @@ def format_tool_manifest(
 
 def all_plannable_tool_names() -> list[str]:
     """Canonical names used when building planner catalog."""
-    from backend.tools.catalog import ARTIFACT_TOOLS
+    from backend.tools.catalog import ARTIFACT_TOOLS, SCHEDULE_TOOLS
 
     return sorted(
         JIRA_TOOLS
@@ -226,5 +254,7 @@ def all_plannable_tool_names() -> list[str]:
         | AWS_TOOLS
         | WEB_TOOLS
         | COMPANY_SCRIPT_TOOLS
+        | CONNECTOR_TOOLS
+        | SCHEDULE_TOOLS
         | ARTIFACT_TOOLS
     )

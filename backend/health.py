@@ -230,6 +230,15 @@ def check_web_search(config: AlfredConfig, *, live: bool = False) -> dict:
         return {"ok": False, "message": str(exc)}
 
 
+def check_periskope(config: AlfredConfig) -> dict:
+    from backend.integrations.platform.registry import get_connector
+
+    connector = get_connector("periskope")
+    if connector is None:
+        return {"ok": False, "message": "Periskope connector is not registered"}
+    return connector.health_check(config)
+
+
 def check_ai(config: AlfredConfig, provider: str | None = None, *, data_dir=None) -> dict:
     pass
 
@@ -260,12 +269,13 @@ def run_all_checks(config: AlfredConfig, *, data_dir: Path | None = None) -> dic
         "jira": check_jira(config),
         "google": check_google(config),
         "web_search": check_web_search(config),
+        "periskope": check_periskope(config),
         "ai": check_ai(config, data_dir=data_dir),
     }
 
 
 INTEGRATION_HEALTH_CHECKS = frozenset(
-    {"slack", "git", "aws", "jira", "google", "web_search"},
+    {"slack", "git", "aws", "jira", "google", "web_search", "periskope"},
 )
 
 
@@ -288,4 +298,6 @@ def run_integration_check(
         return check_google(config)
     if name == "web_search":
         return check_web_search(config, live=True)
+    if name == "periskope":
+        return check_periskope(config)
     raise ValueError(f"Unknown integration: {name}")

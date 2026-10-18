@@ -11,9 +11,15 @@ trigger_keywords:
 allowed_channels:
   - "*"
 requires_thread_context: false
+allowed_capabilities:
+  - artifact.write.deck
 allowed_tools:
   - save_html_deck
   - publish_html_artifact
+workflow_chain:
+  - save_html_deck
+  - publish_html_artifact
+use_workflow_chain: true
 ---
 
 # HTML Slides
@@ -24,7 +30,7 @@ Build a **single self-contained HTML file** when the user provides data, metrics
 
 **Start from the template shell** — copy the full `<style>`, body structure, and navigation `<script>` from `backend/static/artifacts/slide-template.html` **verbatim**, then replace slide content only. Alfred repairs broken decks at save/serve time, but following the shell avoids layout bugs (oversized logos, footer text in slide body, empty viewport).
 
-**Company branding:** Alfred injects configured company name (**exact casing**, e.g. `FlexyPe`), logo, and accent colors from admin **Company profile** / `branding.slide_accent` at save/publish time. Company accent **overrides** default palette when set.
+**Company branding:** Alfred injects configured company name (**exact casing** from admin), logo, and accent colors from admin **Company profile** / `branding.slide_accent` at save/publish time. Company accent **overrides** default palette when set.
 
 ## When to use
 

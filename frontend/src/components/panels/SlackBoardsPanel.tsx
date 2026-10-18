@@ -103,6 +103,8 @@ export function SlackBoardsPanel() {
             status_column: record.columns?.status,
             details_column: record.columns?.details,
             display_id_column: record.columns?.display_id,
+            persona_prompt: record.persona_prompt || "",
+            docs_search_enabled: Boolean(record.docs_search_enabled),
           }
         : {
             board_key: "",
@@ -111,6 +113,8 @@ export function SlackBoardsPanel() {
             default_status: "Not picked",
             enabled: true,
             auto_approve_writes: false,
+            persona_prompt: "",
+            docs_search_enabled: false,
             title_column: "Name",
             status_column: "Status",
             details_column: "Ticket Details",
@@ -140,6 +144,8 @@ export function SlackBoardsPanel() {
         default_status: values.default_status,
         auto_approve_writes: values.auto_approve_writes,
         enabled: values.enabled,
+        persona_prompt: values.persona_prompt || "",
+        docs_search_enabled: Boolean(values.docs_search_enabled),
         columns: {
           title: values.title_column,
           status: values.status_column,
@@ -301,6 +307,38 @@ export function SlackBoardsPanel() {
       render: (v: boolean) => <Tag color={v ? "success" : "default"}>{v ? "yes" : "no"}</Tag>,
     },
     {
+      title: "Docs",
+      dataIndex: "docs_search_enabled",
+      width: 90,
+      render: (v: boolean, record) => (
+        <Switch
+          checked={Boolean(v)}
+          onChange={async (on) => {
+            try {
+              await api.updateSlackBoardBinding(record.id, { docs_search_enabled: on });
+              notify("success", on ? "Docs search on — Alfred answers questions in this channel." : "Docs search off.");
+              refresh();
+            } catch (err: unknown) {
+              const message = err instanceof Error ? err.message : String(err);
+              notify("error", message);
+            }
+          }}
+        />
+      ),
+    },
+    {
+      title: "Persona",
+      dataIndex: "persona_prompt",
+      width: 90,
+      ellipsis: true,
+      render: (v: string) =>
+        v?.trim() ? (
+          <Tag color="purple">set</Tag>
+        ) : (
+          <Typography.Text type="secondary">—</Typography.Text>
+        ),
+    },
+    {
       title: "",
       width: 180,
       render: (_, record) => (
@@ -424,6 +462,10 @@ export function SlackBoardsPanel() {
             <>
               Link: <code>@alfred link board to F…</code> · Unlink: <code>@alfred unlink</code> ·
               Config: <code>@alfred show board config</code>
+              <br />
+              Per-channel <strong>persona</strong> is set on Edit. Turn <strong>Docs</strong> on
+              in the table to answer questions in that channel without @alfred (from the synced
+              docs repo, in the thread).
             </>
           }
         />
@@ -529,7 +571,7 @@ export function SlackBoardsPanel() {
         onCancel={() => setBoardModalOpen(false)}
         onOk={saveBoard}
         confirmLoading={saving}
-        width={640}
+        width={720}
       >
         <Form form={boardForm} layout="vertical">
           <Form.Item name="channel_id" label="Slack channel id" rules={[{ required: true }]}>
@@ -570,7 +612,30 @@ export function SlackBoardsPanel() {
           <Form.Item name="display_id_column" label="Display id column (optional)">
             <Input placeholder="Leave empty to skip writing TS-N to list" />
           </Form.Item>
-          <Form.Item name="auto_approve_writes" label="Auto-approve board writes" valuePropName="checked">
+          <Form.Item
+            name="auto_approve_writes"
+            label="Auto-approve board writes"
+            extra="Skip yes/proceed for Slack List writes and creating the matching JIRA issue in this channel."
+            valuePropName="checked"
+          >
+            <Switch />
+          </Form.Item>
+          <Form.Item
+            name="persona_prompt"
+            label="Channel persona"
+            extra="Extra instruction prepended so Alfred routes and answers correctly in this channel (for example: this is billing support, prefer invoice runbooks)."
+          >
+            <Input.TextArea
+              rows={4}
+              placeholder="You are answering in #billing. Prefer invoice and settlement docs. Do not create tickets unless asked."
+            />
+          </Form.Item>
+          <Form.Item
+            name="docs_search_enabled"
+            label="Docs search (debug flow)"
+            extra="When on, messages in this channel (without @alfred) search the synced docs repo and Alfred replies in the thread. Board/JIRA create still requires @alfred."
+            valuePropName="checked"
+          >
             <Switch />
           </Form.Item>
           <Form.Item name="enabled" label="Enabled" valuePropName="checked">

@@ -116,6 +116,16 @@ def needs_context_refresh(intent: str, *, has_session: bool) -> bool:
         + _LOOKUP_MARKERS,
     ):
         return True
+    from backend.routing.jira.intent import (
+        looks_like_jira_create_followup,
+        looks_like_jira_create_request,
+        looks_like_jira_update_request,
+    )
+
+    if looks_like_jira_create_request(intent) or looks_like_jira_create_followup(intent):
+        return True
+    if looks_like_jira_update_request(intent):
+        return True
     return False
 
 

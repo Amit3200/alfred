@@ -123,6 +123,24 @@ export type AlfredConfig = {
     assignee_map?: Record<string, string>;
     project_issue_types?: Record<string, string>;
   };
+  connectors?: {
+    periskope?: {
+      enabled: boolean;
+      base_url: string;
+      org_phone: string;
+      allowed_chat_ids: string[];
+      slack_channel_id: string;
+      summary_channel_id: string;
+      summary_timezone: string;
+      replicate_tickets: boolean;
+      replicate_tasks: boolean;
+      ticket_create_target: "slack_board" | "jira" | "both";
+      slack_board_key: string;
+      jira_project: string;
+      ticket_summary_prompt?: string;
+      sync_on_update: boolean;
+    };
+  };
   google: {
     enabled: boolean;
     oauth_redirect_base_url: string;
@@ -192,6 +210,7 @@ export type AlfredConfig = {
     google_credentials_type?: string | null;
     google_oauth_connected?: boolean;
     web_search_api_key?: boolean;
+    connectors?: Record<string, Record<string, boolean>>;
     server_admin_token: boolean;
     ai_api_keys: Record<string, boolean>;
   };
@@ -219,6 +238,7 @@ export type SecretsPayload = {
   google_credentials_json?: string;
   google_oauth_refresh_token?: string;
   web_search_api_key?: string;
+  connectors?: Record<string, Record<string, string>>;
   server_admin_token?: string;
   ai_api_keys?: Record<string, string>;
 };
@@ -818,6 +838,8 @@ export const api = {
   listScripts: () => request<ScriptsListResponse>("/api/scripts", {}, true),
   syncScripts: () =>
     request<ScriptsSyncResponse>("/api/scripts/sync", { method: "POST" }, true),
+  setupScripts: () =>
+    request<ScriptsSyncResponse>("/api/scripts/setup", { method: "POST" }, true),
 
   getIntegrationSyncStatus: () =>
     request<IntegrationSyncStatusResponse>("/api/integrations/sync/status", {}, true),
@@ -834,6 +856,15 @@ export const api = {
         method: "POST",
         body: JSON.stringify({ apply_assignee_map: applyAssigneeMap }),
       },
+      true,
+    ),
+  pollConnector: (
+    connectorId: string,
+    body: { replicate?: boolean; kinds?: string[]; limit?: number } = {},
+  ) =>
+    request<ConnectorPollResponse>(
+      `/api/integrations/sync/connectors/${encodeURIComponent(connectorId)}`,
+      { method: "POST", body: JSON.stringify(body) },
       true,
     ),
 
@@ -887,6 +918,20 @@ export const api = {
     request<ArtifactVersionResponse>(
       `/api/artifacts/${encodeURIComponent(slug)}`,
       { headers: getArtifactActorHeaders() },
+      true,
+    ),
+
+  deleteArtifactVersion: (slug: string, sha256: string) =>
+    request<{ ok: boolean; slug: string; slug_removed: boolean; deleted_sha256: string }>(
+      `/api/artifacts/${encodeURIComponent(slug)}/versions/${encodeURIComponent(sha256)}`,
+      { method: "DELETE", headers: getArtifactActorHeaders() },
+      true,
+    ),
+
+  deleteArtifactSlug: (slug: string) =>
+    request<{ ok: boolean; slug: string; slug_removed: boolean }>(
+      `/api/artifacts/${encodeURIComponent(slug)}`,
+      { method: "DELETE", headers: getArtifactActorHeaders() },
       true,
     ),
 
@@ -1485,6 +1530,8 @@ export type SlackBoardBinding = {
   auto_approve_writes: boolean;
   columns: SlackBoardColumnMap;
   enabled: boolean;
+  persona_prompt: string;
+  docs_search_enabled: boolean;
   created_at: number;
   updated_at: number;
 };
@@ -1501,6 +1548,8 @@ export type SlackBoardBindingInput = {
   auto_approve_writes?: boolean;
   columns?: Partial<SlackBoardColumnMap>;
   enabled?: boolean;
+  persona_prompt?: string;
+  docs_search_enabled?: boolean;
 };
 
 export type SlackBoardBindingsResponse = {
@@ -1593,6 +1642,37 @@ export type IntegrationSyncStatusResponse = {
     matched_jira?: number;
     assignee_suggestions?: number;
   };
+  connectors?: Record<
+    string,
+    {
+      last_sync_at?: string;
+      ticket_count?: number;
+      task_count?: number;
+      chat_count?: number;
+      applied?: number;
+      created?: number;
+      replicate?: boolean;
+    }
+  >;
+};
+
+export type ConnectorPollResponse = {
+  ok: boolean;
+  connector_id?: string;
+  replicate?: boolean;
+  preview?: {
+    tickets?: Array<{ external_id?: string; title?: string; status?: string; chat_name?: string }>;
+    tasks?: Array<{ external_id?: string; title?: string; status?: string }>;
+    chats?: Array<{ chat_id?: string; chat_name?: string; chat_type?: string }>;
+    ticket_count?: number;
+    task_count?: number;
+    chat_count?: number;
+  };
+  applied?: number;
+  created?: number;
+  already_mapped?: number;
+  errors?: string[];
+  error?: string;
 };
 
 export type SlackUsersSyncResponse = {
@@ -1665,6 +1745,8 @@ export type ArtifactSummary = {
   sha_url: string;
   owner_key?: string;
   owner_label?: string;
+  version_count?: number;
+  source?: string;
 };
 
 export type ArtifactListResponse = {

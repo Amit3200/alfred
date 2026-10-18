@@ -117,7 +117,7 @@ def docs_only_query(query: str) -> bool:
 
 
 def knowledge_doc_repo_slugs(config: AlfredConfig, data_dir: Path) -> list[str]:
-    """Documentation-role repos only (e.g. FlexyPe/docs)."""
+    """Documentation-role repos only (e.g. Acme/docs)."""
     slugs: list[str] = []
     for slug in list_configured_repos(config.git):
         profile = profile_for_repo(config.git, slug)
@@ -131,7 +131,7 @@ def knowledge_doc_repo_slugs(config: AlfredConfig, data_dir: Path) -> list[str]:
 
 
 def knowledge_tech_doc_repo_slugs(config: AlfredConfig, data_dir: Path) -> list[str]:
-    """Code-role repos with indexed playbooks/runbooks (e.g. FlexyPe/cipher)."""
+    """Code-role repos with indexed playbooks/runbooks (e.g. Acme/app)."""
     slugs: list[str] = []
     main = resolve_main_repo(config.git)
     for slug in list_configured_repos(config.git):
@@ -145,7 +145,7 @@ def knowledge_tech_doc_repo_slugs(config: AlfredConfig, data_dir: Path) -> list[
         tag_set = {t.strip().lower() for t in (profile.tags if profile else []) if t.strip()}
         if profile and profile.role == "code":
             slugs.append(slug)
-        elif tag_set & {"playbook", "runbook", "tech", "cipher", "code"}:
+        elif tag_set & {"playbook", "runbook", "tech", "code"}:
             slugs.append(slug)
         elif main and slug == main:
             slugs.append(slug)

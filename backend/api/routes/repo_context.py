@@ -105,7 +105,14 @@ def build_context_after_sync(
 
     if main and main in synced_ok:
         try:
-            manifest = generate_repo_context(manager.data_dir, config.git, repo=main, ai=config.ai)
+            already_graphified = any(entry["repo"] == main and entry.get("graphify") for entry in repo_results)
+            manifest = generate_repo_context(
+                manager.data_dir,
+                config.git,
+                repo=main,
+                ai=config.ai,
+                run_graphify=not already_graphified,
+            )
             for entry in repo_results:
                 if entry["repo"] == main:
                     entry["context"] = True

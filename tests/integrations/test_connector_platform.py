@@ -1,0 +1,441 @@
+"""Connector platform HMAC and Periskope webhook normalization."""
+
+from __future__ import annotations
+
+import json
+
+from backend.integrations.periskope.normalize import entity_from_ticket, parse_webhook_body
+from backend.integrations.platform.hmac import hmac_sha256_hex, verify_hmac_sha256
+from backend.integrations.platform.store import ConnectorSyncStore
+
+
+def test_hmac_accepts_raw_body():
+    body = b'{"event_type":"ticket.created"}'
+    secret = "s3cret"
+    signature = hmac_sha256_hex(secret, body)
+    assert verify_hmac_sha256(secret=secret, body=body, signature=signature)
+
+
+def test_hmac_accepts_compact_json():
+    payload = {"event_type": "ticket.created", "data": {"ticket_id": "T-1"}}
+    body = json.dumps(payload).encode("utf-8")
+    compact = json.dumps(payload, separators=(",", ":"), ensure_ascii=False).encode("utf-8")
+    secret = "s3cret"
+    signature = hmac_sha256_hex(secret, compact)
+    assert verify_hmac_sha256(secret=secret, body=body, signature=signature, payload=payload)
+
+
+def test_ticket_entity_from_periskope_payload():
+    entity = entity_from_ticket(
+        {
+            "chat": {"chat_id": "1203@g.us", "chat_name": "Everaw"},
+            "ticket": {
+                "ticket_id": "BKT-001",
+                "subject": "COD failing",
+                "status": "open",
+                "priority": 3,
+                "assignee": "azeem@example.com",
+                "ticket_labels": "p0, checkout",
+            },
+            "message": {"body": "customer cannot pay"},
+        }
+    )
+    assert entity is not None
+    assert entity.external_id == "BKT-001"
+    assert entity.title == "COD failing"
+    assert entity.priority == "High"
+    assert entity.chat_id == "1203@g.us"
+    assert "customer cannot pay" in entity.description
+    assert entity.mapping_key() == "periskope:ticket:BKT-001"
+
+
+def test_ticket_title_ignores_whatsapp_id_dump():
+    from backend.integrations.periskope.copy import announce_blocks, list_item_details, ticket_title
+    from backend.integrations.platform.types import ExternalEntity
+
+    dump = "{'from_me': False, 'id': '3B17671FEC68FF23E656', 'remote': '120363410912716439@g.us', 'serialized': 'false_120363410912716439@g.us_3B17671FEC68F'}"
+    entity = entity_from_ticket(
+        {
+            "chat": {"chat_id": "120363410912716439@g.us", "chat_name": "FP - Periskope testing group"},
+            "ticket": {"ticket_id": "FLE-026", "subject": dump, "priority": 2, "status": "open"},
+            "message": {"id": {"from_me": False, "remote": "120363410912716439@g.us"}, "sender_name": "Azeem"},
+        }
+    )
+    assert entity is not None
+    assert entity.title == "WhatsApp ticket FLE-026"
+    assert "from_me" not in entity.description
+    recent = [
+        {"sender_name": "Azeem", "body": "Test 05", "from_me": False},
+        {"sender_name": "Riya", "body": "please check COD on checkout", "from_me": False},
+    ]
+    title = ticket_title(subject=dump, recent=recent, ticket_id="FLE-026")
+    assert title == "please check COD on checkout"
+    entity.title = title
+    entity.extra["raised_by"] = "Azeem"
+    entity.extra["recent_messages"] = recent
+    details = list_item_details(entity, recent)
+    assert "Raised by: Azeem" in details
+    assert "Merchant: FP - Periskope testing group" in details
+    assert "Issue:" in details
+    assert "please check COD on checkout" in details
+    assert "from_me" not in details
+    assert "Recent messages:" not in details
+    blocks = announce_blocks(
+        entity,
+        display_id="TS-2",
+        list_url="https://slack.com/lists/F1?record_id=Rec1",
+        board_name="support-tasks",
+    )
+    assert blocks[0]["type"] == "section"
+    heading = blocks[0]["text"]["text"]
+    assert "please check COD on checkout" in heading
+    assert "TS-2" in heading
+    assert "Item in support-tasks" in heading
+    field_text = " ".join(field["text"] for field in blocks[1]["fields"])
+    assert "*Severity*" in field_text
+    assert "*Submitted by*" in field_text
+    assert "Azeem" in field_text
+    assert "FP - Periskope testing group" in field_text
+    assert "Merchant:" in blocks[2]["text"]["text"]
+    assert "Issue:" in blocks[2]["text"]["text"]
+    assert blocks[3]["type"] == "actions"
+    assert blocks[3]["elements"][0]["text"]["text"] == "Open in Slack List"
+
+
+
+def test_parse_webhook_ignores_message_created():
+    body = json.dumps(
+        {
+            "event_type": "message.created",
+            "data": {"body": "hello", "chat_id": "1203@g.us"},
+        }
+    ).encode("utf-8")
+    events = parse_webhook_body(body)
+    assert len(events) == 1
+    assert events[0].entity is None
+
+
+def test_parse_webhook_ticket_created():
+    body = json.dumps(
+        {
+            "event_type": "ticket.created",
+            "data": {
+                "ticket": {"ticket_id": "BKT-002", "subject": "UPI intent", "priority": 2, "status": "open"},
+            },
+        }
+    ).encode("utf-8")
+    events = parse_webhook_body(body)
+    assert events[0].entity is not None
+    assert events[0].entity.title == "UPI intent"
+    assert events[0].needs_enrich is True
+
+
+def test_parse_webhook_accepts_event_alias_and_subject_fallback():
+    body = json.dumps(
+        {
+            "event": "ticket.created",
+            "data": {
+                "ticket": {"ticket_id": "BKT-003", "priority": 1, "status": "open"},
+                "message": {"body": "COD is stuck on checkout"},
+                "chat": {"chat_id": "1203@g.us", "chat_name": "Nmpc"},
+            },
+        }
+    ).encode("utf-8")
+    events = parse_webhook_body(body)
+    assert events[0].event_type == "ticket.created"
+    assert events[0].entity is not None
+    assert events[0].entity.title == "COD is stuck on checkout"
+    assert events[0].entity.chat_id == "1203@g.us"
+    assert events[0].needs_enrich is True
+
+
+def test_parse_webhook_message_ticket_attached():
+    body = json.dumps(
+        {
+            "event_type": "message.ticket.attached",
+            "data": {
+                "message": {"ticket_id": "FLE-024", "body": "please check COD"},
+                "chat": {"chat_id": "120363410912716439@g.us"},
+            },
+        }
+    ).encode("utf-8")
+    events = parse_webhook_body(body)
+    assert events[0].entity is not None
+    assert events[0].entity.external_id == "FLE-024"
+
+
+def test_parse_webhook_rejects_whatsapp_id_dump_as_ticket():
+    dump = {
+        "from_me": True,
+        "id": "3EB060A3EBC140239A7A57",
+        "remote": "120363410912716439@g.us",
+        "serialized": "true_120363410912716439@g.us_3EB060A3EBC140239A7A57",
+    }
+    body = json.dumps(
+        {
+            "event_type": "message.ticket.attached",
+            "data": {"id": dump, "chat": {"chat_id": "120363410912716439@g.us"}},
+        }
+    ).encode("utf-8")
+    events = parse_webhook_body(body)
+    assert events[0].entity is None
+
+    entity = entity_from_ticket({"ticket": {"id": dump, "subject": "Test 06"}, "message": {"body": dump}})
+    assert entity is None
+
+
+def test_webhook_ticket_created_is_not_dropped_by_chat_allowlist():
+    from backend.integrations.periskope.connector import PeriskopeConnector
+    from backend.integrations.platform.types import ExternalEntity
+    from backend.models.config import AlfredConfig, ConnectorsConfig, PeriskopeConfig
+
+    config = AlfredConfig(
+        connectors=ConnectorsConfig(
+            periskope=PeriskopeConfig(
+                enabled=True,
+                allowed_chat_ids=["*", "999@g.us"],
+                replicate_tickets=True,
+            )
+        )
+    )
+    entity = ExternalEntity(
+        connector_id="periskope",
+        kind="ticket",
+        external_id="FLE-024",
+        title="COD",
+        chat_id="120363410912716439@g.us",
+    )
+    connector = PeriskopeConnector()
+    assert connector.accepts(config, entity) is True
+
+    blocked = AlfredConfig(
+        connectors=ConnectorsConfig(
+            periskope=PeriskopeConfig(enabled=True, replicate_tickets=False)
+        )
+    )
+    assert connector.accepts(blocked, entity) is False
+    assert connector.reject_reason(blocked, entity) == "replicate_disabled"
+
+
+def test_star_allowlist_means_all_chats():
+    from backend.integrations.periskope.connector import _allow_entity, _allowed_chat_ids
+    from backend.integrations.platform.types import ExternalEntity
+    from backend.models.config import AlfredConfig, ConnectorsConfig, PeriskopeConfig
+
+    config = AlfredConfig(
+        connectors=ConnectorsConfig(periskope=PeriskopeConfig(allowed_chat_ids=["*"]))
+    )
+    assert _allowed_chat_ids(config) == set()
+    entity = ExternalEntity(
+        connector_id="periskope",
+        kind="ticket",
+        external_id="FLE-1",
+        title="x",
+        chat_id="1203@g.us",
+    )
+    assert _allow_entity(config, entity, enforce_chat_allowlist=True) is True
+
+
+def test_connector_sync_store_roundtrip(tmp_path):
+    store = ConnectorSyncStore(tmp_path)
+    store.put("periskope:ticket:BKT-001", {"slack_record_id": "Rec123", "jira_key": "TS-9"})
+    row = store.get("periskope:ticket:BKT-001")
+    assert row is not None
+    assert row["slack_record_id"] == "Rec123"
+    assert row["jira_key"] == "TS-9"
+
+
+def test_webhook_rejects_unknown_connector_and_bad_signature(tmp_path):
+    from backend.config_manager import ConfigManager
+    from backend.integrations.platform.webhook import process_connector_webhook
+
+    manager = ConfigManager(tmp_path / "alfred")
+    manager.init()
+    unknown = process_connector_webhook(
+        "missing",
+        headers={},
+        body=b"{}",
+        manager=manager,
+    )
+    assert unknown["status_code"] == 404
+
+    config, secrets = manager.load_merged()
+    config.connectors.periskope.enabled = True
+    secrets.connectors = {"periskope": {"api_token": "tok", "webhook_secret": "hook"}}
+    manager.save_merged(config, secrets)
+
+    bad = process_connector_webhook(
+        "periskope",
+        headers={"x-periskope-signature": "deadbeef"},
+        body=b'{"event_type":"ticket.created"}',
+        manager=manager,
+    )
+    assert bad["status_code"] == 401
+
+    payload = {"event_type": "message.created", "data": {"body": "hi"}}
+    raw = json.dumps(payload).encode("utf-8")
+    ok = process_connector_webhook(
+        "periskope",
+        headers={"x-periskope-signature": hmac_sha256_hex("hook", raw)},
+        body=raw,
+        manager=manager,
+    )
+    assert ok["ok"] is True
+    assert ok["applied"] == 0
+    assert ok["skipped"][0]["event_type"] == "message.created"
+    assert ok["skipped"][0]["reason"] == "ignored_event"
+
+
+def test_connector_tools_register_when_enabled():
+    from backend.models.config import AlfredConfig, ConnectorsConfig, PeriskopeConfig
+    from backend.tools.builder import build_tool_registry
+
+    config = AlfredConfig(
+        connectors=ConnectorsConfig(periskope=PeriskopeConfig(enabled=True, org_phone="9198")),
+    )
+    registry = build_tool_registry(config)
+    assert "connector_list_tickets" in registry._tools
+    assert "connector_get_messages" in registry._tools
+    assert "connector_poll" in registry._tools
+
+
+def test_connector_tools_register_when_disabled():
+    from backend.models.config import AlfredConfig
+    from backend.tools.builder import build_tool_registry
+
+    registry = build_tool_registry(AlfredConfig(), allowed_tools=["connector_list_chats"])
+    assert "connector_list_chats" in registry._tools
+
+
+def test_poll_preview_does_not_replicate(tmp_path, monkeypatch):
+    from backend.integrations.platform.poll import poll_connector
+    from backend.integrations.platform.types import ExternalEntity
+    from backend.models.config import AlfredConfig
+    from unittest.mock import MagicMock
+
+    entity = ExternalEntity(
+        connector_id="periskope",
+        kind="ticket",
+        external_id="BKT-1",
+        title="COD failing",
+    )
+    fake = MagicMock()
+    fake.enabled.return_value = True
+    fake.accepts.return_value = True
+    fake.list_tickets.return_value = [entity]
+    fake.list_tasks.return_value = []
+    fake.replica_targets.return_value = ("slack_board",)
+
+    monkeypatch.setattr("backend.integrations.platform.poll.get_connector", lambda _id: fake)
+    called = {"apply": 0}
+
+    def _boom(*_args, **_kwargs):
+        called["apply"] += 1
+        raise AssertionError("preview must not replicate")
+
+    monkeypatch.setattr("backend.integrations.platform.poll.apply_entity", _boom)
+    result = poll_connector("periskope", AlfredConfig(), data_dir=tmp_path, replicate=False)
+    assert result["ok"] is True
+    assert result["preview"]["ticket_count"] == 1
+    assert result["applied"] == 0
+    assert called["apply"] == 0
+
+
+def test_poll_replicate_calls_apply_entity(tmp_path, monkeypatch):
+    from backend.integrations.platform.poll import poll_connector
+    from backend.integrations.platform.types import ExternalEntity
+    from backend.models.config import AlfredConfig
+    from unittest.mock import MagicMock
+
+    entity = ExternalEntity(
+        connector_id="periskope",
+        kind="ticket",
+        external_id="BKT-2",
+        title="Refund delay",
+    )
+    fake = MagicMock()
+    fake.enabled.return_value = True
+    fake.accepts.return_value = True
+    fake.list_tickets.return_value = [entity]
+    fake.list_tasks.return_value = []
+    fake.replica_targets.return_value = ("slack_board",)
+    fake.enrich.side_effect = lambda _config, ent, **_kwargs: ent
+
+    monkeypatch.setattr("backend.integrations.platform.poll.get_connector", lambda _id: fake)
+    applied = []
+
+    def _apply(ent, config, *, data_dir, targets):
+        applied.append((ent.external_id, targets))
+        return {"ok": True, "targets": {"slack_board": {"status": "created"}}}
+
+    monkeypatch.setattr("backend.integrations.platform.poll.apply_entity", _apply)
+    result = poll_connector("periskope", AlfredConfig(), data_dir=tmp_path, replicate=True)
+    assert result["ok"] is True
+    assert result["created"] == 1
+    assert applied == [("BKT-2", ("slack_board",))]
+
+
+def test_resolve_connector_board_uses_configured_channel(tmp_path):
+    from backend.db.slack_workflows_db import db_create_board_binding
+    from backend.integrations.platform.actions import resolve_connector_board
+    from backend.models.config import AlfredConfig, PeriskopeConfig, SlackConfig
+
+    db_create_board_binding(tmp_path, board_key="other", list_id="Fother", channel_id="Cother")
+    db_create_board_binding(tmp_path, board_key="tech", list_id="Ftech", channel_id="Ctech")
+    config = AlfredConfig(slack=SlackConfig(enabled=True))
+    board, channel = resolve_connector_board(
+        config,
+        tmp_path,
+        PeriskopeConfig(slack_channel_id="Ctech"),
+    )
+    assert channel == "Ctech"
+    assert board is not None
+    assert board.name == "tech"
+    assert board.list_id == "Ftech"
+
+
+def test_resolve_connector_board_falls_back_to_summary_channel(tmp_path):
+    from backend.db.slack_workflows_db import db_create_board_binding
+    from backend.integrations.platform.actions import resolve_connector_board
+    from backend.models.config import AlfredConfig, PeriskopeConfig, SlackConfig
+
+    db_create_board_binding(tmp_path, board_key="tech", list_id="Ftech", channel_id="Ctech")
+    config = AlfredConfig(slack=SlackConfig(enabled=True))
+    board, channel = resolve_connector_board(
+        config,
+        tmp_path,
+        PeriskopeConfig(summary_channel_id="Ctech"),
+    )
+    assert channel == "Ctech"
+    assert board is not None
+    assert board.list_id == "Ftech"
+
+
+def test_resolve_connector_board_missing_channel_is_empty(tmp_path):
+    from backend.db.slack_workflows_db import db_create_board_binding
+    from backend.integrations.platform.actions import resolve_connector_board
+    from backend.models.config import AlfredConfig, PeriskopeConfig, SlackConfig
+
+    db_create_board_binding(tmp_path, board_key="tech", list_id="Ftech", channel_id="Ctech")
+    config = AlfredConfig(slack=SlackConfig(enabled=True))
+    board, channel = resolve_connector_board(config, tmp_path, PeriskopeConfig())
+    assert channel == ""
+    assert board is None
+
+
+def test_create_slack_board_item_requires_channel(tmp_path):
+    import pytest
+
+    from backend.integrations.platform.actions import _create_slack_board_item
+    from backend.integrations.platform.types import ExternalEntity
+    from backend.models.config import AlfredConfig, ConnectorsConfig, PeriskopeConfig
+
+    entity = ExternalEntity(
+        connector_id="periskope",
+        kind="ticket",
+        external_id="BKT-9",
+        title="Needs a channel",
+    )
+    config = AlfredConfig(connectors=ConnectorsConfig(periskope=PeriskopeConfig(enabled=True)))
+    with pytest.raises(RuntimeError, match="No Slack channel"):
+        _create_slack_board_item(config, tmp_path, entity)

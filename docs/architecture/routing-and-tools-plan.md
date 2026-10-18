@@ -126,7 +126,7 @@ Each turn gets a **ContextEnvelope**: only data fetched or verified for this int
 Every routed task produces a **GoalSpec** (what done looks like) validated before and after tool runs. Summaries must cite tool result IDs, not memory.
 
 ### P7 — Generic by default
-Bundled skills in `skills/` are templates. Company playbooks in `.alfred/playbooks/` override triggers and procedures. No FlexyPe-specific strings in core routing.
+Bundled skills in `skills/` are templates. Company playbooks in `.alfred/playbooks/` override triggers and procedures. No company-specific strings in core routing.
 
 ---
 
@@ -338,7 +338,7 @@ Examples that should NOT direct-route (need LLM planning):
 **Remove / consolidate:**
 
 - Duplicate `create_pr` checks in engine + heuristics
-- FlexyPe-specific git hints ("cipher repo") → config `git.repo_aliases`
+- Company-specific git hints ("app repo") → config `git.repo_aliases`
 - Separate `jira_management` vs `jira_ticket` ambiguity → unified `jira` skill with intent-based tool subsets
 
 ---
@@ -794,8 +794,8 @@ repo_knowledge:
 | `#tech-support` channel hint | `jira.channel_projects` |
 | `TECH-SUPPORT` board name handling | `jira.project_aliases.TECH-SUPPORT` |
 | TS issue type = Task | `jira.project_issue_types.TS` |
-| "cipher repo" git hint | `git.repo_aliases` |
-| FlexyPe loading messages | `slack.loading_messages` (already config) |
+| Company git nicknames | `git.repo_aliases` |
+| Company loading messages | `slack.loading_messages` (already config) |
 | `list_jira_sync.jira_project` default `TS` | Remove default; require explicit config |
 
 ---

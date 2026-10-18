@@ -23,7 +23,11 @@ from backend.integrations.company_scripts.filesystem import (
     scripts_root,
     write_script_file,
 )
-from backend.integrations.company_scripts.sync import load_scripts_sync_state, sync_scripts_repository
+from backend.integrations.company_scripts.sync import (
+    load_scripts_sync_state,
+    setup_scripts_dependencies,
+    sync_scripts_repository,
+)
 from backend.paths import bundled_scripts_examples_dir
 
 router = APIRouter(prefix="/scripts", tags=["scripts"])
@@ -83,6 +87,16 @@ def sync_scripts(manager: ConfigManager = Depends(require_admin)) -> dict[str, A
     result = sync_scripts_repository(config, manager.data_dir)
     if not result.get("ok") and not result.get("skipped"):
         raise HTTPException(status_code=400, detail=result.get("message") or "Scripts sync failed")
+    return result
+
+
+@router.post("/setup")
+def setup_scripts(manager: ConfigManager = Depends(require_admin)) -> dict[str, Any]:
+    """Install remote script Python deps without requiring a full git pull."""
+    config, _ = manager.load_merged()
+    result = setup_scripts_dependencies(config, manager.data_dir, pull=False)
+    if not result.get("ok") and not result.get("skipped"):
+        raise HTTPException(status_code=400, detail=result.get("message") or "Scripts setup failed")
     return result
 
 

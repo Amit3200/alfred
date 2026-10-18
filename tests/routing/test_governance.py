@@ -1,0 +1,350 @@
+"""Tests for governance policies, confirmation UX, registry wiring, and audit log."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+
+from backend.ai.base import ToolSchema
+from backend.governance.audit import get_audit_store
+from backend.governance.confirmation import (
+    approval_metadata_patch,
+    is_confirmation_only,
+    is_confirmation_phrase,
+    session_has_write_approval,
+)
+from backend.governance.context import GovernanceContext
+from backend.models.config import AlfredConfig, GovernanceConfig, JiraConfig, SlackConfig, SlackListJiraSyncConfig
+from backend.models.session import ConversationSession
+from backend.models.task import Task
+from backend.tools.registry import ToolRegistry
+from backend.tools.result import ToolResult
+
+
+def _task(**overrides: object) -> Task:
+    base = {
+        "source": "slack",
+        "user_id": "U123",
+        "channel_id": "C456",
+        "thread_ts": "111.222",
+        "raw_text": "fix bug",
+        "cleaned_intent": "fix bug",
+    }
+    base.update(overrides)
+    return Task(**base)  # type: ignore[arg-type]
+
+
+def _config(**gov_overrides: object) -> AlfredConfig:
+    gov = GovernanceConfig(**gov_overrides)  # type: ignore[arg-type]
+    return AlfredConfig(governance=gov)
+
+
+def test_confirmation_phrase_detection():
+    config = _config()
+    gov = config.governance
+    assert is_confirmation_phrase("yes, proceed", gov)
+    assert is_confirmation_phrase("@alfred yes proceed", gov)
+    assert is_confirmation_only("yes, proceed", gov)
+    assert not is_confirmation_phrase("fix the null pointer", gov)
+
+
+def test_policy_blocks_channel(tmp_path: Path):
+    config = _config(write_blocked_channels=["C456"])
+    task = _task()
+    ctx = GovernanceContext(config, task, data_dir=tmp_path)
+    blocked = ctx.check_before_run("write_file", {"path": "src/a.py", "repo": "org/r"})
+    assert blocked is not None
+    assert "blocked" in blocked.data["message"].lower()
+
+
+def test_policy_blocks_unauthorized_user(tmp_path: Path):
+    config = _config(write_allowed_users=["U999"])
+    task = _task(user_id="U123")
+    ctx = GovernanceContext(config, task, data_dir=tmp_path)
+    blocked = ctx.check_before_run("git_commit", {"repo": "org/r", "message": "fix"})
+    assert blocked is not None
+    assert "not authorized" in blocked.data["message"].lower()
+
+
+def test_staging_write_skips_confirmation(tmp_path: Path):
+    config = _config()
+    task = _task()
+    ctx = GovernanceContext(config, task, data_dir=tmp_path)
+    assert ctx.check_before_run("write_file", {"path": "src/a.py", "repo": "org/r"}) is None
+    assert ctx.check_before_run("git_commit", {"repo": "org/r", "message": "fix"}) is None
+
+
+def test_publish_tools_require_confirmation(tmp_path: Path):
+    config = _config()
+    task = _task()
+    ctx = GovernanceContext(config, task, data_dir=tmp_path)
+    blocked = ctx.check_before_run(
+        "create_pull_request",
+        {"repo": "org/r", "title": "Fix", "head": "alfred/x", "base": "main"},
+    )
+    assert blocked is not None
+    assert "requires explicit approval" in blocked.data["message"]
+
+
+def test_auto_approve_tools_skips_jira_create_confirmation(tmp_path: Path):
+    config = _config(auto_approve_tools=["jira_create_issue"])
+    task = _task()
+    ctx = GovernanceContext(config, task, data_dir=tmp_path)
+    assert ctx.check_before_run(
+        "jira_create_issue",
+        {"project": "TECH-SUPPORT", "summary": "Bug", "issue_type": "Bug"},
+    ) is None
+
+
+def test_explicit_jira_create_skips_confirmation(tmp_path: Path):
+    config = _config()
+    task = _task(
+        raw_text="@alfred create the same task on JIRA on TECH board",
+        cleaned_intent="create the same task on JIRA on TECH board",
+    )
+    ctx = GovernanceContext(config, task, data_dir=tmp_path)
+    assert ctx.check_before_run(
+        "jira_create_issue",
+        {"project": "TECH", "summary": "Show COD disable reason", "issue_type": "Task"},
+    ) is None
+
+
+def test_explicit_jira_update_skips_confirmation(tmp_path: Path):
+    config = _config()
+    task = _task(
+        raw_text="please modify TECH 363 with proper details",
+        cleaned_intent="please modify TECH 363 with proper details",
+    )
+    ctx = GovernanceContext(config, task, data_dir=tmp_path)
+    assert ctx.check_before_run(
+        "jira_update_issue",
+        {"issue_key": "TECH-363", "summary": "Prepaid discount display", "description": "Merchant Everaw"},
+    ) is None
+
+
+def test_jira_create_still_requires_confirmation_without_explicit_ask(tmp_path: Path):
+    config = _config()
+    task = _task(raw_text="what is TS-23?", cleaned_intent="what is TS-23?")
+    ctx = GovernanceContext(config, task, data_dir=tmp_path)
+    blocked = ctx.check_before_run(
+        "jira_create_issue",
+        {"project": "TECH", "summary": "Show COD disable reason", "issue_type": "Task"},
+    )
+    assert blocked is not None
+    assert "requires explicit approval" in blocked.data["message"]
+    assert "JIRA create `TECH`" in blocked.data["message"]
+
+
+def test_jira_create_confirmation_fills_persona_project(tmp_path: Path):
+    from backend.db.slack_workflows_db import db_create_board_binding
+    from backend.governance.catalog import tool_action_summary
+
+    db_create_board_binding(
+        tmp_path,
+        board_key="team-tech",
+        list_id="F0BQ0MH2LMB",
+        channel_id="C456",
+        persona_prompt="Use JIRA project=TECH when asked to create a ticket.",
+    )
+    config = AlfredConfig(
+        governance=GovernanceConfig(),
+        jira=JiraConfig(enabled=True),
+    )
+    task = _task(
+        raw_text="what is TS-23?",
+        cleaned_intent="what is TS-23?",
+    )
+    ctx = GovernanceContext(config, task, data_dir=tmp_path)
+    blocked = ctx.check_before_run(
+        "jira_create_issue",
+        {"summary": "Implement variant-based PPCOD selection", "issue_type": "Task"},
+    )
+    assert blocked is not None
+    message = blocked.data["message"]
+    assert "requires explicit approval" in message
+    assert "`TECH`" in message
+    assert " on `?`" not in message
+    assert "PPCOD" in message
+    assert "JIRA create" in tool_action_summary(
+        "jira_create_issue",
+        {"project": "TECH", "summary": "Implement variant-based PPCOD selection"},
+    )
+
+
+def test_team_tech_persona_create_task_skips_jira_confirmation(tmp_path: Path):
+    from backend.db.slack_workflows_db import db_create_board_binding
+    from tests.routing.test_create_target_precedence import TEAM_TECH_JIRA_PERSONA
+
+    db_create_board_binding(
+        tmp_path,
+        board_key="team-tech",
+        list_id="F0BQ0MH2LMB",
+        channel_id="C456",
+        persona_prompt=TEAM_TECH_JIRA_PERSONA,
+    )
+    config = AlfredConfig(
+        governance=GovernanceConfig(),
+        jira=JiraConfig(enabled=True, default_project="TECH"),
+    )
+    task = _task(
+        raw_text="@alfred create a task to have variant based PPCOD selection",
+        cleaned_intent="create a task to have variant based PPCOD selection",
+    )
+    ctx = GovernanceContext(config, task, data_dir=tmp_path)
+    assert ctx.check_before_run(
+        "jira_create_issue",
+        {"summary": "Implement variant-based PPCOD selection", "issue_type": "Task"},
+    ) is None
+
+
+def test_board_auto_approve_writes_skips_jira_create(tmp_path: Path):
+    from backend.models.config import SlackBoardProfile, SlackBoardWorkflowsConfig
+
+    config = AlfredConfig(
+        governance=GovernanceConfig(),
+        slack=SlackConfig(
+            enabled=True,
+            allowed_channels=["*"],
+            board_workflows=SlackBoardWorkflowsConfig(
+                enabled=True,
+                boards=[
+                    SlackBoardProfile(
+                        name="tech",
+                        list_id="F123",
+                        channel_ids=["C456"],
+                        auto_approve_writes=True,
+                    )
+                ],
+            ),
+        ),
+        jira=JiraConfig(enabled=True),
+    )
+    task = _task(cleaned_intent="mirror this onto the TECH board", raw_text="mirror this onto the TECH board")
+    ctx = GovernanceContext(config, task, data_dir=tmp_path)
+    assert ctx.check_before_run(
+        "jira_create_issue",
+        {"project": "TECH", "summary": "Show COD disable reason", "issue_type": "Task"},
+    ) is None
+
+
+def test_list_jira_sync_auto_approves_jira_create_in_watched_channel(tmp_path: Path):
+    config = AlfredConfig(
+        governance=GovernanceConfig(),
+        slack=SlackConfig(
+            enabled=True,
+            allowed_channels=["*"],
+            list_jira_sync=SlackListJiraSyncConfig(
+                enabled=True,
+                list_id="F0A5AS3HF9S",
+                jira_project="TECH-SUPPORT",
+                channel_ids=["GTECH"],
+            ),
+        ),
+        jira=JiraConfig(enabled=True),
+    )
+    task = _task(channel_id="GTECH")
+    ctx = GovernanceContext(config, task, data_dir=tmp_path)
+    assert ctx.check_before_run(
+        "jira_create_issue",
+        {"project": "TECH-SUPPORT", "summary": "Bug", "issue_type": "Bug"},
+    ) is None
+
+
+def test_session_approval_allows_publish(tmp_path: Path):
+    config = _config()
+    task = _task()
+    session = ConversationSession(
+        key="slack:C456:111.222",
+        source="slack",
+        scope_id="C456",
+        thread_id="111.222",
+        metadata=approval_metadata_patch(user_id="U123", ttl_minutes=30),
+    )
+    assert session_has_write_approval(session, config.governance)
+    ctx = GovernanceContext(config, task, session=session, data_dir=tmp_path)
+    assert ctx.check_before_run(
+        "git_push_branch",
+        {"repo": "org/r", "branch": "alfred/fix"},
+    ) is None
+
+
+def test_cli_skips_confirmation_by_default(tmp_path: Path):
+    config = _config()
+    task = _task(source="cli", channel_id="", thread_ts=None)
+    ctx = GovernanceContext(config, task, data_dir=tmp_path)
+    assert ctx.check_before_run(
+        "git_push_branch",
+        {"repo": "org/r", "branch": "alfred/fix"},
+    ) is None
+
+
+def test_registry_governance_blocks_and_audits(tmp_path: Path):
+    registry = ToolRegistry()
+    registry.register(
+        ToolSchema(
+            name="git_push_branch",
+            description="push",
+            parameters={"type": "object", "properties": {}},
+        ),
+        lambda _args: ToolResult(kind="pushed", data={"ok": True}),
+    )
+    config = _config()
+    task = _task()
+    registry.governance = GovernanceContext(config, task, data_dir=tmp_path)
+
+    result = registry.run("git_push_branch", {"repo": "org/r", "branch": "alfred/x"}, allowed=["git_push_branch"])
+    assert result.kind == "error"
+
+    rows = get_audit_store(tmp_path).list_recent(limit=5, blocked_only=True)
+    assert rows
+    assert rows[0]["tool_name"] == "git_push_branch"
+    assert rows[0]["blocked"] is True
+
+
+def test_slack_board_create_records_pending_on_confirmation(tmp_path: Path):
+    from backend.routing.slack_board.pending import get_pending_board_creates
+
+    config = _config()
+    task = _task()
+    session = ConversationSession(
+        key="slack:C456:111.222",
+        source="slack",
+        scope_id="C456",
+        thread_id="111.222",
+    )
+    ctx = GovernanceContext(config, task, session=session, data_dir=tmp_path)
+    blocked = ctx.check_before_run(
+        "slack_board_create_task",
+        {"title": "Snapchat Integration"},
+    )
+    assert blocked is not None
+    pending = get_pending_board_creates(session)
+    assert [item["title"] for item in pending] == ["Snapchat Integration"]
+
+
+def test_registry_audits_successful_staging_write(tmp_path: Path):
+    registry = ToolRegistry()
+    registry.register(
+        ToolSchema(
+            name="write_file",
+            description="write",
+            parameters={"type": "object", "properties": {}},
+        ),
+        lambda _args: ToolResult(kind="file_written", data={"path": "src/a.py"}),
+    )
+    config = _config()
+    task = _task()
+    registry.governance = GovernanceContext(config, task, data_dir=tmp_path)
+
+    result = registry.run(
+        "write_file",
+        {"repo": "org/r", "path": "src/a.py", "content": "x"},
+        allowed=["write_file"],
+    )
+    assert result.kind == "file_written"
+
+    rows = get_audit_store(tmp_path).list_recent(limit=5, tool_name="write_file")
+    assert len(rows) == 1
+    assert rows[0]["success"] is True
+    assert rows[0]["blocked"] is False

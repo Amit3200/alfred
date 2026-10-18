@@ -16,11 +16,15 @@ def format_doc_search(data: dict[str, Any]) -> str:
         path = str(hit.get("path") or "")
         title = str(hit.get("title") or path)
         excerpt = str(hit.get("excerpt") or "").strip()
-        lines.append(f"{idx}. **`{path}`** — {title}")
+        url = str(hit.get("url") or "").strip()
+        if url:
+            lines.append(f"{idx}. **{title}** — {url}")
+        else:
+            lines.append(f"{idx}. **`{path}`** — {title}")
         if excerpt:
             lines.append(f"   > {excerpt[:300]}")
     lines.append("")
-    lines.append("_Cite doc paths when answering follow-up questions._")
+    lines.append("_Include the public docs URL from each hit in the Slack reply._")
     return "\n".join(lines)
 
 

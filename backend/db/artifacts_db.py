@@ -140,8 +140,12 @@ def assert_slug_owner(db_file: Path, slug: str, owner_key: str) -> None:
     owner = get_slug_owner(db_file, slug)
     if owner is None:
         return
-    if owner["owner_key"] != owner_key.strip():
-        raise SlugOwnershipError(f"Slug '{slug}' is owned by another user")
+    key = owner_key.strip()
+    if owner["owner_key"] == key:
+        return
+    if owner["owner_key"] == "admin:shared" and key.lower().startswith("admin:"):
+        return
+    raise SlugOwnershipError(f"Slug '{slug}' is owned by another user")
 
 
 def claim_or_update_slug_owner(
@@ -169,9 +173,7 @@ def claim_or_update_slug_owner(
                 """,
                 (slug, key, label, now, now),
             )
-        elif row["owner_key"] != key:
-            raise SlugOwnershipError(f"Slug '{slug}' is owned by another user")
-        else:
+        elif row["owner_key"] == key:
             conn.execute(
                 """
                 UPDATE artifact_slugs
@@ -180,6 +182,13 @@ def claim_or_update_slug_owner(
                 """,
                 (label, now, slug),
             )
+        elif row["owner_key"] == "admin:shared" and key.lower().startswith("admin:"):
+            conn.execute(
+                "UPDATE artifact_slugs SET updated_at = ? WHERE slug = ?",
+                (now, slug),
+            )
+        else:
+            raise SlugOwnershipError(f"Slug '{slug}' is owned by another user")
         conn.commit()
     finally:
         conn.close()
@@ -311,7 +320,8 @@ def get_latest_by_slug(db_file: Path, slug: str) -> dict[str, Any] | None:
     try:
         row = conn.execute(
             """
-            SELECT uuid, sha256, slug, title, uploaded_by, uploaded_at, size_bytes, is_latest
+            SELECT uuid, sha256, slug, title, uploaded_by, uploaded_at, size_bytes, is_latest,
+                   source, slack_user_id
             FROM artifact_uploads
             WHERE slug = ? AND is_latest = 1
             ORDER BY uploaded_at DESC
@@ -330,7 +340,8 @@ def get_by_sha(db_file: Path, sha256: str) -> dict[str, Any] | None:
     try:
         row = conn.execute(
             """
-            SELECT uuid, sha256, slug, title, uploaded_by, uploaded_at, size_bytes, is_latest
+            SELECT uuid, sha256, slug, title, uploaded_by, uploaded_at, size_bytes, is_latest,
+                   source, slack_user_id
             FROM artifact_uploads
             WHERE sha256 = ?
             ORDER BY uploaded_at DESC
@@ -349,7 +360,8 @@ def list_versions(db_file: Path, slug: str) -> list[dict[str, Any]]:
     try:
         rows = conn.execute(
             """
-            SELECT uuid, sha256, slug, title, uploaded_by, uploaded_at, size_bytes, is_latest
+            SELECT uuid, sha256, slug, title, uploaded_by, uploaded_at, size_bytes, is_latest,
+                   source, slack_user_id
             FROM artifact_uploads
             WHERE slug = ?
             ORDER BY uploaded_at DESC
@@ -362,25 +374,135 @@ def list_versions(db_file: Path, slug: str) -> list[dict[str, Any]]:
 
 
 def list_mine(db_file: Path, *, owner_key: str, limit: int = 100) -> list[dict[str, Any]]:
-    """Latest upload per owned slug for the given actor key."""
+    """Latest upload per owned slug for the given actor key.
+
+    Admin logins also see company-shared slugs (`admin:shared`), e.g. scheduled
+    daily-metrics decks.
+    """
+    key = owner_key.strip()
+    include_shared = key.lower().startswith("admin:")
     conn = _connect(db_file)
     try:
         rows = conn.execute(
             """
             SELECT a.uuid, a.sha256, a.slug, a.title, a.uploaded_by,
                    a.uploaded_at, a.size_bytes, a.is_latest,
-                   s.owner_key, s.owner_label
+                   a.source, a.slack_user_id,
+                   s.owner_key, s.owner_label,
+                   (SELECT COUNT(*) FROM artifact_uploads v WHERE v.slug = a.slug) AS version_count
             FROM artifact_uploads a
             INNER JOIN artifact_slugs s ON s.slug = a.slug
-            WHERE s.owner_key = ? AND a.is_latest = 1
+            WHERE a.is_latest = 1
+              AND (
+                    s.owner_key = ?
+                    OR (? = 1 AND s.owner_key = 'admin:shared')
+                  )
             ORDER BY a.uploaded_at DESC
             LIMIT ?
             """,
-            (owner_key.strip(), limit),
+            (key, 1 if include_shared else 0, limit),
         ).fetchall()
         return [_row_to_dict(row) for row in rows]
     finally:
         conn.close()
+
+
+def sha_reference_count(db_file: Path, sha256: str) -> int:
+    digest = sha256.lower().strip()
+    conn = _connect(db_file)
+    try:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM artifact_uploads WHERE sha256 = ?",
+            (digest,),
+        ).fetchone()
+        return int(row["n"] if row else 0)
+    finally:
+        conn.close()
+
+
+def delete_version(
+    db_file: Path,
+    *,
+    slug: str,
+    sha256: str,
+    owner_key: str,
+) -> dict[str, Any]:
+    """Remove one version. Promotes the next-newest remaining row as latest."""
+    slug = normalize_slug(slug)
+    digest = sha256.lower().strip()
+    if len(digest) != 64:
+        raise ValueError("Invalid sha256 digest")
+    assert_slug_owner(db_file, slug, owner_key)
+
+    conn = _connect(db_file)
+    try:
+        row = conn.execute(
+            """
+            SELECT uuid, sha256, is_latest FROM artifact_uploads
+            WHERE slug = ? AND sha256 = ?
+            """,
+            (slug, digest),
+        ).fetchone()
+        if row is None:
+            raise KeyError(f"Version {digest[:8]} not found for slug {slug}")
+        conn.execute(
+            "DELETE FROM artifact_uploads WHERE slug = ? AND sha256 = ?",
+            (slug, digest),
+        )
+        remaining = conn.execute(
+            """
+            SELECT sha256 FROM artifact_uploads
+            WHERE slug = ?
+            ORDER BY uploaded_at DESC
+            """,
+            (slug,),
+        ).fetchall()
+        slug_removed = False
+        if remaining:
+            conn.execute(
+                "UPDATE artifact_uploads SET is_latest = 0 WHERE slug = ?",
+                (slug,),
+            )
+            conn.execute(
+                """
+                UPDATE artifact_uploads SET is_latest = 1
+                WHERE slug = ? AND sha256 = ?
+                """,
+                (slug, remaining[0]["sha256"]),
+            )
+        else:
+            conn.execute("DELETE FROM artifact_slugs WHERE slug = ?", (slug,))
+            slug_removed = True
+        conn.commit()
+    finally:
+        conn.close()
+
+    latest = None if slug_removed else get_latest_by_slug(db_file, slug)
+    return {
+        "ok": True,
+        "deleted_sha256": digest,
+        "slug": slug,
+        "slug_removed": slug_removed,
+        "latest": latest,
+    }
+
+
+def delete_slug(db_file: Path, *, slug: str, owner_key: str) -> dict[str, Any]:
+    """Delete every version of a slug and the ownership row."""
+    slug = normalize_slug(slug)
+    assert_slug_owner(db_file, slug, owner_key)
+    versions = list_versions(db_file, slug)
+    if not versions:
+        raise KeyError(f"Presentation not found: {slug}")
+    shas = [row["sha256"] for row in versions]
+    conn = _connect(db_file)
+    try:
+        conn.execute("DELETE FROM artifact_uploads WHERE slug = ?", (slug,))
+        conn.execute("DELETE FROM artifact_slugs WHERE slug = ?", (slug,))
+        conn.commit()
+    finally:
+        conn.close()
+    return {"ok": True, "slug": slug, "deleted_sha256": shas, "slug_removed": True}
 
 
 def list_uploads(
@@ -427,6 +549,8 @@ def _row_to_dict(row: sqlite3.Row) -> dict[str, Any]:
         data["source"] = row["source"]
     if "slack_user_id" in keys:
         data["slack_user_id"] = row["slack_user_id"]
+    if "version_count" in keys:
+        data["version_count"] = int(row["version_count"] or 0)
     return data
 
 

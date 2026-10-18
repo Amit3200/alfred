@@ -5,9 +5,9 @@ from __future__ import annotations
 import logging
 from typing import Any
 
-from backend.routing.git_context import detect_investigate_direct_action
-from backend.routing.git_direct import detect_git_direct_action
-from backend.routing.jira_direct import detect_jira_direct_action
+from backend.routing.git.context import detect_investigate_direct_action
+from backend.routing.git.direct import detect_git_direct_action
+from backend.routing.jira.direct import detect_jira_direct_action
 from backend.routing.playbooks import Playbook
 from backend.models.config import AlfredConfig
 from backend.models.task import Task
@@ -39,7 +39,7 @@ def detect_direct_action(
 
     # 2. Check Git/investigate direct actions
     if config.git.enabled and playbook:
-        from backend.routing.git_direct import (
+        from backend.routing.git.direct import (
             extract_pr_reference,
             wants_pr_code_analysis,
             wants_pr_summary,

@@ -1,7 +1,8 @@
 # Alfred Architecture Overview
 
 > **Living diagram** for the routing revamp (Phases 0–4).  
-> Detailed plan: [`routing-and-tools-plan.md`](routing-and-tools-plan.md) · Progress: [`implementation-status.md`](implementation-status.md)
+> Detailed plan: [`routing-and-tools-plan.md`](routing-and-tools-plan.md) · Progress: [`implementation-status.md`](implementation-status.md)  
+> Request entities + flow: [`request-processing.md`](request-processing.md)
 
 **Last updated:** 2026-08-05
 

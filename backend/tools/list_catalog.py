@@ -24,6 +24,7 @@ _DOMAIN_LABELS: dict[str, str] = {
     "slack": "Slack",
     "aws": "AWS",
     "web": "Web search",
+    "connector": "Connectors",
     "script": "Company scripts",
     "schedule": "Schedules",
     "other": "Other",
@@ -39,6 +40,7 @@ def _integration_requirement(tool_name: str) -> str:
         GOOGLE_TOOLS,
         GRAPHIFY_TOOLS,
         JIRA_TOOLS,
+        CONNECTOR_TOOLS,
         REPO_DOC_TOOLS,
         SLACK_TOOLS,
         WEB_TOOLS,
@@ -62,6 +64,8 @@ def _integration_requirement(tool_name: str) -> str:
         return "slack.enabled"
     if tool_name in WEB_TOOLS:
         return "web_search.enabled"
+    if tool_name in CONNECTOR_TOOLS:
+        return "connectors.periskope.enabled"
     return "always (scripts.enabled)"
 
 

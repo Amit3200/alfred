@@ -115,3 +115,27 @@ class ArtifactStore:
             owner_key=owner_key,
             limit=limit,
         )
+
+    def delete_version(self, *, slug: str, sha256: str, owner_key: str) -> dict[str, Any]:
+        digest = sha256.lower().strip()
+        result = artifacts_db.delete_version(
+            self.db_file,
+            slug=slug,
+            sha256=digest,
+            owner_key=owner_key,
+        )
+        self._maybe_delete_blob(digest)
+        return result
+
+    def delete_slug(self, *, slug: str, owner_key: str) -> dict[str, Any]:
+        result = artifacts_db.delete_slug(self.db_file, slug=slug, owner_key=owner_key)
+        for digest in result.get("deleted_sha256") or []:
+            self._maybe_delete_blob(str(digest))
+        return result
+
+    def _maybe_delete_blob(self, sha256: str) -> None:
+        if artifacts_db.sha_reference_count(self.db_file, sha256) > 0:
+            return
+        path = artifact_blob_path(self.data_dir, sha256)
+        if path.is_file():
+            path.unlink()

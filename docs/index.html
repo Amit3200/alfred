@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Alfred — self-hosted engineering assistant</title>
+  <meta name="description" content="Alfred is a self-hosted AI assistant for engineering teams. Mention it in Slack; it uses your git, JIRA, Slack Lists, docs, and AWS — config stays on your machine." />
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --elevated: #111;
+      --panel: #161616;
+      --border: rgba(255, 255, 255, 0.1);
+      --text: #f5f5f5;
+      --muted: #a3a3a3;
+      --dim: #737373;
+      --accent: #818cf8;
+      --accent-soft: rgba(129, 140, 248, 0.12);
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); }
+    body {
+      font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+      line-height: 1.55;
+    }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+    .wrap { max-width: 880px; margin: 0 auto; padding: 3rem 1.4rem 5rem; }
+    .kicker {
+      color: var(--accent);
+      font-size: 0.78rem;
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+    h1 { font-size: clamp(2rem, 4vw, 2.8rem); letter-spacing: -0.03em; margin: 0.4rem 0 0.8rem; }
+    h2 { font-size: 1.15rem; margin: 2.4rem 0 0.8rem; }
+    p.lead { color: var(--muted); font-size: 1.12rem; max-width: 40rem; }
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+      gap: 0.85rem;
+    }
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 1rem 1.1rem;
+    }
+    .card h3 { margin: 0 0 0.35rem; font-size: 0.95rem; }
+    .card p { margin: 0; color: var(--muted); font-size: 0.92rem; }
+    ul.plain, ol.plain { margin: 0; padding-left: 1.15rem; color: var(--muted); }
+    ul.plain li, ol.plain li { margin: 0.35rem 0; }
+    .cta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.7rem;
+      margin-top: 1.6rem;
+    }
+    .btn {
+      display: inline-block;
+      padding: 0.55rem 0.95rem;
+      border-radius: 8px;
+      font-weight: 600;
+      font-size: 0.92rem;
+      text-decoration: none;
+    }
+    .btn-primary { background: var(--accent); color: #0a0a0a; }
+    .btn-primary:hover { text-decoration: none; filter: brightness(1.08); }
+    .btn-ghost { border: 1px solid var(--border); color: var(--text); }
+    .btn-ghost:hover { text-decoration: none; background: var(--accent-soft); }
+    footer { margin-top: 3.5rem; color: var(--dim); font-size: 0.85rem; }
+    code { font-size: 0.88em; background: var(--elevated); padding: 0.1em 0.35em; border-radius: 4px; }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="kicker">Open source · self-hosted</div>
+    <h1>Alfred is the teammate you mention in Slack when work needs a tool, not a chat window.</h1>
+    <p class="lead">
+      Install it once. Connect Slack, git, JIRA, and the rest of your stack.
+      Config and secrets stay in <code>.alfred/</code> on your machine or VPC — not a SaaS.
+    </p>
+    <div class="cta">
+      <a class="btn btn-primary" href="#getting-started">Getting started</a>
+      <a class="btn btn-ghost" href="architecture/overview.md">Architecture notes</a>
+    </div>
+
+    <h2>What it does</h2>
+    <div class="grid">
+      <div class="card">
+        <h3>Tickets where the team already works</h3>
+        <p>Create and update Slack List tasks or JIRA issues from a thread. Uses the thread as the ticket body. Defaults new JIRA issues to type Task.</p>
+      </div>
+      <div class="card">
+        <h3>Code and PRs</h3>
+        <p>Mirrors repos, greps and reads files, reviews PRs, and can open a draft PR on an isolated branch when write mode is on.</p>
+      </div>
+      <div class="card">
+        <h3>Docs, not guesses</h3>
+        <p>Answers from an indexed handbook/runbook. Cites a public docs URL when you configure one. Optional web search when the index has nothing.</p>
+      </div>
+      <div class="card">
+        <h3>Ops data</h3>
+        <p>Read-only Athena and CloudWatch. Google Sheets and Docs. Recurring cron jobs that post back to Slack.</p>
+      </div>
+      <div class="card">
+        <h3>Inbound work</h3>
+        <p>Connectors such as Periskope (WhatsApp) can pull chats and tickets onto a Slack List or JIRA — one destination, not both.</p>
+      </div>
+      <div class="card">
+        <h3>Decks and scripts</h3>
+        <p>HTML slide decks at a stable share URL. Company script packages from a git repo, run on a schedule or via chat.</p>
+      </div>
+    </div>
+
+    <h2>How a request is handled</h2>
+    <ul class="plain">
+      <li>You <code>@alfred</code> in a Slack channel thread (not the app DM window).</li>
+      <li>Alfred loads that thread, classifies the job, and picks tools (JIRA, Slack List, git, docs, AWS, …).</li>
+      <li>Writes that change JIRA or git can require confirmation, depending on governance settings.</li>
+      <li>Replies stay grounded in tool results — it should not invent ticket keys or file paths.</li>
+    </ul>
+
+    <h2>What it is not</h2>
+    <ul class="plain">
+      <li>Not a hosted multi-tenant SaaS. You run it (laptop, EC2, or Docker).</li>
+      <li>Not Slack DMs — channels only.</li>
+      <li>Not MCP or generic OpenAPI connectors yet (planned as v3).</li>
+      <li>Not a replacement for your ticketing UI — it creates and updates work from conversation.</li>
+    </ul>
+
+    <h2 id="getting-started">Getting started</h2>
+    <p class="lead" style="font-size:1rem">
+      Python 3.13 locally (or Docker). Full operator guide is <code>README.md</code> in the repository.
+    </p>
+    <ol class="plain">
+      <li><code>git clone &lt;repo-url&gt; alfred && cd alfred</code></li>
+      <li><code>./scripts/setup.sh</code> then <code>./scripts/up.sh</code></li>
+      <li>Open <code>http://127.0.0.1:5173</code> and log in with <code>alfred token</code></li>
+      <li>Admin → Secrets: Slack bot/app tokens + an LLM API key</li>
+      <li>Admin → AI: route investigation to a capable model</li>
+      <li><code>/invite @alfred</code> in a channel, then <code>@alfred hello</code></li>
+    </ol>
+    <p class="lead" style="font-size:1rem">Alfred answers in channels only — not the Slack app DM window.</p>
+
+    <h2>Host this page on GitHub</h2>
+    <p class="lead" style="font-size:1rem">
+      Static HTML, no build. Repo Settings → Pages → Deploy from a branch → folder <code>/docs</code>.
+      This file becomes the site home. Markdown files under <code>docs/</code> are linked for people browsing the git tree.
+    </p>
+
+    <footer>
+      Alfred is MIT-licensed. Product surface described here matches the repo as of October 2026.
+    </footer>
+  </div>
+</body>
+</html>

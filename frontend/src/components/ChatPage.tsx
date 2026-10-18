@@ -558,8 +558,8 @@ export function ChatPage() {
                     value={persona}
                     onChange={(value) => setPersona(value as ChatPersona)}
                     options={[
-                      { label: "Support Q&A", value: "support", title: "FlexyPe/docs handbook only" },
-                      { label: "Tech Q&A", value: "tech", title: "Cipher repo, playbooks, runbooks" },
+                      { label: "Support Q&A", value: "support", title: "Indexed docs handbook only" },
+                      { label: "Tech Q&A", value: "tech", title: "Code repo, playbooks, runbooks" },
                       { label: "All", value: "all", title: "Full tool access" },
                       { label: "General", value: "general", title: "PR review and general skills" },
                     ]}

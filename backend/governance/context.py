@@ -51,8 +51,37 @@ class GovernanceContext:
             if self._confirmation_required_for_source():
                 if not self._tool_auto_approved(tool_name):
                     if not session_has_write_approval(self.session, self._gov):
-                        summary = tool_action_summary(tool_name, arguments)
+                        display_args = dict(arguments)
+                        if tool_name == "jira_create_issue":
+                            from backend.routing.jira.context import resolve_channel_jira_project
+                            from backend.routing.jira.project_key import normalize_jira_project_key
+
+                            project = resolve_channel_jira_project(
+                                self.task,
+                                self.config,
+                                data_dir=self.data_dir,
+                            )
+                            if not project:
+                                raw = str(display_args.get("project") or "").strip()
+                                if raw:
+                                    project = normalize_jira_project_key(raw, self.config.jira)
+                            if not project:
+                                project = (self.config.jira.default_project or "").strip()
+                            if project:
+                                display_args["project"] = project
+                        summary = tool_action_summary(tool_name, display_args)
                         msg = confirmation_required_message(tool_name, summary)
+                        if tool_name == "slack_board_create_task":
+                            from backend.routing.slack_board.pending import remember_pending_board_create
+
+                            remember_pending_board_create(
+                                self.session,
+                                title=str(arguments.get("title") or ""),
+                                severity=str(arguments.get("severity") or ""),
+                                assignee_user_id=str(
+                                    arguments.get("assignee_user_id") or arguments.get("assignee") or ""
+                                ),
+                            )
                         self._audit(
                             tool_name,
                             arguments,
@@ -68,22 +97,53 @@ class GovernanceContext:
     def _tool_auto_approved(self, tool_name: str) -> bool:
         if tool_name in self._gov.auto_approve_tools:
             return True
-        sync = self.config.slack.list_jira_sync
-        if (
-            sync.enabled
-            and sync.auto_approve_jira_create
-            and tool_name == "jira_create_issue"
-        ):
-            from backend.integrations.slack.list_jira_sync import sync_channel_allowed
-
-            return sync_channel_allowed(self.task.channel_id or "", self.config)
-        if tool_name.startswith("slack_board_") and self.config.slack.board_workflows.enabled:
-            from backend.integrations.slack.board_service import resolve_board_for_task
-
-            board = resolve_board_for_task(self.config, self.task, data_dir=self.data_dir)
+        if tool_name == "jira_create_issue" and self._jira_create_auto_approved():
+            return True
+        if tool_name == "jira_update_issue" and self._jira_update_auto_approved():
+            return True
+        if tool_name.startswith("slack_board_"):
+            board = self._resolved_board()
             if board and board.auto_approve_writes:
                 return True
         return False
+
+    def _resolved_board(self):
+        from backend.domains.slack_board.operations import resolve_board_for_task
+
+        return resolve_board_for_task(self.config, self.task, data_dir=self.data_dir)
+
+    def _jira_create_auto_approved(self) -> bool:
+        """Skip yes/proceed when the user already asked to create a JIRA issue."""
+        sync = self.config.slack.list_jira_sync
+        if sync.enabled and sync.auto_approve_jira_create:
+            from backend.integrations.slack.list_jira_sync import sync_channel_allowed
+
+            if sync_channel_allowed(self.task.channel_id or "", self.config):
+                return True
+        board = self._resolved_board()
+        if board and board.auto_approve_writes:
+            return True
+        from backend.routing.jira.intent import looks_like_jira_create_followup, looks_like_jira_create_request
+
+        intent = self.task.cleaned_intent or self.task.raw_text or ""
+        if looks_like_jira_create_request(intent):
+            return True
+        if looks_like_jira_create_followup(intent):
+            return True
+        from backend.routing.create_target_precedence import should_route_create_to_jira
+
+        return should_route_create_to_jira(
+            intent,
+            jira_enabled=self.config.jira.enabled,
+            channel_id=self.task.channel_id or "",
+            data_dir=self.data_dir,
+        )
+
+    def _jira_update_auto_approved(self) -> bool:
+        from backend.routing.jira.intent import looks_like_jira_update_request
+
+        intent = self.task.cleaned_intent or self.task.raw_text or ""
+        return looks_like_jira_update_request(intent)
 
     def _confirmation_required_for_source(self) -> bool:
         if not self._gov.require_confirmation:

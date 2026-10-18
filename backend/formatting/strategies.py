@@ -373,6 +373,8 @@ class JiraActionFormatter(FormatterStrategy):
             msg = f"Updated `{key}`" + (f" ({fields})" if fields else "") + "."
         elif action == "create":
             msg = f"Created `{key}` — {data.get('summary') or 'new issue'}."
+        elif action == "create_fallback_slack_board":
+            msg = str(data.get("message") or "JIRA create failed; created a Slack List task instead.")
         else:
             msg = f"Updated `{key}`."
         if slack and url:

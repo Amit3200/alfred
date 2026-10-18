@@ -14,6 +14,8 @@ def test_run_all_checks_includes_web_search():
     checks = run_all_checks(AlfredConfig())
     assert "web_search" in checks
     assert checks["web_search"]["skipped"] is True
+    assert "periskope" in checks
+    assert checks["periskope"]["skipped"] is True
 
 
 def test_run_all_checks_expected_keys():
@@ -25,13 +27,14 @@ def test_run_all_checks_expected_keys():
         "jira",
         "google",
         "web_search",
+        "periskope",
         "ai",
     }
 
 
 def test_integration_health_checks_registry():
     assert INTEGRATION_HEALTH_CHECKS == frozenset(
-        {"slack", "git", "aws", "jira", "google", "web_search"},
+        {"slack", "git", "aws", "jira", "google", "web_search", "periskope"},
     )
 
 

@@ -7,13 +7,18 @@ Planning and reference materials for Alfred.
 | [`architecture/`](architecture/) | Routing revamp diagrams, phase status, capabilities example |
 | [`playbooks/`](playbooks/) | **Example** playbooks — copy into `.alfred/playbooks/` locally (**never commit** company playbooks) |
 | [`build-reference/`](build-reference/) | Blueprints, v0 plan, and implementation tracker |
-| [`guides/`](guides/) | Operator how-tos (Slack boards, etc.) |
+| [`guides/`](guides/) | Operator how-tos (Slack boards, HTML slides) |
+| [`scripts/`](scripts/) | Local + remote company script packages |
 
 ## Start here
 
 | Audience | Read |
 |----------|------|
-| **Operators / new installs** | [`README.md`](../README.md) — setup, CLI, AWS, Slack |
+| **What Alfred does (HTML)** | [`index.html`](index.html) — host on GitHub Pages from the `docs/` folder |
+| **Getting started** | [`README.md`](../README.md#getting-started) — clone, run, Slack, first `@alfred` |
+| **Operators / new installs** | [`README.md`](../README.md) — setup, CLI, AWS, Slack, **scripts**, **logs** |
+| **Company scripts** | [`scripts/README.md`](scripts/README.md) (local) · [`scripts/remote-repo.md`](scripts/remote-repo.md) (Git repo + venv) |
+| **HTML slides** | [`guides/html-slides-artifacts.md`](guides/html-slides-artifacts.md) |
 | **Slack List boards** | [`guides/slack-board-setup.md`](guides/slack-board-setup.md) — channel binding, tasks, JIRA vs List |
 | **Architecture (current)** | [`architecture/overview.md`](architecture/overview.md) — context diagram + LangGraph flow |
 | **Implementation progress** | [`architecture/implementation-status.md`](architecture/implementation-status.md) |
@@ -21,9 +26,14 @@ Planning and reference materials for Alfred.
 | **Contributors picking next work** | [`build-reference/building_phase_v0.md`](build-reference/building_phase_v0.md) |
 | **Original layer design** | [`build-reference/v0.md`](build-reference/v0.md) |
 
-## Current status (2026-08-05)
+## Current status (2026-10-18)
 
-**Shipped (Phases 0–4 routing revamp):**
+**Shipped (Phases 0–8 routing revamp + product surface):**
+
+- Slack List boards, channel personas, JIRA create/update from thread
+- Inbound connectors (Periskope WhatsApp → Slack List / JIRA)
+- Repo docs Q&A with optional public doc URLs
+- Web search, HTML slides, schedules, governance
 
 - Tool planner (rules + plan templates + LLM fallback)
 - LangGraph orchestration (plan → validate → execute → ground → format)

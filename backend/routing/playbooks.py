@@ -28,6 +28,9 @@ class Playbook:
     description: str = ""
     mode: SkillMode = "conversational"
     allowed_tools: list[str] = field(default_factory=list)
+    allowed_capabilities: list[str] = field(default_factory=list)
+    workflow_chain: list[str] = field(default_factory=list)
+    use_workflow_chain: bool = False
     requires_thread_context: bool = False
     bundled: bool = False
     fetch_urls: list[str] = field(default_factory=list)
@@ -378,6 +381,9 @@ def _parse_playbook_index(path: Path, *, bundled: bool) -> Playbook:
     if mode not in ("conversational", "investigation", "workflow"):
         mode = "conversational"
     allowed_tools = _normalize_str_list(meta.get("allowed_tools"))
+    allowed_capabilities = _normalize_str_list(meta.get("allowed_capabilities"))
+    workflow_chain = _normalize_workflow_chain(meta.get("workflow_chain"))
+    use_workflow_chain = bool(meta.get("use_workflow_chain", False))
     scripts = _normalize_str_list(meta.get("scripts"))
     requires_thread_context = bool(meta.get("requires_thread_context", False))
     fetch_urls = _normalize_str_list(meta.get("fetch_urls"))
@@ -420,6 +426,9 @@ def _parse_playbook_index(path: Path, *, bundled: bool) -> Playbook:
         description=description,
         mode=mode,  # type: ignore[arg-type]
         allowed_tools=allowed_tools,
+        allowed_capabilities=allowed_capabilities,
+        workflow_chain=workflow_chain,
+        use_workflow_chain=use_workflow_chain,
         scripts=scripts,
         requires_thread_context=requires_thread_context,
         bundled=bundled,
@@ -448,6 +457,24 @@ def _normalize_str_list(value: object) -> list[str]:
     if isinstance(value, list):
         return [str(item).strip() for item in value if str(item).strip()]
     return []
+
+
+def _normalize_workflow_chain(value: object) -> list[str]:
+    if value is None:
+        return []
+    if isinstance(value, str):
+        return [value.strip()] if value.strip() else []
+    if not isinstance(value, list):
+        return []
+    out: list[str] = []
+    for item in value:
+        if isinstance(item, dict):
+            name = str(item.get("tool") or item.get("name") or "").strip()
+        else:
+            name = str(item or "").strip()
+        if name:
+            out.append(name)
+    return out
 
 
 _SLACK_CHANNEL_ID_RE = re.compile(r"^C[A-Z0-9]{8,}$", re.IGNORECASE)

@@ -10,6 +10,7 @@ from urllib.parse import urljoin
 import requests
 
 from backend.models.config import AlfredConfig, JiraConfig
+from backend.routing.jira.project_key import normalize_jira_project_key
 
 _ISSUE_KEY_RE = re.compile(r"\b([A-Z][A-Z0-9]+-\d+)\b")
 
@@ -398,14 +399,24 @@ class JiraApiClient:
         assignee: str | None = None,
         resilient: bool = True,
     ) -> dict[str, Any]:
-        project_key = project.strip().upper()
+        project_key = normalize_jira_project_key(project, self.config)
         self._project_allowed(project_key)
         title = summary.strip()
-        kind = issue_type.strip()
+        from backend.domains.jira.issue_type import (
+            DEFAULT_JIRA_ISSUE_TYPE,
+            is_issuetype_error,
+            resolve_jira_create_issue_type,
+        )
+
+        kind = resolve_jira_create_issue_type(
+            issue_type,
+            project=project_key,
+            config=self.config,
+        )
         if not title:
             raise ValueError("summary is required.")
         if not kind:
-            raise ValueError("issue_type is required.")
+            kind = DEFAULT_JIRA_ISSUE_TYPE
 
         base_fields: dict[str, Any] = {
             "project": {"key": project_key},
@@ -452,6 +463,22 @@ class JiraApiClient:
                     )
                 except RuntimeError as exc:
                     last_error = str(exc)
+                    if is_issuetype_error(last_error) and str(
+                        (fields.get("issuetype") or {}).get("name") or ""
+                    ).lower() != DEFAULT_JIRA_ISSUE_TYPE.lower():
+                        kind = DEFAULT_JIRA_ISSUE_TYPE
+                        fields["issuetype"] = {"name": kind}
+                        base_fields["issuetype"] = {"name": kind}
+                        try:
+                            return self._finalize_create(
+                                fields,
+                                project_key=project_key,
+                                title=title,
+                                kind=kind,
+                            )
+                        except RuntimeError as retry_exc:
+                            last_error = str(retry_exc)
+                            continue
                     if assignee_id and "assignee" in fields:
                         fields.pop("assignee", None)
                         try:

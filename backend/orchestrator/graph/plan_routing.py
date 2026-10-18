@@ -4,7 +4,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from backend.routing.slack_board_agent import is_slack_board_write_intent
+from backend.routing.classifier.intent_classes import is_html_slides_intent
+from backend.routing.slack_board.agent import is_slack_board_write_intent
 
 
 def resolve_graph_route(plan: Any | None, *, allowed_tools: list[str]) -> str:
@@ -12,7 +13,7 @@ def resolve_graph_route(plan: Any | None, *, allowed_tools: list[str]) -> str:
     if plan and getattr(plan, "missing_capabilities", None) and not allowed_tools:
         return "missing"
     intent_class = getattr(plan, "intent_class", "") if plan else ""
-    if intent_class == "html_slides":
+    if is_html_slides_intent(intent_class):
         if plan and len(getattr(plan, "steps", None) or []) == 1:
             from backend.routing.html_slides_delivery import publish_args_complete
 
@@ -23,6 +24,12 @@ def resolve_graph_route(plan: Any | None, *, allowed_tools: list[str]) -> str:
                 return "direct"
         return "worker"
     if intent_class in ("repo.docs.qa",) or is_slack_board_write_intent(intent_class):
+        return "worker"
+    if str(intent_class or "").startswith("connector.read.messages"):
+        # Needs the LLM to call GET /chats/messages then summarize per chat.
+        return "worker"
+    steps = list(getattr(plan, "steps", None) or []) if plan else []
+    if any(getattr(step, "tool", "") == "connector_get_messages" for step in steps):
         return "worker"
     if plan and len(getattr(plan, "steps", None) or []) == 1:
         step = plan.steps[0]

@@ -41,7 +41,6 @@ const TAG_SUGGESTIONS = [
   "tech",
   "playbook",
   "runbook",
-  "cipher",
   "code",
   "integrations",
 ];

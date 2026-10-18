@@ -89,7 +89,7 @@ class SlackBoardProfile(BaseModel):
     default_status: str = Field(default="Not picked", description="Status for new tasks.")
     auto_approve_writes: bool = Field(
         default=False,
-        description="Skip yes/proceed for board write tools in bound channels.",
+        description="Skip yes/proceed for Slack List writes and jira_create_issue in bound channels.",
     )
     columns: SlackBoardColumnMap = Field(default_factory=SlackBoardColumnMap)
 
@@ -169,7 +169,7 @@ class GitRepoProfile(BaseModel):
 
     repo: str = Field(
         default="",
-        description="Repository slug, e.g. FlexyPe/docs or docs (expanded with default_org).",
+        description="Repository slug, e.g. Acme/docs or docs (expanded with default_org).",
     )
     role: Literal["code", "docs", "scripts"] = Field(
         default="code",
@@ -186,6 +186,13 @@ class GitRepoProfile(BaseModel):
     tags: list[str] = Field(
         default_factory=list,
         description="Optional labels for knowledge UI and routing (e.g. handbook, playbook, runbook).",
+    )
+    docs_public_base_url: str = Field(
+        default="",
+        description=(
+            "Public docs site for this repo, e.g. https://docs.example.com. "
+            "Indexed paths are mapped by stripping .md/.mdx (platforms/hydrogen.mdx → /platforms/hydrogen)."
+        ),
     )
 
 
@@ -343,11 +350,11 @@ class WebSearchConfig(BaseModel):
 
 
 class ScriptsRemoteConfig(BaseModel):
-    """Pull curated script packages from a Git repo (e.g. FlexyPe/alfred_scripts)."""
+    """Pull curated script packages from a Git repo (e.g. Acme/scripts)."""
 
     repo: str = Field(
         default="",
-        description="GitHub/GitLab slug, e.g. FlexyPe/alfred_scripts. Requires git.token in Secrets.",
+        description="GitHub/GitLab slug, e.g. Acme/scripts. Requires git.token in Secrets.",
     )
     branch: str = Field(default="main", description="Branch to clone/pull.")
     path: str = Field(
@@ -389,8 +396,8 @@ class ScriptsConfig(BaseModel):
     timeout_seconds: int = Field(
         default=120,
         ge=5,
-        le=600,
-        description="Max seconds for company script execution.",
+        le=1800,
+        description="Max seconds for company script execution (Athena jobs may need 10–30 min).",
     )
     remote: ScriptsRemoteConfig = Field(default_factory=ScriptsRemoteConfig)
 
@@ -439,6 +446,67 @@ class JiraConfig(BaseModel):
         default_factory=dict,
         description="Optional project key → default issue type for creates, e.g. TS: Task.",
     )
+
+
+class PeriskopeConfig(BaseModel):
+    """WhatsApp inbox via Periskope — feeds Slack Lists / JIRA through the connector platform."""
+
+    enabled: bool = False
+    base_url: str = Field(
+        default="https://api.periskope.app/v1",
+        description="Periskope API base URL.",
+    )
+    org_phone: str = Field(
+        default="",
+        description="Connected WhatsApp number for the x-phone header, e.g. 919876543210.",
+    )
+    allowed_chat_ids: list[str] = Field(
+        default_factory=list,
+        description="If set, only these WhatsApp chat_ids (@g.us / @c.us) are pulled or replicated.",
+    )
+    slack_channel_id: str = Field(
+        default="",
+        description=(
+            "Slack channel where Periskope tickets and tasks land. "
+            "Alfred uses the Slack List bound to this channel."
+        ),
+    )
+    summary_channel_id: str = Field(
+        default="",
+        description="Optional Slack channel for daily group summaries. Empty uses slack_channel_id.",
+    )
+    summary_timezone: str = Field(default="Asia/Kolkata")
+    replicate_tickets: bool = True
+    replicate_tasks: bool = True
+    ticket_create_target: Literal["slack_board", "jira", "both"] = Field(
+        default="slack_board",
+        description="Where new Periskope tickets/tasks are created in Alfred.",
+    )
+    slack_board_key: str = Field(
+        default="",
+        description="Optional Slack List board key. Empty uses the board bound to slack_channel_id.",
+    )
+    jira_project: str = Field(
+        default="",
+        description="JIRA project key when ticket_create_target includes jira.",
+    )
+    ticket_summary_prompt: str = Field(
+        default="",
+        description=(
+            "Extra instructions for summarizing WhatsApp tickets onto Slack/JIRA. "
+            "Empty uses Alfred's default problem + action-item prompt. "
+            "Channel persona from Slack boards is always prepended."
+        ),
+    )
+    sync_on_update: bool = True
+    api_token: str = ""
+    webhook_secret: str = ""
+
+
+class ConnectorsConfig(BaseModel):
+    """Inbound connectors that normalize into Slack Lists, JIRA, and summaries."""
+
+    periskope: PeriskopeConfig = Field(default_factory=PeriskopeConfig)
 
 
 class RepoKnowledgeConfig(BaseModel):
@@ -512,6 +580,13 @@ class RoutingConfig(BaseModel):
         ge=0.0,
         le=1.0,
         description="Minimum confidence to accept a matched plan template.",
+    )
+    classifier_enabled: bool = Field(
+        default=True,
+        description=(
+            "Hierarchical prompt router (tool parent → capability). "
+            "When the model is unavailable, deterministic rules are the fallback."
+        ),
     )
 
 
@@ -733,6 +808,7 @@ class AlfredConfig(BaseModel):
     git: GitConfig = Field(default_factory=GitConfig)
     aws: AWSConfig = Field(default_factory=AWSConfig)
     jira: JiraConfig = Field(default_factory=JiraConfig)
+    connectors: ConnectorsConfig = Field(default_factory=ConnectorsConfig)
     google: GoogleConfig = Field(default_factory=GoogleConfig)
     web_search: WebSearchConfig = Field(default_factory=WebSearchConfig)
     scripts: ScriptsConfig = Field(default_factory=ScriptsConfig)
@@ -762,6 +838,10 @@ class AlfredSecrets(BaseModel):
     google_credentials_json: str = ""
     google_oauth_refresh_token: str = ""
     web_search_api_key: str = ""
+    connectors: dict[str, dict[str, str]] = Field(
+        default_factory=dict,
+        description="Per-connector secrets, e.g. {periskope: {api_token, webhook_secret}}.",
+    )
     ai_api_keys: dict[str, str] = Field(default_factory=dict)
     server_admin_token: str = ""
     server_admin_username: str = ""

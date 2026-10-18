@@ -134,6 +134,17 @@ SLACK_TOOLS = SLACK_READ_TOOLS | SLACK_BOARD_TOOLS
 
 WEB_TOOLS = frozenset({"web_search"})
 
+CONNECTOR_TOOLS = frozenset(
+    {
+        "connector_list",
+        "connector_list_chats",
+        "connector_list_tickets",
+        "connector_list_tasks",
+        "connector_get_messages",
+        "connector_poll",
+    }
+)
+
 COMPANY_SCRIPT_TOOLS = frozenset(
     {
         "list_company_scripts",
@@ -169,6 +180,7 @@ ALL_KNOWN_TOOLS = (
     | GOOGLE_TOOLS
     | SLACK_TOOLS
     | WEB_TOOLS
+    | CONNECTOR_TOOLS
     | COMPANY_SCRIPT_TOOLS
     | SCHEDULE_TOOLS
     | ARTIFACT_TOOLS
@@ -186,6 +198,7 @@ TOOL_DOMAINS: dict[str, str] = {
     **{name: "slack" for name in SLACK_READ_TOOLS},
     **{name: "slack_write" for name in SLACK_BOARD_TOOLS},
     **{name: "web" for name in WEB_TOOLS},
+    **{name: "connector" for name in CONNECTOR_TOOLS},
     **{name: "script" for name in COMPANY_SCRIPT_TOOLS},
     **{name: "schedule" for name in SCHEDULE_TOOLS},
     **{name: "artifact" for name in ARTIFACT_TOOLS},

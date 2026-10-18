@@ -145,6 +145,7 @@ def serve(data_dir: Path | None, host: str | None, port: int | None, reload: boo
             host=bind_host,
             port=bind_port,
             reload=True,
+            reload_dirs=[str(Path(__file__).resolve().parent)],
             factory=True,
         )
     else:
@@ -593,6 +594,37 @@ def scripts_sync(data_dir: Path | None) -> None:
     else:
         click.echo(result.get("message") or "Scripts sync failed.", err=True)
         raise SystemExit(1)
+
+
+@scripts.command("setup")
+@click.option("--data-dir", type=click.Path(path_type=Path), default=None)
+@click.option("--pull", is_flag=True, help="Also git-pull the scripts repo before installing.")
+def scripts_setup(data_dir: Path | None, pull: bool) -> None:
+    """Install script-repo Python deps (same idea as arsenal `make setup-py`).
+
+    Creates `.alfred/scripts-venv`, upgrades pip, then `pip install -e ./py`
+    when the repo has pyproject.toml, otherwise
+    `pip install -r requirements.txt`.
+    """
+    manager = ConfigManager(data_dir)
+    if not manager.is_initialized():
+        click.echo("Alfred not initialized. Run: alfred init")
+        raise SystemExit(1)
+    config, _ = manager.load_merged()
+    from backend.integrations.company_scripts.sync import setup_scripts_dependencies
+
+    result = setup_scripts_dependencies(config, manager.data_dir, pull=pull)
+    if result.get("ok"):
+        click.echo(result.get("message") or "Scripts dependencies ready.")
+        if result.get("python"):
+            click.echo(f"Python: {result['python']}")
+        if result.get("editable"):
+            click.echo(f"Editable: {result['editable']}")
+        if result.get("requirements"):
+            click.echo(f"Requirements: {result['requirements']}")
+        return
+    click.echo(result.get("message") or "Scripts setup failed.", err=True)
+    raise SystemExit(1)
 
 
 @main.group()

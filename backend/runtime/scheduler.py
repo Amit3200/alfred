@@ -146,6 +146,7 @@ class SchedulerService:
                         metadata={
                             "job_id": job_id,
                             "job_name": job["name"],
+                            "skill_name": skill_name,
                         },
                     )
                     self.queue.push(task.model_dump())

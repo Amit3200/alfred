@@ -17,7 +17,7 @@ export const SECRETS_HELP: Record<string, HelpGuide> = {
       "Basic Information → enable Socket Mode → create App-Level Token with connections:write (xapp-).",
       "OAuth & Permissions → Bot Token Scopes: app_mentions:read, channels:history, channels:read, chat:write, im:history, im:write, groups:history, groups:read, users:read, users:read.email, assistant:write (Agents & AI Apps). users:read.email is required for Slack emails in workspace identity maps.",
       "Enable Agents & AI Apps in app settings for native thinking status (no edited placeholder message).",
-      "Event Subscriptions → Subscribe to bot events → add app_mention.",
+      "Event Subscriptions → Subscribe to bot events → add app_mention. Also add message.channels and message.groups if you turn on Docs search for a Slack board channel.",
       "Install to workspace → copy Bot User OAuth Token (xoxb-) and Signing Secret.",
       "Save all three tokens in Secrets, enable Slack in Integrations, then restart alfred serve.",
       "Invite the bot to a channel: /invite @Alfred — then @mention it to chat.",
@@ -81,6 +81,24 @@ export const SECRETS_HELP: Record<string, HelpGuide> = {
     links: [
       { label: "Manage API tokens", href: "https://id.atlassian.com/manage-profile/security/api-tokens" },
       { label: "JIRA REST API", href: "https://developer.atlassian.com/cloud/jira/platform/rest/v3/intro/" },
+    ],
+  },
+  periskope: {
+    title: "Periskope",
+    summary:
+      "API token and webhook signing key let Alfred pull WhatsApp groups, tickets, and tasks from Periskope, then replicate them onto Slack Lists or JIRA.",
+    steps: [
+      "In Periskope: Settings → API → generate an API key (shown once).",
+      "Copy the connected WhatsApp number as digits only (country code + number) for the x-phone header.",
+      "Settings → Webhooks → generate a signing key and point the hook URL at Alfred: /api/v1/connectors/periskope/webhook",
+      "Subscribe to ticket.created / ticket.updated (not message.created). Alfred ignores raw WhatsApp messages.",
+      "In Integrations → Periskope pick the Slack channel. Alfred uses the Slack List bound to that channel for tickets and tasks, and posts new items there.",
+      "Paste the API token and signing key here. They are encrypted and never written to config.yaml.",
+      "Enable Periskope in Integrations, set org phone, then Test connection.",
+    ],
+    links: [
+      { label: "Periskope API", href: "https://docs.periskope.app/api-reference/introduction" },
+      { label: "Webhooks", href: "https://docs.periskope.app/api-reference/webhooks/introduction" },
     ],
   },
   google: {

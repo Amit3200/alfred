@@ -37,6 +37,13 @@ allowed_tools:
   - list_repos
   - get_pr
 requires_thread_context: true
+workflow_chain:
+  - git_prepare_branch
+  - write_file
+  - git_commit
+  - git_push_branch
+  - create_pull_request
+use_workflow_chain: true
 ---
 
 # Objective
@@ -92,7 +99,7 @@ Call `git_prepare_branch` with:
 
 - `repo` — full slug (`owner/name`)
 - `branch_context` — short slug, e.g. `instrument-checkout-handler` or `fix-null-fp-id` (branch becomes `alfred/pr/<slug>`)
-- `base_branch` — use `git.default_base_branch` when set; otherwise **omit** so Alfred uses the repo's remote default (`origin/HEAD`, e.g. `dev` for FlexyPe/cipher)
+- `base_branch` — use `git.default_base_branch` when set; otherwise **omit** so Alfred uses the repo's remote default (`origin/HEAD`)
 
 Optional: pass `branch_name` only when you need an explicit `alfred/pr/<slug>` (normally use `branch_context`).
 

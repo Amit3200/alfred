@@ -334,7 +334,7 @@ class WorkspaceMirrorManager:
         raise ValueError(f"Repository {repo!r} is not in git.repos allowlist.")
 
     def _sync_targets(self, repos: list[str] | None) -> list[str]:
-        """Repos to sync — main_repo first, then allowlist (deduped)."""
+        """Repos to sync. An explicit list is honored as-is; bulk sync puts main_repo first."""
         ordered: list[str] = []
         seen: set[str] = set()
 
@@ -349,9 +349,13 @@ class WorkspaceMirrorManager:
             seen.add(key)
             ordered.append(slug)
 
+        if repos:
+            for item in repos:
+                add(item)
+            return ordered
         if self.git.main_repo:
             add(self.git.main_repo)
-        for item in repos or self.git.repos:
+        for item in self.git.repos:
             add(item)
         return ordered
 
