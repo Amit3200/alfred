@@ -87,7 +87,7 @@ def test_doc_qa_progress_timeline(tmp_path: Path):
         log_checkpoint("doc_tool_call", "search_repo_docs", "started")
         log_checkpoint("doc_tool_call", "search_repo_docs", "completed")
         log_checkpoint("doc_found", "integrations/analytics/google-ads.mdx", "completed")
-        log_checkpoint("repo_context", "FlexyPe/docs", "completed")
+        log_checkpoint("repo_context", "Acme/docs", "completed")
         log_checkpoint("doc_bootstrap", "search_and_read", "completed")
         log_checkpoint("doc_tool_call", "read_repo_doc", "started")
     finally:

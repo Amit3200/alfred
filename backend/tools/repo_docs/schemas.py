@@ -9,7 +9,7 @@ SEARCH_REPO_DOCS = ToolSchema(
     description=(
         "Search indexed repository documentation and runbooks (BM25). "
         "Use before answering doc/runbook questions — returns cited excerpts and a public `url` "
-        "(https://docs.flexype.io/... for FlexyPe/docs). "
+        "when the repo has `docs_public_base_url` configured. "
         "Searches all configured doc repos when repo is omitted."
     ),
     parameters={
@@ -21,7 +21,7 @@ SEARCH_REPO_DOCS = ToolSchema(
             },
             "repo": {
                 "type": "string",
-                "description": "Optional repo slug (e.g. FlexyPe/docs). Defaults to all indexed doc repos.",
+                "description": "Optional repo slug (e.g. Acme/docs). Defaults to all indexed doc repos.",
             },
             "limit": {
                 "type": "integer",

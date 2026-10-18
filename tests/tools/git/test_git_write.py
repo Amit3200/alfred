@@ -64,7 +64,7 @@ def test_prepare_write_branch_resets_dirty_workspace(tmp_path: Path):
     }
 
     bare = tmp_path / "remote.git"
-    repo = tmp_path / "FlexyPe__cipher"
+    repo = tmp_path / "Acme__app"
     bare.mkdir()
     subprocess.run(["git", "init", "--bare", "-b", "dev"], cwd=bare, check=True, capture_output=True, env=env)
     subprocess.run(["git", "clone", str(bare), str(repo)], check=True, capture_output=True, env=env)
@@ -90,7 +90,7 @@ def test_prepare_write_branch_resets_dirty_workspace(tmp_path: Path):
     result = prepare_write_branch(
         mirror,
         "ui:chat:1",
-        "FlexyPe/cipher",
+        "Acme/app",
         branch_name="alfred/pr/new-change",
         base_branch="dev",
     )
@@ -115,7 +115,7 @@ def test_resolve_base_branch_falls_back_from_missing_main(tmp_path: Path):
 
     from backend.integrations.git.write_ops import _detect_default_base_branch, _resolve_base_branch
 
-    repo = tmp_path / "FlexyPe__cipher"
+    repo = tmp_path / "Acme__app"
     repo.mkdir()
     subprocess.run(["git", "init", "-b", "dev"], cwd=repo, check=True, capture_output=True)
     subprocess.run(["git", "config", "user.email", "a@b.c"], cwd=repo, check=True, capture_output=True)

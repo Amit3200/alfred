@@ -103,12 +103,12 @@ def test_doc_qa_grounding_allows_public_docs_url_from_search_hit():
             result_kind="doc_search",
             observation=(
                 '{"found":true,"results":[{"path":"platforms/hydrogen.mdx",'
-                '"url":"https://docs.flexype.io/platforms/hydrogen"}]}'
+                '"url":"https://docs.example.com/platforms/hydrogen"}]}'
             ),
         )
     ]
     result = validate_agent_result(
-        "**Yes** — see https://docs.flexype.io/platforms/hydrogen",
+        "**Yes** — see https://docs.example.com/platforms/hydrogen",
         trace,
         goal,
     )
@@ -125,8 +125,8 @@ def test_doc_qa_grounding_allows_checkout_url_after_read():
         )
     )
     doc_content = (
-        "Open FlexyPe checkout in a webview: "
-        "https://checkout.flexype.io/?session={session_id}"
+        "Open Acme checkout in a webview: "
+        "https://checkout.example.com/?session={session_id}"
     )
     trace = [
         ToolTraceEntry(
@@ -146,7 +146,7 @@ def test_doc_qa_grounding_allows_checkout_url_after_read():
         ),
     ]
     reply = (
-        "**Yes** — FlexyPe supports mobile app checkout via webview. "
+        "**Yes** — Acme supports mobile app checkout via webview. "
         "See `platforms/mobile-apps.mdx`."
     )
     result = validate_agent_result(reply, trace, goal)
@@ -161,7 +161,7 @@ def test_execute_planned_direct_skips_doc_qa(tmp_path):
     from backend.routing.playbook_store_registry import get_playbook_store
 
     config = AlfredConfig(
-        git=GitConfig(enabled=True, default_org="FlexyPe", main_repo="FlexyPe/cipher"),
+        git=GitConfig(enabled=True, default_org="Acme", main_repo="Acme/app"),
         repo_knowledge=RepoKnowledgeConfig(enabled=True),
     )
     store = get_playbook_store(tmp_path, disabled_skills=[])

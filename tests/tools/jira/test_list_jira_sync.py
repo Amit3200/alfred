@@ -103,8 +103,8 @@ def _config(*, enabled: bool = True) -> AlfredConfig:
         ),
         jira=JiraConfig(
             enabled=True,
-            base_url="https://flexype.atlassian.net",
-            email="ops@flexype.io",
+            base_url="https://acme.atlassian.net",
+            email="ops@example.com",
             default_project="TECH-SUPPORT",
         ),
     )
@@ -125,7 +125,7 @@ def test_sync_creates_jira_for_not_picked(tmp_path: Path):
     jira = MagicMock()
     jira.create_issue.return_value = {
         "key": "TECH-SUPPORT-42",
-        "url": "https://flexype.atlassian.net/browse/TECH-SUPPORT-42",
+        "url": "https://acme.atlassian.net/browse/TECH-SUPPORT-42",
     }
     result = try_sync_list_message(
         _workflow_event(),

@@ -72,7 +72,7 @@ class ReplyMixin:
 
         provider_name, provider, model_name = self._resolve_llm("investigation")
         system = (
-            "You answer FlexyPe support documentation questions using ONLY the excerpt provided. "
+            "You answer support documentation questions using ONLY the excerpt provided. "
             "Start with **Yes** or **No** on whether the asked integration/feature is supported or documented. "
             "If Yes, give concise setup steps (numbered). If No, say clearly it is not documented/supported — "
             "do NOT describe a different product or integration. "

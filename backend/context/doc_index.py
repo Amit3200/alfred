@@ -82,7 +82,6 @@ _DOC_QUERY_STOPWORDS = frozenset(
         "who",
         "which",
         "about",
-        "flexype",
         "docs",
         "doc",
         "documentation",

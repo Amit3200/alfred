@@ -66,7 +66,7 @@ def test_run_scheduled_playbook_executes_chain(monkeypatch):
             kind="html_artifact_published",
             data={
                 "slug": "daily-metrics",
-                "share_url": "https://alfred.flexype.dev/artifacts/s/daily-metrics",
+                "share_url": "https://alfred.example.com/artifacts/s/daily-metrics",
                 "title": "Daily metrics — 2026-08-17",
             },
         ),
@@ -78,7 +78,7 @@ def test_run_scheduled_playbook_executes_chain(monkeypatch):
         lambda *args, **kwargs: registry,
     )
     processor = MagicMock()
-    processor.config.artifacts.public_base_url = "https://alfred.flexype.dev"
+    processor.config.artifacts.public_base_url = "https://alfred.example.com"
     processor.config.git = MagicMock()
     processor._data_dir_path.return_value = Path(".")
     processor._attach_governance.return_value = None
@@ -93,4 +93,4 @@ def test_run_scheduled_playbook_executes_chain(monkeypatch):
     assert isinstance(response, AssistantResponse)
     assert registry.run_normalized.call_count == 2
     assert "2026-08-17" in (response.text or "")
-    assert "alfred.flexype.dev/artifacts/s/daily-metrics" in (response.text or "")
+    assert "alfred.example.com/artifacts/s/daily-metrics" in (response.text or "")

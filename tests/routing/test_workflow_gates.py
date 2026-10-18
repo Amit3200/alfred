@@ -55,7 +55,7 @@ def test_gate_create_pr_proceed_after_work_done():
         thread_id="1",
         metadata={
             "workflow_create_pr": {
-                "repo": "FlexyPe/cipher",
+                "repo": "Acme/app",
                 "goal": "Integrate libs/insights-usage with libs/grade for success/failure events",
                 "ready": True,
             }

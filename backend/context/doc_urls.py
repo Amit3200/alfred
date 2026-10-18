@@ -4,10 +4,6 @@ from __future__ import annotations
 
 from typing import Any
 
-DEFAULT_DOCS_PUBLIC_BASE: dict[str, str] = {
-    "flexype/docs": "https://docs.flexype.io",
-}
-
 _STRIP_SUFFIXES = (".mdx", ".markdown", ".md")
 
 
@@ -28,7 +24,7 @@ def docs_public_base_url(repo: str, *, config: Any | None = None) -> str:
             extra = str(getattr(profile, "docs_public_base_url", "") or "").strip() if profile else ""
             if extra:
                 return extra.rstrip("/")
-    return DEFAULT_DOCS_PUBLIC_BASE.get(slug, "").rstrip("/")
+    return ""
 
 
 def public_doc_url(
@@ -38,7 +34,7 @@ def public_doc_url(
     config: Any | None = None,
     base: str = "",
 ) -> str:
-    """`platforms/hydrogen.mdx` on FlexyPe/docs → https://docs.flexype.io/platforms/hydrogen"""
+    """`platforms/hydrogen.mdx` with a configured docs base → https://docs.example.com/platforms/hydrogen"""
     root = (base or docs_public_base_url(repo, config=config)).rstrip("/")
     rel = (path or "").replace("\\", "/").strip().lstrip("/")
     if not root or not rel:

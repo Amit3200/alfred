@@ -54,30 +54,30 @@ def test_build_doc_index_includes_mdx_under_integrations(tmp_path):
 def test_doc_search_skips_code_repo_when_doc_index_disabled(tmp_path, monkeypatch):
     git = GitConfig(
         enabled=True,
-        default_org="FlexyPe",
-        main_repo="FlexyPe/cipher",
-        repos=["FlexyPe/cipher", "FlexyPe/docs"],
+        default_org="Acme",
+        main_repo="Acme/app",
+        repos=["Acme/app", "Acme/docs"],
         repo_profiles=[
-            GitRepoProfile(repo="FlexyPe/cipher", role="code", doc_index=False),
-            GitRepoProfile(repo="FlexyPe/docs", role="docs", doc_index=True),
+            GitRepoProfile(repo="Acme/app", role="code", doc_index=False),
+            GitRepoProfile(repo="Acme/docs", role="docs", doc_index=True),
         ],
     )
     cfg = AlfredConfig(git=git, repo_knowledge=RepoKnowledgeConfig(enabled=True))
 
-    for slug in ("FlexyPe/cipher", "FlexyPe/docs"):
+    for slug in ("Acme/app", "Acme/docs"):
         mirror = tmp_path / "repos" / "shared" / slug.replace("/", "__")
         mirror.mkdir(parents=True)
         (mirror / "readme.md").write_text("# Readme\n", encoding="utf-8")
         build_doc_index(tmp_path, git, repo=slug, alfred_config=cfg)
 
     slugs = doc_search_repo_slugs(cfg, tmp_path)
-    assert slugs == ["FlexyPe/docs"]
+    assert slugs == ["Acme/docs"]
 
 
 def test_pick_best_doc_hit_prefers_handbook_over_playbook():
     hits = [
-        {"path": "playbooks/investigate_bug.md", "score": 8.5, "repo": "FlexyPe/cipher"},
-        {"path": "handbook/upsell.mdx", "score": 6.0, "repo": "FlexyPe/docs"},
+        {"path": "playbooks/investigate_bug.md", "score": 8.5, "repo": "Acme/app"},
+        {"path": "handbook/upsell.mdx", "score": 6.0, "repo": "Acme/docs"},
     ]
     best = pick_best_doc_hit(hits, "what is upselling and how to configure it")
     assert best is not None
@@ -90,18 +90,18 @@ def test_code_repo_index_excludes_playbooks(tmp_path, monkeypatch):
     monkeypatch.setattr("backend.context.doc_index.bundled_skills_dir", lambda: empty_skills)
     (empty_skills / "investigate_bug.md").write_text("# Bug\n", encoding="utf-8")
 
-    mirror = tmp_path / "repos" / "shared" / "FlexyPe__cipher"
+    mirror = tmp_path / "repos" / "shared" / "Acme__app"
     (mirror / "docs").mkdir(parents=True)
     (mirror / "docs" / "api.md").write_text("# API\n", encoding="utf-8")
 
     git = GitConfig(
         enabled=True,
-        default_org="FlexyPe",
-        main_repo="FlexyPe/cipher",
-        repo_profiles=[GitRepoProfile(repo="FlexyPe/cipher", role="code", doc_index=True)],
+        default_org="Acme",
+        main_repo="Acme/app",
+        repo_profiles=[GitRepoProfile(repo="Acme/app", role="code", doc_index=True)],
     )
     cfg = AlfredConfig(git=git, repo_knowledge=RepoKnowledgeConfig(enabled=True))
-    manifest = build_doc_index(tmp_path, git, repo="FlexyPe/cipher", alfred_config=cfg)
+    manifest = build_doc_index(tmp_path, git, repo="Acme/app", alfred_config=cfg)
     paths = {chunk["path"] for chunk in manifest["chunks"]}
     assert "docs/api.md" in paths
     assert not any(path.startswith("playbooks/") for path in paths)

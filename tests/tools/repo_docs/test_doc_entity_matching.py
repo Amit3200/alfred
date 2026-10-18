@@ -24,11 +24,11 @@ def docs_index(tmp_path: Path, monkeypatch):
     monkeypatch.setattr("backend.routing.playbooks.bundled_skills_dir", lambda: empty_skills)
     monkeypatch.setattr("backend.context.doc_index._collect_playbook_docs", lambda _data_dir: [])
 
-    mirror = tmp_path / "repos" / "shared" / "FlexyPe__docs"
+    mirror = tmp_path / "repos" / "shared" / "Acme__docs"
     (mirror / "platforms").mkdir(parents=True)
     (mirror / "integrations" / "analytics").mkdir(parents=True)
     (mirror / "platforms" / "shopify.mdx").write_text(
-        "# Shopify\n\nIntegrate FlexyPe checkout with your Shopify store.\n",
+        "# Shopify\n\nIntegrate Acme checkout with your Shopify store.\n",
         encoding="utf-8",
     )
     (mirror / "integrations" / "analytics" / "google-ads.mdx").write_text(
@@ -38,12 +38,12 @@ def docs_index(tmp_path: Path, monkeypatch):
 
     git = GitConfig(
         enabled=True,
-        default_org="FlexyPe",
-        main_repo="FlexyPe/cipher",
-        repo_profiles=[GitRepoProfile(repo="FlexyPe/docs", role="docs")],
+        default_org="Acme",
+        main_repo="Acme/app",
+        repo_profiles=[GitRepoProfile(repo="Acme/docs", role="docs")],
     )
     config = AlfredConfig(git=git, repo_knowledge=RepoKnowledgeConfig(enabled=True))
-    build_doc_index(tmp_path, git, repo="FlexyPe/docs", alfred_config=config)
+    build_doc_index(tmp_path, git, repo="Acme/docs", alfred_config=config)
     return tmp_path, git
 
 
@@ -56,7 +56,7 @@ def test_significant_tokens_strip_integration_noise():
 def test_bytespeed_query_does_not_match_shopify(docs_index):
     data_dir, _git = docs_index
     query = "Do we have bytespeed integration and how can we do it?"
-    hits = search_repo_docs(data_dir, "FlexyPe/docs", query, limit=5)
+    hits = search_repo_docs(data_dir, "Acme/docs", query, limit=5)
     assert hits
     assert pick_best_doc_hit(hits, query) is None
     assert not any(doc_hit_matches_query(hit, query) for hit in hits)
@@ -65,7 +65,7 @@ def test_bytespeed_query_does_not_match_shopify(docs_index):
 def test_google_ads_query_matches_correct_doc(docs_index):
     data_dir, _git = docs_index
     query = "How google ads can be configured and integrated?"
-    hits = search_repo_docs(data_dir, "FlexyPe/docs", query, limit=5)
+    hits = search_repo_docs(data_dir, "Acme/docs", query, limit=5)
     best = pick_best_doc_hit(hits, query)
     assert best is not None
     assert "google-ads" in str(best.get("path") or "")
@@ -84,7 +84,7 @@ def test_execute_repo_doc_qa_direct_says_no_for_unknown_integration(tmp_path: Pa
         empty_skills / "repo_knowledge.md",
     )
 
-    mirror = tmp_path / "repos" / "shared" / "FlexyPe__docs"
+    mirror = tmp_path / "repos" / "shared" / "Acme__docs"
     (mirror / "platforms").mkdir(parents=True)
     (mirror / "platforms" / "shopify.mdx").write_text(
         "# Shopify\n\nShopify integration steps.\n" * 200,
@@ -93,12 +93,12 @@ def test_execute_repo_doc_qa_direct_says_no_for_unknown_integration(tmp_path: Pa
 
     git = GitConfig(
         enabled=True,
-        default_org="FlexyPe",
-        main_repo="FlexyPe/cipher",
-        repo_profiles=[GitRepoProfile(repo="FlexyPe/docs", role="docs")],
+        default_org="Acme",
+        main_repo="Acme/app",
+        repo_profiles=[GitRepoProfile(repo="Acme/docs", role="docs")],
     )
     config = AlfredConfig(git=git, repo_knowledge=RepoKnowledgeConfig(enabled=True))
-    build_doc_index(tmp_path, git, repo="FlexyPe/docs", alfred_config=config)
+    build_doc_index(tmp_path, git, repo="Acme/docs", alfred_config=config)
 
     from backend.models.task import Task
     from backend.orchestrator.processor import TaskProcessor

@@ -4,8 +4,9 @@
 
 Config and encrypted secrets live in `.alfred/` (not a SaaS). Optional Ollama on your machine; admin UI for setup, health, and usage tracking.
 
-> **Status:** Alpha — Slack ingress, durable SQLite task queue, unified routing, git/JIRA/AWS/Google investigation, schedules, planning mode, governance, and observability are working. **Next:** v2 automation (ECS/S3, hotfix skills); **v3** MCP + generic API extensibility (planned, not built). Slack DMs are out of scope.  
-> **Tracker:** [`docs/build-reference/building_phase_v0.md`](docs/build-reference/building_phase_v0.md) (last reviewed 2026-07-18)
+> **Status:** Alpha — Slack ingress, durable SQLite task queue, unified routing, git/JIRA/AWS/Google investigation, Slack List boards, inbound connectors (WhatsApp via Periskope), repo docs Q&A, schedules, planning mode, governance, and observability are working. **Next:** v2 automation (ECS/S3, hotfix skills); **v3** MCP + generic API extensibility (planned, not built). Slack DMs are out of scope.  
+> **What it does (HTML):** [`docs/index.html`](docs/index.html) — self-contained explainer you can host on GitHub Pages (`docs/` folder).  
+> **Tracker:** [`docs/build-reference/building_phase_v0.md`](docs/build-reference/building_phase_v0.md) (product surface last reviewed 2026-10-18)
 
 **Requires Python 3.10+.** Local dev targets **Python 3.13** (see `.python-version`).
 
@@ -13,9 +14,9 @@ Config and encrypted secrets live in `.alfred/` (not a SaaS). Optional Ollama on
 
 ## Table of contents
 
+- [Getting started](#getting-started)
 - [Capabilities](#capabilities)
 - [Not built yet](#not-built-yet)
-- [Quick start](#quick-start)
 - [Setup guide](#setup-guide)
 - [Company scripts](#company-scripts)
 - [Logs](#logs)
@@ -41,19 +42,23 @@ Config and encrypted secrets live in `.alfred/` (not a SaaS). Optional Ollama on
 | **Slack `@alfred`** | Socket Mode in **channels** only (not app DM window). Thinking status + custom emoji lines. |
 | **Session memory** | SQLite per `(channel, thread)` — follow-ups, active PR, last git action. |
 | **Slack context** | Channel + thread history (~90 days with dynamic day/week queries), reaction display names, Slack Lists parsing. |
+| **Slack List boards** | Per-channel Kanban: create/update/search tasks from thread; optional persona + docs search; JIRA when the channel/workflow says so. |
 | **Git investigation** | Mirror repos; `grep_repo`, `read_file`, `git_log`, `git_blame`, `git_show`. |
 | **Git write (Phase 1)** | Opt-in (`git.write_enabled`): isolated branch, `write_file`, read-only debug scripts, draft PR via `create_pr` skill. |
 | **PR review** | Summarize/review from URL or thread; GitHub App `@alfred review` on PR comments (optional, needs public URL). |
-| **JIRA** | Search, get, update, comment, create, link PRs; assignee resolution via `assignee_map`; workspace identity map. |
+| **JIRA** | Search, get, update, comment, create, link PRs; thread-aware create/update; issue type defaults to **Task**; assignee map; workspace identity map. |
+| **Repo docs Q&A** | BM25 index of docs-role repos; public `url` from `docs_public_base_url`; Support/Tech personas in Admin chat. |
+| **Inbound connectors** | Periskope WhatsApp chats/tickets/tasks → Slack Lists or JIRA (no dual-write on success). |
 | **AWS (read-only)** | `athena_query`, `cloudwatch_query`, `list_cloudwatch_log_groups`; company tables via local playbooks + `athena_query`. |
 | **Google Workspace** | Read/write Sheets, read/create/append Docs (OAuth or service account). |
+| **Web search** | Optional public-web lookup for errors, release notes, and external docs. |
 | **Schedules** | Cron jobs via `schedule_management` skill — enqueue recurring tasks to Slack channels. |
 | **Graphify** | Optional code graphs on sync — `query_graph` when `git.graphify_enabled`. |
 | **Task queue** | Persistent SQLite queue + background worker; checkpoint timeline in Admin → Usage. |
 | **Playbooks** | `.alfred/playbooks/*.md` — company triggers, formatting, investigation tools (local only). |
 | **Company scripts** | Local `.alfred/scripts/` plus optional Git repo (`scripts.remote.repo`); `alfred scripts sync` / `alfred scripts setup`; isolated venv; playbooks + `run_company_script`. See [Company scripts](#company-scripts). |
 | **HTML slides** | Generate decks, host at `/artifacts/s/{slug}`, version history in Admin → HTML slides. See [HTML slides](#html-slides). |
-| **Skills** | Bundled `skills/*.md` — investigate, review PR, git status, JIRA, AWS, HTML slides, summarize alerts. |
+| **Skills** | Bundled `skills/*.md` — investigate, review PR, git, JIRA, Slack boards, docs, connectors, AWS, web, HTML slides, summarize alerts. |
 | **AI** | Ollama, OpenAI-compat, Anthropic, Gemini, Kimi — per-task routing (`investigation`, `skill_matching`, …). |
 | **Task Planning** | Checklist-Based Task Planning Mode — pre-plans complex workflows, executes checklist step-by-step (`.alfred/plans/`). |
 | **Self-Improving** | Meta-Learning loop reflects on completed queries and writes playbooks to `.alfred/playbooks/`. |
@@ -70,6 +75,10 @@ Config and encrypted secrets live in `.alfred/` (not a SaaS). Optional Ollama on
 | `git_status.md` | Open PRs, repo lists |
 | `jira_management.md` | JIRA search/update/comment/create, identity map |
 | `jira_ticket.md` | Link PRs to JIRA issues |
+| `slack_board_management.md` | Slack List board create/update/search from threads |
+| `repo_knowledge.md` | Indexed handbook / runbook Q&A |
+| `connector_management.md` | Inbound connectors (Periskope WhatsApp) → Slack / JIRA |
+| `web_research.md` | Public web search for docs, errors, release notes |
 | `aws_query.md` | Athena + CloudWatch Logs (generic) |
 | `google_workspace.md` | Google Sheets and Docs read/write |
 | `schedule_management.md` | Create/list/toggle/delete cron schedules |
@@ -96,13 +105,24 @@ Details and recommended build order: [`building_phase_v0.md`](docs/build-referen
 
 ---
 
-## Quick start
+## Getting started
+
+Minimum path from clone to a working `@alfred` in Slack. Optional Git, JIRA, AWS, boards, and scripts are in [Setup guide](#setup-guide).
+
+### What you need
+
+- Python **3.13** (or Docker)
+- A Slack workspace where you can create an app
+- An AI provider key (Kimi, Anthropic, OpenAI) or local Ollama
+
+### 1. Install and run
 
 ```bash
 git clone <repo-url> alfred && cd alfred
 chmod +x scripts/*.sh
 ./scripts/setup.sh          # venv, alfred init, example playbook
 ./scripts/up.sh             # API + Slack listener + Vite UI
+alfred token                # admin username, password, token
 ```
 
 | Service | URL |
@@ -110,16 +130,50 @@ chmod +x scripts/*.sh
 | Admin UI (dev) | http://127.0.0.1:5173 |
 | API + bundled UI | http://127.0.0.1:8080 |
 | Health | http://127.0.0.1:8080/api/health |
-| Health checks | http://127.0.0.1:8080/api/health/checks |
 
-```bash
-alfred token      # view admin username, password, and token for login
-alfred status     # init + Slack readiness
+If boot fails, read `.alfred/run/alfred.stdout.log` first — see [Logs](#logs).
+
+**Docker instead:** `docker compose up --build -d` then `docker compose logs alfred | grep -i token`.
+
+### 2. Log in
+
+Open the Admin UI and sign in with `alfred token` credentials.
+
+### 3. Connect Slack and AI
+
+1. Create a Slack app (Socket Mode) — [Slack app](#slack-app).
+2. Admin → **Secrets**: bot token (`xoxb-`), signing secret, app token (`xapp-`), and your LLM API key.
+3. Admin → **AI**: enable a provider and route **investigation** to a capable model (small Ollama models are weak at tool-calling).
+4. `/invite @alfred` in a channel.
+
+Alfred replies to **`@alfred` in channels**, not the Slack app DM window.
+
+### 4. First messages
+
+```
+@alfred hello
+@alfred what can you do?
 ```
 
-Then complete [Setup guide](#setup-guide) for Slack, AI, Git, optional AWS/JIRA, and [company scripts](#company-scripts).
+Then, if you wired the matching integration:
 
-Logs while it boots: `.alfred/alfred.log` and `.alfred/run/alfred.stdout.log` — see [Logs](#logs).
+```
+@alfred create a task for the issue in this thread
+@alfred create a ticket on JIRA
+@alfred what are my open PRs?
+```
+
+### 5. Next (optional)
+
+| Next | Where |
+|------|--------|
+| Mirror git repos | [Setup guide](#setup-guide) step 6 |
+| JIRA | Setup guide step 7 — new issues default to type **Task** |
+| Slack List board | [`docs/guides/slack-board-setup.md`](docs/guides/slack-board-setup.md) |
+| AWS / playbooks / scripts | Setup guide steps 8–10 |
+| HTML slides | [HTML slides](#html-slides) |
+
+Product overview (hostable on GitHub Pages): [`docs/index.html`](docs/index.html).
 
 ---
 
@@ -311,7 +365,7 @@ scripts:
   enabled: true
   timeout_seconds: 300          # raise to 1800 for long Athena jobs
   remote:
-    repo: YourOrg/your-scripts  # e.g. FlexyPe/arsenal
+    repo: YourOrg/your-scripts
     branch: main
     path: scripts               # folder of script.yaml packages (use a real dir, not the whole repo)
     playbooks_path: ""          # optional: sync playbooks/*.md into .alfred/playbooks/
@@ -831,6 +885,7 @@ Release wheel: `./scripts/build-release.sh`
 
 | Document | Description |
 |----------|-------------|
+| [`docs/index.html`](docs/index.html) | **What Alfred does** — GitHub Pages–ready explainer |
 | [`docs/README.md`](docs/README.md) | Docs index |
 | [`docs/build-reference/building_phase_v0.md`](docs/build-reference/building_phase_v0.md) | **Implementation status & gaps** |
 | [`docs/build-reference/v0.md`](docs/build-reference/v0.md) | Layer architecture |

@@ -38,7 +38,7 @@ def test_looks_like_html_slides_request():
     assert not looks_like_html_slides_request("what is checkout redirect?")
     assert not looks_like_html_slides_request(
         "Create a schedule for 6 AM IST to call daily metrics oneshot "
-        "Daily FlexyPe metrics -> HTML slides -> Slack"
+        "Daily Acme metrics -> HTML slides -> Slack"
     )
 
 

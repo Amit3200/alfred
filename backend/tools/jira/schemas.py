@@ -92,7 +92,10 @@ JIRA_CREATE_ISSUE = ToolSchema(
             },
             "issue_type": {
                 "type": "string",
-                "description": "Issue type name, e.g. Task, Story, Epic, Bug.",
+                "description": (
+                    "Issue type name, e.g. Task, Story, Epic, Bug. "
+                    "Default Task when omitted or unsure — never Ticket or Issue."
+                ),
             },
             "priority": {"type": "string", "description": "Optional priority, e.g. High."},
             "description": {

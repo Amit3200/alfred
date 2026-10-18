@@ -82,6 +82,30 @@ def test_jira_create_issue_tool(mock_client_cls):
 
 
 @patch("backend.domains.jira.service.JiraApiClient")
+def test_jira_create_defaults_uncertain_issue_type_to_task(mock_client_cls):
+    client = MagicMock()
+    mock_client_cls.from_alfred_config.return_value = client
+    client.create_issue.return_value = {
+        "key": "TECH-1",
+        "url": "https://example.atlassian.net/browse/TECH-1",
+        "summary": "Discount display",
+        "issue_type": "Task",
+        "project": "TECH",
+    }
+
+    registry = build_git_tool_registry(_config())
+    result = registry.run(
+        "jira_create_issue",
+        {"project": "TECH", "summary": "Discount display", "issue_type": "Ticket"},
+        allowed=["jira_create_issue"],
+    )
+
+    assert result.kind == "jira_action"
+    req = client.create_issue.call_args.kwargs
+    assert req["issue_type"] == "Task"
+
+
+@patch("backend.domains.jira.service.JiraApiClient")
 def test_link_jira_issue_tool(mock_client_cls):
     client = MagicMock()
     mock_client_cls.from_alfred_config.return_value = client

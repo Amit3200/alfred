@@ -109,7 +109,7 @@ def test_persona_prefers_jira_from_natural_language():
     )
 
 
-TEAM_TECH_JIRA_PERSONA = """You are FlexyPe engineering support in #team-tech.
+TEAM_TECH_JIRA_PERSONA = """You are Acme engineering support in #team-tech.
 
 ## When to create
 Create a ticket ONLY when the user asks to create / open / log / raise / file a task, ticket, or issue.
@@ -262,7 +262,7 @@ def test_slack_list_default_without_jira_persona(tmp_path):
         board_key="team-tech",
         list_id="F1234567890",
         channel_id="C_TECH",
-        persona_prompt="You are FlexyPe support. Prefer docs. Do not create tickets unless asked.",
+        persona_prompt="You are Acme support. Prefer docs. Do not create tickets unless asked.",
     )
     intent = "create a task to have variant based PPCOD selection"
     assert not should_route_create_to_jira(

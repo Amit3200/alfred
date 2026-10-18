@@ -168,13 +168,18 @@ def format_jira_context_for_prompt(
         session_turns=tuple(turn.content for turn in session.turns[-6:]) if session else (),
     ):
         create_project = channel_project or explicit_project or (projects[0] if projects else "")
-        issue_type_hint = "Bug"
-        if create_project and config.jira.project_issue_types.get(create_project):
-            issue_type_hint = config.jira.project_issue_types[create_project]
+        from backend.domains.jira.issue_type import resolve_jira_create_issue_type
+
+        issue_type_hint = resolve_jira_create_issue_type(
+            "",
+            project=create_project,
+            config=config,
+        )
         parts.append(
             "- **Action:** User wants a new JIRA issue — call `jira_create_issue` with the channel "
             f"project key above. Default issue type for `{create_project}`: **{issue_type_hint}** "
-            "unless the user specifies otherwise. Always pass `description`: what was asked, "
+            "unless the user names Bug/Story/Epic. If unsure, pass **Task** — never Ticket or Issue. "
+            "Always pass `description`: what was asked, "
             "relevant thread/Slack List context (e.g. TS-23), and the Slack thread permalink. "
             "Do not create with an empty description. Do not claim tools are missing."
         )

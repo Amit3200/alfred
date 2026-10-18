@@ -121,6 +121,7 @@ def test_jira_create_issue_tool_class_uses_domain_service():
         )
     assert result.kind == "jira_action"
     req = mock_svc.return_value.create_issue.call_args[0][0]
+    assert req.issue_type == "Task"
     assert "Show why COD is disabled." in req.description
     assert "Slack thread:" in req.description
     assert "C123" in req.description
@@ -152,7 +153,7 @@ def test_register_tool_binds_base_tool():
         }
         result = registry.run(
             "jira_create_issue",
-            {"project": "TECH", "summary": "X", "issue_type": "Task"},
+            {"project": "TECH", "summary": "Coupon display", "issue_type": "Task"},
             allowed=["jira_create_issue"],
         )
     assert isinstance(result, ToolResult)

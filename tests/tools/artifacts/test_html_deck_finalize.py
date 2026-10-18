@@ -122,17 +122,17 @@ window.nextSlide = () => { currentSlideIndex++; updateNavUI(); };
 
 def test_finalize_repairs_broken_shell_with_logo_in_slide():
     html = """<!DOCTYPE html>
-<html><head><title>FlexyPe Daily Metrics</title><style>
+<html><head><title>Acme Daily Metrics</title><style>
 :root { --bg: #0a0a0a; --accent: #818cf8; --text: #fff; --border: #333; }
 .slide { display:none; } .slide.active { display:block; }
 ul.bullets { list-style: none; } ul.bullets li::before { content: "—"; }
 </style></head>
 <body>
 <section class="slide active">
-<img class="brand-logo" src="data:image/png;base64,AAAA" style="height:200px" alt="FlexyPe" />
-<div class="topbar-title"><span class="brand-name">FlexyPe</span><span class="deck-name">presentation</span></div>
+<img class="brand-logo" src="data:image/png;base64,AAAA" style="height:200px" alt="Acme" />
+<div class="topbar-title"><span class="brand-name">Acme</span><span class="deck-name">presentation</span></div>
 <footer class="deck-footer"><span class="confidential">Do not distribute without permission</span></footer>
-<h1>FlexyPe Daily Metrics</h1>
+<h1>Acme Daily Metrics</h1>
 <div class="stat-row"><div class="stat-item"><div class="stat-value">54.9L</div></div></div>
 </section>
 <section class="slide"><h2>Details</h2></section>

@@ -16,7 +16,7 @@ scripts:
   enabled: true
   timeout_seconds: 300    # max 1800 — raise for Athena oneshots
   remote:
-    repo: YourOrg/your-scripts   # e.g. FlexyPe/alfred_scripts or FlexyPe/arsenal
+    repo: YourOrg/your-scripts
     branch: main
     path: scripts                # folder of script.yaml packages (use a real dir)
     playbooks_path: playbooks    # optional — sync into .alfred/playbooks/
@@ -26,7 +26,7 @@ scripts:
     sync_on_git_sync: true
 ```
 
-For a monorepo like **FlexyPe/arsenal**, set `path` to a small directory that contains packages (or wrappers), not the entire `py/` tree — otherwise Alfred indexes every folder as a legacy script. Point `requirements_file` at `py/requirements.txt` and run `alfred scripts setup` so Alfred does `pip install -e ./py` into `.alfred/scripts-venv`.
+For a scripts monorepo, set `path` to a small directory that contains packages (or wrappers), not the entire `py/` tree — otherwise Alfred indexes every folder as a legacy script. Point `requirements_file` at `py/requirements.txt` and run `alfred scripts setup` so Alfred does `pip install -e ./py` into `.alfred/scripts-venv`.
 
 ## Commands
 

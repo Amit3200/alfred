@@ -435,7 +435,7 @@ allowed_tools:
     text = (
         "Create a schedule for 6 AM IST to call daily metrics oneshot "
         "the playbook for it is already created (daily_metrics_oneshot) "
-        "Daily FlexyPe metrics (yesterday IST) -> HTML slides -> Slack\n"
+        "Daily Acme metrics (yesterday IST) -> HTML slides -> Slack\n"
         "0 6 * * *\nAsia/Kolkata"
     )
     task = Task(
@@ -478,13 +478,13 @@ def test_format_reply_for_doc_search():
                 {
                     "path": "platforms/hydrogen.mdx",
                     "title": "Hydrogen",
-                    "url": "https://docs.flexype.io/platforms/hydrogen",
+                    "url": "https://docs.example.com/platforms/hydrogen",
                 }
             ],
         },
         raw_text="",
     )
-    assert "https://docs.flexype.io/platforms/hydrogen" in linked
+    assert "https://docs.example.com/platforms/hydrogen" in linked
 
 
 def test_match_script_by_trigger(tmp_path: Path):

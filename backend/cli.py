@@ -603,7 +603,7 @@ def scripts_setup(data_dir: Path | None, pull: bool) -> None:
     """Install script-repo Python deps (same idea as arsenal `make setup-py`).
 
     Creates `.alfred/scripts-venv`, upgrades pip, then `pip install -e ./py`
-    when the repo has pyproject.toml (FlexyPe/arsenal), otherwise
+    when the repo has pyproject.toml, otherwise
     `pip install -r requirements.txt`.
     """
     manager = ConfigManager(data_dir)

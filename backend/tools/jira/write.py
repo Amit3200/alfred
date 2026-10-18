@@ -137,8 +137,13 @@ class JiraCreateIssueTool(BaseTool):
             session_title=session_title,
         )
         args["project"] = _resolve_create_project(ctx, args)
-        if not str(args.get("issue_type") or "").strip():
-            args["issue_type"] = "Task"
+        from backend.domains.jira.issue_type import resolve_jira_create_issue_type
+
+        args["issue_type"] = resolve_jira_create_issue_type(
+            str(args.get("issue_type") or ""),
+            project=str(args.get("project") or ""),
+            config=ctx.config,
+        )
         if is_weak_jira_summary(str(args.get("summary") or "")):
             return ToolResult.error(
                 "Cannot create a JIRA issue without a real summary. "

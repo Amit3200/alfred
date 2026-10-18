@@ -454,7 +454,7 @@ def _build_planner_channel_context(
             lines.append(
                 "Docs search is ON for this channel: prefer search_repo_docs + read_repo_doc "
                 "and answer from indexed docs unless the user is creating/updating a board or JIRA ticket. "
-                "Always include each hit's public url (https://docs.flexype.io/...) in the reply."
+                "Always include each hit's public url from the tool `url` field in the reply."
             )
     else:
         lines.append("Slack List board: not linked for this channel")

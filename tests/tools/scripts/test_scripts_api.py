@@ -77,7 +77,7 @@ def test_scripts_list_includes_remote_config(tmp_path) -> None:
     client, token = _client(tmp_path)
     manager = ConfigManager(tmp_path)
     config, _ = manager.load_merged()
-    config.scripts.remote.repo = "FlexyPe/alfred_scripts"
+    config.scripts.remote.repo = "Acme/scripts"
     config.scripts.remote.branch = "main"
     config.scripts.remote.path = "scripts"
     manager.save_config(config)
@@ -85,7 +85,7 @@ def test_scripts_list_includes_remote_config(tmp_path) -> None:
     listed = client.get("/api/scripts", headers=_headers(token))
     assert listed.status_code == 200
     body = listed.json()
-    assert body["remote"]["repo"] == "FlexyPe/alfred_scripts"
+    assert body["remote"]["repo"] == "Acme/scripts"
     assert body["remote"]["branch"] == "main"
     assert body["remote"]["path"] == "scripts"
 

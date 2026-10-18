@@ -24,7 +24,7 @@ _BROADER_SEARCH_RE = re.compile(
     r"\b("
     r"cipher|codebase|code repo|in (?:the )?repo|search (?:the )?(?:code|repo|cipher)|"
     r"check (?:the )?code|grep|playbook|runbook|investigate|main repo|"
-    r"FlexyPe/cipher|dailyscripts|scripts repo"
+    r"dailyscripts|scripts repo"
     r")\b",
     re.I,
 )
@@ -102,7 +102,7 @@ def build_support_doc_plan(task: Task) -> ToolPlan:
     """Deterministic handbook/documentation Q&A plan."""
     query = (task.cleaned_intent or task.raw_text or "").strip()
     return ToolPlan(
-        goal="Answer from indexed support documentation (FlexyPe/docs)",
+        goal="Answer from indexed support documentation",
         confidence=0.97,
         tools_needed=["search_repo_docs", "read_repo_doc"],
         steps=[ToolPlanStep("search_repo_docs", "search docs", {"query": query})],

@@ -54,7 +54,7 @@ def test_grounding_gate_rejects_fabricated_url():
 
 def test_connector_summary_does_not_fail_on_quoted_chat_urls():
     result = validate_agent_result(
-        "Paytm webhook discussed: https://api.flexype.in/v1/public/pg/paytm/webhook",
+        "Paytm webhook discussed: https://api.example.com/v1/public/pg/paytm/webhook",
         [
             ToolTraceEntry(
                 tool="connector_get_messages",
@@ -150,7 +150,7 @@ def test_grounding_gate_allows_slack_mrkdwn_jira_browse_link():
             "data": {
                 "action": "create",
                 "key": "TECH-378",
-                "url": "https://flexype.atlassian.net/browse/TECH-378",
+                "url": "https://acme.atlassian.net/browse/TECH-378",
                 "summary": "Implement variant-based PPCOD selection",
             },
         }
@@ -165,14 +165,14 @@ def test_grounding_gate_allows_slack_mrkdwn_jira_browse_link():
     ]
     slack_reply = (
         "Created TECH-378 — Implement variant-based PPCOD selection.\n"
-        "<https://flexype.atlassian.net/browse/TECH-378|TECH-378>"
+        "<https://acme.atlassian.net/browse/TECH-378|TECH-378>"
     )
     result = validate_agent_result(slack_reply, trace, None)
     assert result.passed
 
     encoded = (
         "Created TECH-378\n"
-        "https://flexype.atlassian.net/browse/TECH-378%7CTECH-378"
+        "https://acme.atlassian.net/browse/TECH-378%7CTECH-378"
     )
     result = validate_agent_result(encoded, trace, None)
     assert result.passed

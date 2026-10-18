@@ -25,7 +25,7 @@ def test_find_editable_package_prefers_py_pyproject(tmp_path: Path):
     repo = tmp_path / "arsenal"
     py_dir = repo / "py"
     py_dir.mkdir(parents=True)
-    (py_dir / "pyproject.toml").write_text("[project]\nname='flexype-arsenal'\n", encoding="utf-8")
+    (py_dir / "pyproject.toml").write_text("[project]\nname='acme-scripts'\n", encoding="utf-8")
     assert find_editable_package(repo) == py_dir.resolve()
 
 
@@ -44,7 +44,7 @@ def test_script_catalog_roots_local_and_remote(tmp_path: Path):
 
     config = AlfredConfig(
         scripts=ScriptsConfig(
-            remote=ScriptsRemoteConfig(repo="FlexyPe/alfred_scripts", path="scripts"),
+            remote=ScriptsRemoteConfig(repo="Acme/scripts", path="scripts"),
         )
     )
 
@@ -94,7 +94,7 @@ def test_sync_scripts_repository_requires_git_token(mock_mirror_cls, tmp_path: P
     from backend.integrations.company_scripts.sync import sync_scripts_repository
 
     config = AlfredConfig(
-        scripts=ScriptsConfig(remote=ScriptsRemoteConfig(repo="FlexyPe/alfred_scripts")),
+        scripts=ScriptsConfig(remote=ScriptsRemoteConfig(repo="Acme/scripts")),
     )
     config.git.enabled = True
     config.git.token = ""
@@ -111,7 +111,7 @@ def test_sync_passes_scripts_config_to_venv(mock_mirror_cls, mock_venv, tmp_path
     from backend.integrations.git.mirror import _repo_dir_name
     from backend.models.config import GitConfig
 
-    dest = tmp_path / "repos" / "shared" / _repo_dir_name("FlexyPe/alfred_scripts")
+    dest = tmp_path / "repos" / "shared" / _repo_dir_name("Acme/scripts")
     dest.mkdir(parents=True)
     (dest / ".git").mkdir()
     scripts = dest / "scripts"
@@ -125,7 +125,7 @@ def test_sync_passes_scripts_config_to_venv(mock_mirror_cls, mock_venv, tmp_path
     config = AlfredConfig(
         git=GitConfig(enabled=True, token="ghp_test", provider="github"),
         scripts=ScriptsConfig(
-            remote=ScriptsRemoteConfig(repo="FlexyPe/alfred_scripts", path="scripts"),
+            remote=ScriptsRemoteConfig(repo="Acme/scripts", path="scripts"),
         ),
     )
     result = sync_scripts_repository(config, tmp_path)
@@ -143,11 +143,11 @@ def test_setup_scripts_dependencies_skips_git_when_cloned(mock_venv, tmp_path: P
     from backend.integrations.git.mirror import _repo_dir_name
     from backend.models.config import GitConfig
 
-    dest = tmp_path / "repos" / "shared" / _repo_dir_name("FlexyPe/arsenal")
+    dest = tmp_path / "repos" / "shared" / _repo_dir_name("Acme/scripts")
     dest.mkdir(parents=True)
     (dest / "output").mkdir()
     (dest / "py").mkdir()
-    (dest / "py" / "pyproject.toml").write_text("[project]\nname='flexype-arsenal'\n", encoding="utf-8")
+    (dest / "py" / "pyproject.toml").write_text("[project]\nname='acme-scripts'\n", encoding="utf-8")
     mock_venv.return_value = {
         "ok": True,
         "skipped": False,
@@ -158,7 +158,7 @@ def test_setup_scripts_dependencies_skips_git_when_cloned(mock_venv, tmp_path: P
     config = AlfredConfig(
         git=GitConfig(enabled=True, token="ghp_test", provider="github"),
         scripts=ScriptsConfig(
-            remote=ScriptsRemoteConfig(repo="FlexyPe/arsenal", path="output"),
+            remote=ScriptsRemoteConfig(repo="Acme/scripts", path="output"),
         ),
     )
     result = setup_scripts_dependencies(config, tmp_path, pull=False)

@@ -132,5 +132,5 @@ Set `artifacts.public_base_url` in config so share links are absolute in Slack (
 | `backend/db/artifacts_db.py` | SQLite index |
 | `backend/artifacts/store.py` | Blob + index writes |
 | `backend/api/routes/artifacts.py` | HTTP API |
-| `backend/static/artifacts/` | Logo + template |
+| `backend/static/artifacts/` | Slide template |
 | `skills/html_slides.md` | Agent skill |

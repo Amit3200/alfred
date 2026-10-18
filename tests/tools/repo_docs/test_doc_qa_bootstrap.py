@@ -22,21 +22,21 @@ def docs_registry(tmp_path: Path, monkeypatch):
 
     from backend.context.doc_index import build_doc_index
 
-    mirror = tmp_path / "repos" / "shared" / "FlexyPe__docs"
+    mirror = tmp_path / "repos" / "shared" / "Acme__docs"
     (mirror / "handbook").mkdir(parents=True)
     (mirror / "handbook" / "mobile-app.mdx").write_text(
-        "# Mobile app\n\nFlexyPe supports mobile app integration via SDK.\n",
+        "# Mobile app\n\nAcme supports mobile app integration via SDK.\n",
         encoding="utf-8",
     )
 
     git = GitConfig(
         enabled=True,
-        default_org="FlexyPe",
-        main_repo="FlexyPe/cipher",
-        repo_profiles=[GitRepoProfile(repo="FlexyPe/docs", role="docs")],
+        default_org="Acme",
+        main_repo="Acme/app",
+        repo_profiles=[GitRepoProfile(repo="Acme/docs", role="docs")],
     )
     config = AlfredConfig(git=git, repo_knowledge=RepoKnowledgeConfig(enabled=True))
-    build_doc_index(tmp_path, git, repo="FlexyPe/docs", alfred_config=config)
+    build_doc_index(tmp_path, git, repo="Acme/docs", alfred_config=config)
 
     from backend.tools.repo_docs import register_repo_doc_tools
 

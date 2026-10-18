@@ -169,7 +169,7 @@ class GitRepoProfile(BaseModel):
 
     repo: str = Field(
         default="",
-        description="Repository slug, e.g. FlexyPe/docs or docs (expanded with default_org).",
+        description="Repository slug, e.g. Acme/docs or docs (expanded with default_org).",
     )
     role: Literal["code", "docs", "scripts"] = Field(
         default="code",
@@ -190,7 +190,7 @@ class GitRepoProfile(BaseModel):
     docs_public_base_url: str = Field(
         default="",
         description=(
-            "Public docs site for this repo, e.g. https://docs.flexype.io. "
+            "Public docs site for this repo, e.g. https://docs.example.com. "
             "Indexed paths are mapped by stripping .md/.mdx (platforms/hydrogen.mdx → /platforms/hydrogen)."
         ),
     )
@@ -350,11 +350,11 @@ class WebSearchConfig(BaseModel):
 
 
 class ScriptsRemoteConfig(BaseModel):
-    """Pull curated script packages from a Git repo (e.g. FlexyPe/alfred_scripts)."""
+    """Pull curated script packages from a Git repo (e.g. Acme/scripts)."""
 
     repo: str = Field(
         default="",
-        description="GitHub/GitLab slug, e.g. FlexyPe/alfred_scripts. Requires git.token in Secrets.",
+        description="GitHub/GitLab slug, e.g. Acme/scripts. Requires git.token in Secrets.",
     )
     branch: str = Field(default="main", description="Branch to clone/pull.")
     path: str = Field(

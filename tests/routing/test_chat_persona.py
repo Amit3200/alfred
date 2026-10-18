@@ -106,7 +106,7 @@ def test_append_doc_image_gallery_adds_markdown():
         content,
         doc_content=raw,
         doc_path="handbook/upsell.mdx",
-        repo="FlexyPe/docs",
+        repo="Acme/docs",
     )
     assert "Visual steps" in answer
     assert "assets/images/upsell/image1.png" in answer

@@ -20,8 +20,8 @@ def test_google_ads_integration_question_plans_doc_search():
         source="ui",
         user_id="u1",
         channel_id="c1",
-        raw_text="How google ads can be configured and integrated with FlexyPe?",
-        cleaned_intent="How google ads can be configured and integrated with FlexyPe?",
+        raw_text="How google ads can be configured and integrated with Acme?",
+        cleaned_intent="How google ads can be configured and integrated with Acme?",
     )
     entities = extract_entities(task.cleaned_intent, task.raw_text, "")
     plan = plan_tools_rules(task, entities, skill_allowed=["search_repo_docs", "read_repo_doc"])
@@ -59,7 +59,7 @@ def test_execute_repo_doc_qa_direct_answers_from_index(tmp_path: Path, monkeypat
         empty_skills / "repo_knowledge.md",
     )
 
-    mirror = tmp_path / "repos" / "shared" / "FlexyPe__docs"
+    mirror = tmp_path / "repos" / "shared" / "Acme__docs"
     (mirror / "integrations" / "analytics").mkdir(parents=True)
     (mirror / "integrations" / "analytics" / "google-ads.mdx").write_text(
         "# Google Ads\n\nConnect Google Ads via the Analytics settings page and map conversion events.\n",
@@ -68,9 +68,9 @@ def test_execute_repo_doc_qa_direct_answers_from_index(tmp_path: Path, monkeypat
 
     git = GitConfig(
         enabled=True,
-        default_org="FlexyPe",
-        main_repo="FlexyPe/cipher",
-        repo_profiles=[GitRepoProfile(repo="FlexyPe/docs", role="docs")],
+        default_org="Acme",
+        main_repo="Acme/app",
+        repo_profiles=[GitRepoProfile(repo="Acme/docs", role="docs")],
     )
     config = AlfredConfig(
         git=git,
@@ -82,7 +82,7 @@ def test_execute_repo_doc_qa_direct_answers_from_index(tmp_path: Path, monkeypat
         "backend.context.doc_index._collect_playbook_docs",
         lambda _data_dir: [],
     )
-    build_doc_index(tmp_path, git, repo="FlexyPe/docs", alfred_config=config)
+    build_doc_index(tmp_path, git, repo="Acme/docs", alfred_config=config)
 
     store = get_playbook_store(tmp_path, disabled_skills=[])
     processor = TaskProcessor(config, data_dir=tmp_path, playbook_store=store)
@@ -129,7 +129,7 @@ def test_execute_planned_direct_skips_doc_qa_for_worker(tmp_path: Path, monkeypa
     )
 
     config = AlfredConfig(
-        git=GitConfig(enabled=True, default_org="FlexyPe", main_repo="FlexyPe/cipher"),
+        git=GitConfig(enabled=True, default_org="Acme", main_repo="Acme/app"),
         repo_knowledge=RepoKnowledgeConfig(enabled=True),
     )
     store = get_playbook_store(tmp_path, disabled_skills=[])

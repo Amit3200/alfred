@@ -196,6 +196,47 @@ def test_create_issue_resilient_drops_assignee_on_failure(mock_session_cls):
     assert result["key"] == "TS-10"
 
 
+@patch("backend.integrations.jira.api.requests.Session")
+def test_create_issue_retries_invalid_issuetype_as_task(mock_session_cls):
+    session = MagicMock()
+    mock_session_cls.return_value = session
+
+    def fake_request(method, url, **kwargs):
+        resp = MagicMock()
+        if method == "POST" and url.endswith("/issue"):
+            fields = (kwargs.get("json") or {}).get("fields") or {}
+            kind = ((fields.get("issuetype") or {}).get("name") or "")
+            if kind != "Task":
+                resp.status_code = 400
+                resp.text = '{"errors":{"issuetype":"Specify a valid issue type"}}'
+                resp.json.return_value = {"errors": {"issuetype": "Specify a valid issue type"}}
+                resp.reason = "Bad Request"
+                return resp
+            resp.status_code = 201
+            resp.content = b'{"key":"TECH-12"}'
+            resp.json.return_value = {"key": "TECH-12"}
+            return resp
+        resp.status_code = 200
+        resp.content = b"{}"
+        resp.json.return_value = {}
+        return resp
+
+    session.request.side_effect = fake_request
+    client = JiraApiClient(_config().jira, api_token="secret")
+    client._token_account_id = None
+    client.resolve_account_id = MagicMock(return_value=None)
+    client.token_account_id = MagicMock(return_value=None)
+
+    result = client.create_issue(
+        project="TECH",
+        summary="Discount display",
+        issue_type="Bug",
+        resilient=True,
+    )
+    assert result["key"] == "TECH-12"
+    assert result["issue_type"] == "Task"
+
+
 def test_check_jira_disabled():
     pass
 

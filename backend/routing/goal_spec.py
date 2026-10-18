@@ -61,7 +61,7 @@ def goal_spec_from_plan(plan: ToolPlan | None) -> GoalSpec | None:
                 "Use read_repo_doc when the search hit matches the asked integration/feature",
                 "Start with Yes or No for support/integration questions",
                 "If search finds nothing relevant, answer No — do not cite unrelated docs",
-                "Include the public docs URL from tool results (url field / docs.flexype.io)",
+                "Include the public docs URL from tool results (url field) when present",
             ]
         )
     if intent == "slack.board.create":
@@ -110,7 +110,7 @@ def goal_spec_from_plan(plan: ToolPlan | None) -> GoalSpec | None:
     if intent == "repo.docs.qa":
         failure = (
             "I couldn't answer from indexed documentation. "
-            "Try rephrasing or check Knowledge bases → FlexyPe/docs is indexed."
+            "Try rephrasing or check Knowledge bases → an indexed docs repo is configured."
         )
     if intent.startswith("slack.board."):
         failure = (

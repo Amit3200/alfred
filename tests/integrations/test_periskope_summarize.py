@@ -32,7 +32,7 @@ def test_heuristic_intake_ignores_away_and_reminder_noise():
     recent = [
         {
             "sender_name": "api",
-            "body": "Friendly reminder: outstanding balance of ₹1935.51 for your FlexyPe account",
+            "body": "Friendly reminder: outstanding balance of ₹1935.51 for your Acme account",
         },
         {
             "sender_name": "916265673155@c.us",

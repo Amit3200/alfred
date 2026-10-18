@@ -389,7 +389,7 @@ class DirectMixin:
             if significant_query_tokens(query):
                 topic = describe_missing_doc_topic(query)
                 body = (
-                    f"**No** — **{topic}** is not documented in indexed FlexyPe support docs. "
+                    f"**No** — **{topic}** is not documented in indexed support documentation. "
                     "It does not appear to be a supported integration in our handbook."
                 )
                 meta = doc_reply_meta(query, None, not_found=True)
@@ -414,7 +414,7 @@ class DirectMixin:
 
                     body = WebSearchFormatter().render(web_result.data, slack=False)
                     prefix = (
-                        "I couldn't find this in indexed FlexyPe documentation. "
+                        "I couldn't find this in indexed documentation. "
                         "Here's what I found on the web instead:\n\n"
                     )
                     meta = doc_reply_meta(query, None, web_fallback=True)
@@ -440,7 +440,7 @@ class DirectMixin:
             if hits and significant_query_tokens(query):
                 topic = describe_missing_doc_topic(query)
                 body = (
-                    f"**No** — **{topic}** is not documented in indexed FlexyPe support docs. "
+                    f"**No** — **{topic}** is not documented in indexed support documentation. "
                     "It does not appear to be a supported integration in our handbook."
                 )
                 meta = doc_reply_meta(query, None, not_found=True)

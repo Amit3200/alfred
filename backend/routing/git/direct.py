@@ -269,8 +269,6 @@ _CODE_INVESTIGATION_HINTS = (
     "handled in",
     "integrate",
     "libs/",
-    "in cipher",
-    "cipher repo",
 )
 
 

@@ -36,7 +36,7 @@ def test_slide_theme_from_branding_custom_accent():
 
 def test_apply_slide_branding_updates_footer_and_tokens(tmp_path):
     config = AlfredConfig()
-    config.branding.company_name = "FlexyPe"
+    config.branding.company_name = "Acme"
     config.branding.setup_completed = True
     ctx = build_slide_branding_context(config, tmp_path)
     assert ctx is not None
@@ -51,8 +51,8 @@ def test_apply_slide_branding_updates_footer_and_tokens(tmp_path):
 
     template = (bundled_artifacts_static_dir() / "slide-template.html").read_text(encoding="utf-8")
     branded_template = apply_slide_branding(template, ctx)
-    assert "Alfred × FlexyPe" in branded_template
-    assert '<span class="brand-name">FlexyPe</span>' in branded_template
+    assert "Alfred × Acme" in branded_template
+    assert '<span class="brand-name">Acme</span>' in branded_template
     assert "nav-btn" not in branded_template
 
 
